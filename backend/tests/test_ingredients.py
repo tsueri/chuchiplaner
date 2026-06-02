@@ -1,0 +1,121 @@
+import pytest
+from httpx import AsyncClient
+
+
+@pytest.mark.asyncio
+async def test_create_ingredient(client: AsyncClient) -> None:
+    response = await client.post(
+        "/api/ingredients",
+        json={"name": "Pouletbrust"},
+    )
+    assert response.status_code == 201
+    data = response.json()
+    assert data["name"] == "Pouletbrust"
+    assert "id" in data
+
+
+@pytest.mark.asyncio
+async def test_list_ingredients(client: AsyncClient) -> None:
+    await client.post("/api/ingredients", json={"name": "Tomate"})
+    await client.post("/api/ingredients", json={"name": "Zwiebel"})
+
+    response = await client.get("/api/ingredients")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 2
+    names = {item["name"] for item in data}
+    assert names == {"Tomate", "Zwiebel"}
+
+
+@pytest.mark.asyncio
+async def test_search_ingredients(client: AsyncClient) -> None:
+    await client.post("/api/ingredients", json={"name": "Pouletbrust"})
+    await client.post("/api/ingredients", json={"name": "Pouletschenkel"})
+    await client.post("/api/ingredients", json={"name": "Tomate"})
+
+    response = await client.get("/api/ingredients", params={"q": "poulet"})
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 2
+    names = {item["name"] for item in data}
+    assert "Pouletbrust" in names
+    assert "Pouletschenkel" in names
+
+
+@pytest.mark.asyncio
+async def test_create_duplicate_ingredient(client: AsyncClient) -> None:
+    await client.post("/api/ingredients", json={"name": "Tomate"})
+    response = await client.post("/api/ingredients", json={"name": "Tomate"})
+    assert response.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_create_ingredient_empty_name(client: AsyncClient) -> None:
+    response = await client.post("/api/ingredients", json={"name": ""})
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_add_alias(
+    client: AsyncClient,
+) -> None:
+    # First register to get a session
+    reg_resp = await client.post(
+        "/api/auth/register",
+        json={"username": "aliasuser", "password": "secret123"},
+    )
+    cookies = reg_resp.cookies
+
+    # Create an ingredient
+    create_resp = await client.post(
+        "/api/ingredients", json={"name": "Pouletbrust"}
+    )
+    ingredient_id = create_resp.json()["id"]
+
+    # Add an alias
+    response = await client.post(
+        "/api/household/aliases",
+        json={"ingredient_id": ingredient_id, "alias_name": "Hähnchenbrust"},
+        cookies=cookies,
+    )
+    assert response.status_code == 201
+    data = response.json()
+    assert data["alias_name"] == "Hähnchenbrust"
+    assert data["ingredient_id"] == ingredient_id
+    assert "id" in data
+
+
+@pytest.mark.asyncio
+async def test_list_aliases(client: AsyncClient) -> None:
+    reg_resp = await client.post(
+        "/api/auth/register",
+        json={"username": "aliaslistuser", "password": "secret123"},
+    )
+    cookies = reg_resp.cookies
+
+    create_resp = await client.post(
+        "/api/ingredients", json={"name": "Rahm"}
+    )
+    ingredient_id = create_resp.json()["id"]
+
+    await client.post(
+        "/api/household/aliases",
+        json={"ingredient_id": ingredient_id, "alias_name": "Sahne"},
+        cookies=cookies,
+    )
+
+    response = await client.get("/api/household/aliases", cookies=cookies)
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 1
+    assert data[0]["alias_name"] == "Sahne"
+    assert data[0]["ingredient_id"] == ingredient_id
+
+
+@pytest.mark.asyncio
+async def test_add_alias_unauthenticated(client: AsyncClient) -> None:
+    response = await client.post(
+        "/api/household/aliases",
+        json={"ingredient_id": 1, "alias_name": "Test"},
+    )
+    assert response.status_code == 401

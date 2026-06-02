@@ -6,6 +6,8 @@ from fastapi.staticfiles import StaticFiles
 
 from app.api.auth import router as auth_router
 from app.api.health import router as health_router
+from app.api.household import router as household_router
+from app.api.ingredients import router as ingredients_router
 from app.core.config import settings
 from app.core.middleware import SessionMiddleware
 
@@ -24,6 +26,8 @@ def create_app() -> FastAPI:
 
     app.include_router(health_router, prefix="/api")
     app.include_router(auth_router, prefix="/api")
+    app.include_router(ingredients_router, prefix="/api")
+    app.include_router(household_router, prefix="/api")
 
     static_dir = os.path.join(os.path.dirname(__file__), "..", "static")
     if os.path.isdir(static_dir):
