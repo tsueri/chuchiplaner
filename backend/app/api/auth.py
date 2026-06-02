@@ -58,7 +58,14 @@ async def register(
             status_code=status.HTTP_409_CONFLICT,
             detail="Username already taken",
         )
-    user = await create_user(db, body.username, body.password)
+    try:
+        user = await create_user(
+            db, body.username, body.password, body.invite_code
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
+        )
     session = await create_session(db, user)
     _set_session_cookie(response, session.token)
     return user

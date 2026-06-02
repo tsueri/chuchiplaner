@@ -15,8 +15,6 @@ from app.schemas.inventory import (
 
 router = APIRouter(prefix="/inventory", tags=["inventory"])
 
-HOUSEHOLD_ID = 1
-
 
 @router.get("", response_model=list[InventoryItemResponse])
 async def list_inventory(
@@ -26,7 +24,7 @@ async def list_inventory(
 ) -> list[InventoryItemResponse]:
     stmt = (
         select(InventoryItem)
-        .where(InventoryItem.household_id == HOUSEHOLD_ID)
+        .where(InventoryItem.household_id == current_user.household_id)
     )
     if category:
         stmt = stmt.where(InventoryItem.category == category)
@@ -76,7 +74,7 @@ async def create_inventory_item(
         )
 
     item = InventoryItem(
-        household_id=HOUSEHOLD_ID,
+        household_id=current_user.household_id,
         ingredient_id=body.ingredient_id,
         quantity=body.quantity,
         unit=body.unit,
@@ -101,7 +99,7 @@ async def update_inventory_item(
     result = await db.execute(
         select(InventoryItem).where(
             InventoryItem.id == item_id,
-            InventoryItem.household_id == HOUSEHOLD_ID,
+            InventoryItem.household_id == current_user.household_id,
         )
     )
     item = result.scalar_one_or_none()
@@ -142,7 +140,7 @@ async def delete_inventory_item(
     result = await db.execute(
         select(InventoryItem).where(
             InventoryItem.id == item_id,
-            InventoryItem.household_id == HOUSEHOLD_ID,
+            InventoryItem.household_id == current_user.household_id,
         )
     )
     item = result.scalar_one_or_none()

@@ -19,8 +19,6 @@ from app.services.scraper import RecipeScraper
 
 router = APIRouter(prefix="/recipes", tags=["recipes"])
 
-HOUSEHOLD_ID = 1
-
 
 @router.post("/import", response_model=ScrapedRecipeResponse)
 async def import_recipe(
@@ -76,7 +74,7 @@ async def create_recipe(
         source_domain=body.source_domain,
         servings=body.servings,
         created_by=current_user.id,
-        household_id=HOUSEHOLD_ID,
+        household_id=current_user.household_id,
     )
     db.add(recipe)
     await db.flush()
@@ -125,7 +123,7 @@ async def list_recipes(
     result = await db.execute(
         select(Recipe)
         .where(
-            Recipe.household_id == HOUSEHOLD_ID,
+            Recipe.household_id == current_user.household_id,
             Recipe.deleted_at.is_(None),
         )
         .options(selectinload(Recipe.ingredients))

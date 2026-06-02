@@ -6,6 +6,7 @@ import { useAuth } from "@/contexts/AuthContext"
 import InventoryPage from "@/pages/InventoryPage"
 import LoginPage from "@/pages/LoginPage"
 import RegisterPage from "@/pages/RegisterPage"
+import SettingsPage from "@/pages/SettingsPage"
 
 function HomePage() {
   const { t } = useTranslation()
@@ -23,6 +24,9 @@ function HomePage() {
         <div className="flex gap-2">
           <Link to="/inventory">
             <Button variant="outline">Vorrat</Button>
+          </Link>
+          <Link to="/settings">
+            <Button variant="outline">Einstellungen</Button>
           </Link>
         </div>
       )}
@@ -60,6 +64,14 @@ function App() {
         element={
           <ProtectedRoute>
             <InventoryPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/settings"
+        element={
+          <ProtectedRoute>
+            <SettingsPage />
           </ProtectedRoute>
         }
       />

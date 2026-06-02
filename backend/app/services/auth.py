@@ -8,6 +8,10 @@ from sqlalchemy.orm import selectinload
 
 from app.models.user import Session as SessionModel
 from app.models.user import User
+from app.services.household import (
+    create_household,
+    get_household_by_invite_code,
+)
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -20,8 +24,32 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
 
 
-async def create_user(db: AsyncSession, username: str, password: str) -> User:
-    user = User(username=username, password_hash=hash_password(password))
+async def create_user(
+    db: AsyncSession,
+    username: str,
+    password: str,
+    invite_code: str | None = None,
+) -> User:
+    if invite_code is not None:
+        household = await get_household_by_invite_code(db, invite_code)
+        if household is None:
+            raise ValueError("Invalid invite code")
+        user = User(
+            username=username,
+            password_hash=hash_password(password),
+            household_id=household.id,
+            role="member",
+        )
+    else:
+        household = await create_household(
+            db, f"{username}'s Household"
+        )
+        user = User(
+            username=username,
+            password_hash=hash_password(password),
+            household_id=household.id,
+            role="admin",
+        )
     db.add(user)
     await db.flush()
     return user
@@ -50,7 +78,7 @@ async def get_session_by_token(
         select(SessionModel)
         .where(SessionModel.token == token)
         .where(SessionModel.expires_at > datetime.now(UTC))
-        .options(selectinload(SessionModel.user))
+        .options(selectinload(SessionModel.user).selectinload(User.household))
     )
     return result.scalar_one_or_none()
 

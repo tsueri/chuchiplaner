@@ -3,13 +3,14 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from "
 interface User {
   id: number
   username: string
+  role: string
 }
 
 interface AuthContextType {
   user: User | null
   loading: boolean
   login: (username: string, password: string) => Promise<void>
-  register: (username: string, password: string) => Promise<void>
+  register: (username: string, password: string, inviteCode?: string) => Promise<void>
   logout: () => Promise<void>
 }
 
@@ -47,10 +48,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(u)
   }
 
-  const register = async (username: string, password: string) => {
+  const register = async (username: string, password: string, inviteCode?: string) => {
+    const body: Record<string, string> = { username, password }
+    if (inviteCode) body.invite_code = inviteCode
     const u = await api("/auth/register", {
       method: "POST",
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify(body),
     })
     setUser(u)
   }

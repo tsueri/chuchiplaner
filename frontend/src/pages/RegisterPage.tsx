@@ -1,13 +1,15 @@
 import { useState, type FormEvent } from "react"
-import { Link, useNavigate } from "react-router-dom"
+import { Link, useNavigate, useSearchParams } from "react-router-dom"
 import { useAuth } from "@/contexts/AuthContext"
 import { Button } from "@/components/ui/button"
 
 export default function RegisterPage() {
   const { register } = useAuth()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
+  const [inviteCode, setInviteCode] = useState(searchParams.get("invite_code") || "")
   const [error, setError] = useState("")
   const [submitting, setSubmitting] = useState(false)
 
@@ -16,7 +18,7 @@ export default function RegisterPage() {
     setError("")
     setSubmitting(true)
     try {
-      await register(username, password)
+      await register(username, password, inviteCode || undefined)
       navigate("/")
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed")
@@ -53,6 +55,23 @@ export default function RegisterPage() {
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             className="w-full rounded-md border px-3 py-2 text-sm"
+          />
+        </div>
+
+        <div className="space-y-2">
+          <label
+            htmlFor="inviteCode"
+            className="text-sm font-medium"
+          >
+            Einladungscode (optional)
+          </label>
+          <input
+            id="inviteCode"
+            type="text"
+            value={inviteCode}
+            onChange={(e) => setInviteCode(e.target.value)}
+            className="w-full rounded-md border px-3 py-2 text-sm"
+            placeholder="Von Admin erhalten"
           />
         </div>
 
