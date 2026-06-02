@@ -9,6 +9,8 @@ dependencies = [
     "sqlalchemy[asyncio]>=2.0.36",
     "aiosqlite>=0.20.0",
     "alembic>=1.14.0",
+    "bcrypt<5",
+    "passlib>=1.7.4",
 ]
 
 [dependency-groups]
@@ -18,6 +20,7 @@ dev = [
     "httpx>=0.28.0",
     "ruff>=0.8.0",
     "mypy>=1.14.0",
+    "types-passlib>=1.7.7.20260211",
 ]
 
 [tool.pytest.ini_options]

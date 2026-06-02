@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
+from app.api.auth import router as auth_router
 from app.api.health import router as health_router
 from app.core.config import settings
 from app.core.middleware import SessionMiddleware
@@ -22,6 +23,7 @@ def create_app() -> FastAPI:
     app.add_middleware(SessionMiddleware)
 
     app.include_router(health_router, prefix="/api")
+    app.include_router(auth_router, prefix="/api")
 
     static_dir = os.path.join(os.path.dirname(__file__), "..", "static")
     if os.path.isdir(static_dir):
