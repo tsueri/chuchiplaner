@@ -1,0 +1,66 @@
+from datetime import datetime
+
+from pydantic import BaseModel, Field, field_serializer
+
+
+class RecipeImportRequest(BaseModel):
+    url: str = Field(min_length=1, max_length=2048)
+
+
+class RecipeIngredientResponse(BaseModel):
+    id: int
+    ingredient_id: int
+    quantity: float
+    unit: str
+    order_index: int
+
+    model_config = {"from_attributes": True}
+
+
+class RecipeResponse(BaseModel):
+    id: int
+    title: str
+    instructions: str
+    image_url: str | None = None
+    source_url: str | None = None
+    source_domain: str | None = None
+    servings: int
+    household_id: int
+    ingredients: list[RecipeIngredientResponse] = []
+    created_at: datetime | None = None
+
+    @field_serializer("created_at")
+    def serialize_created_at(self, value: datetime | None) -> str | None:
+        if value is None:
+            return None
+        return value.isoformat()
+
+    model_config = {"from_attributes": True}
+
+
+class ScrapedRecipeResponse(BaseModel):
+    title: str
+    ingredients: list[str]
+    instructions: str
+    image_url: str | None = None
+    servings: int
+    source_url: str
+    source_domain: str
+    existing_recipe_id: int | None = None
+
+
+class RecipeSaveRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=255)
+    instructions: str = Field(min_length=1)
+    image_url: str | None = Field(default=None, max_length=2048)
+    source_url: str | None = Field(default=None, max_length=2048)
+    source_domain: str | None = Field(default=None, max_length=255)
+    servings: int = Field(default=4, ge=1)
+    ingredients: list["RecipeIngredientItem"] = Field(default_factory=list)
+
+
+class RecipeIngredientItem(BaseModel):
+    ingredient_id: int
+    quantity: float
+    unit: str = Field(min_length=1, max_length=50)
+    order_index: int = 0

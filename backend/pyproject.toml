@@ -11,6 +11,8 @@ dependencies = [
     "alembic>=1.14.0",
     "bcrypt<5",
     "passlib>=1.7.4",
+    "recipe-scrapers>=15.0.0",
+    "httpx>=0.28.0",
 ]
 
 [dependency-groups]
