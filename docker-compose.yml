@@ -1,0 +1,9 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - CHUCHI_DATABASE_URL=sqlite+aiosqlite:///./data/chuchiplaner.db

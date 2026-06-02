@@ -1,0 +1,10 @@
+{
+  "locales": ["de"],
+  "output": "src/i18n/locales/$LOCALE/translation.json",
+  "input": ["src/**/*.{ts,tsx}"],
+  "defaultNamespace": "translation",
+  "keySeparator": ".",
+  "createOldCatalogs": false,
+  "sort": true,
+  "keepRemoved": false
+}
