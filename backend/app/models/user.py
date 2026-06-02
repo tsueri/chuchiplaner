@@ -11,6 +11,7 @@ from app.db.base import Base
 
 if TYPE_CHECKING:
     from app.models.household import Household
+    from app.models.recipe import RecipeFavorite, RecipeNote
 
 
 class User(Base):
@@ -31,6 +32,10 @@ class User(Base):
     household: Mapped["Household | None"] = relationship(
         "Household", back_populates="members"
     )
+    favorites: Mapped[list["RecipeFavorite"]] = relationship(
+        back_populates="user"
+    )
+    notes: Mapped[list["RecipeNote"]] = relationship(back_populates="user")
 
 
 class Session(Base):

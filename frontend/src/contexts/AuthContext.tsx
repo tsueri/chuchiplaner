@@ -4,6 +4,7 @@ interface User {
   id: number
   username: string
   role: string
+  household_id: number | null
 }
 
 interface AuthContextType {

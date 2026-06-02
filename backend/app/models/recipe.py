@@ -1,9 +1,15 @@
+from __future__ import annotations
+
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
+
+if TYPE_CHECKING:
+    from app.models.user import User
 
 
 class Recipe(Base):
@@ -25,6 +31,12 @@ class Recipe(Base):
         back_populates="recipe", cascade="all, delete-orphan"
     )
     tags: Mapped[list["RecipeTag"]] = relationship(
+        back_populates="recipe", cascade="all, delete-orphan"
+    )
+    favorites: Mapped[list["RecipeFavorite"]] = relationship(
+        back_populates="recipe", cascade="all, delete-orphan"
+    )
+    notes: Mapped[list["RecipeNote"]] = relationship(
         back_populates="recipe", cascade="all, delete-orphan"
     )
 
@@ -58,9 +70,49 @@ class RecipeTag(Base):
     )
 
     recipe: Mapped["Recipe"] = relationship(back_populates="tags")
+    tag: Mapped["Tag"] = relationship()
 
     def __repr__(self) -> str:
         return f"<RecipeTag recipe_id={self.recipe_id} tag_id={self.tag_id}>"
+
+
+class RecipeFavorite(Base):
+    __tablename__ = "recipe_favorites"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id"), nullable=False
+    )
+    recipe_id: Mapped[int] = mapped_column(
+        ForeignKey("recipes.id"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+    user: Mapped["User"] = relationship(back_populates="favorites")
+    recipe: Mapped["Recipe"] = relationship()
+
+
+class RecipeNote(Base):
+    __tablename__ = "recipe_notes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    recipe_id: Mapped[int] = mapped_column(
+        ForeignKey("recipes.id"), nullable=False
+    )
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id"), nullable=False
+    )
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    visibility: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="private"
+    )
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime, onupdate=func.now()
+    )
+
+    user: Mapped["User"] = relationship(back_populates="notes")
+    recipe: Mapped["Recipe"] = relationship()
 
 
 class Tag(Base):
@@ -68,4 +120,7 @@ class Tag(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    household_id: Mapped[int] = mapped_column(nullable=False)
+    group: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="ingredient"
+    )
+    household_id: Mapped[int | None] = mapped_column(nullable=True)

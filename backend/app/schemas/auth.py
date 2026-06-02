@@ -16,5 +16,6 @@ class UserResponse(BaseModel):
     id: int
     username: str
     role: str
+    household_id: int | None = None
 
     model_config = {"from_attributes": True}

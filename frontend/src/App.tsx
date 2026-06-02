@@ -5,6 +5,8 @@ import { ProtectedRoute } from "@/components/ProtectedRoute"
 import { useAuth } from "@/contexts/AuthContext"
 import InventoryPage from "@/pages/InventoryPage"
 import LoginPage from "@/pages/LoginPage"
+import RecipeDetailPage from "@/pages/RecipeDetailPage"
+import RecipeListPage from "@/pages/RecipeListPage"
 import RegisterPage from "@/pages/RegisterPage"
 import SettingsPage from "@/pages/SettingsPage"
 
@@ -22,6 +24,9 @@ function HomePage() {
       </p>
       {user && (
         <div className="flex gap-2">
+          <Link to="/recipes">
+            <Button variant="outline">Rezepte</Button>
+          </Link>
           <Link to="/inventory">
             <Button variant="outline">Vorrat</Button>
           </Link>
@@ -56,6 +61,22 @@ function App() {
         element={
           <ProtectedRoute>
             <HomePage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/recipes"
+        element={
+          <ProtectedRoute>
+            <RecipeListPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/recipes/:id"
+        element={
+          <ProtectedRoute>
+            <RecipeDetailPage />
           </ProtectedRoute>
         }
       />

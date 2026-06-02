@@ -22,6 +22,25 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
     engine = create_async_engine("sqlite+aiosqlite://", echo=False)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+        def _setup_fts_and_seeds(connection):
+            from sqlalchemy import text
+            connection.execute(
+                text(
+                    "CREATE VIRTUAL TABLE IF NOT EXISTS recipes_fts USING fts5("
+                    "title, instructions)"
+                )
+            )
+            for name in ["Frühling", "Sommer", "Herbst", "Winter", "Ganzjährig"]:
+                connection.execute(
+                    text(
+                        "INSERT OR IGNORE INTO tags (name, \"group\", household_id) "
+                        f"VALUES ('{name}', 'season', NULL)"
+                    )
+                )
+
+        await conn.run_sync(_setup_fts_and_seeds)
+
     async_session = async_sessionmaker(engine, expire_on_commit=False)
     async with async_session() as session:
         yield session

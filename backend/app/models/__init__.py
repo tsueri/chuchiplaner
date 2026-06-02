@@ -1,8 +1,14 @@
 from app.models.household import Household
 from app.models.ingredient import Ingredient, IngredientAlias
 from app.models.inventory import InventoryItem
-from app.models.recipe import Recipe, RecipeIngredient, RecipeTag, Tag
-from app.models.user import Session, User
+from app.models.recipe import (
+    Recipe,
+    RecipeFavorite,
+    RecipeIngredient,
+    RecipeNote,
+    RecipeTag,
+    Tag,
+)
 
 __all__ = [
     "User",
@@ -12,7 +18,9 @@ __all__ = [
     "IngredientAlias",
     "InventoryItem",
     "Recipe",
+    "RecipeFavorite",
     "RecipeIngredient",
+    "RecipeNote",
     "RecipeTag",
     "Tag",
 ]
