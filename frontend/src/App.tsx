@@ -3,6 +3,7 @@ import { Link, Route, Routes } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { ProtectedRoute } from "@/components/ProtectedRoute"
 import { useAuth } from "@/contexts/AuthContext"
+import InventoryPage from "@/pages/InventoryPage"
 import LoginPage from "@/pages/LoginPage"
 import RegisterPage from "@/pages/RegisterPage"
 
@@ -18,6 +19,13 @@ function HomePage() {
           ? `${t("app.welcome")}, ${user.username}!`
           : t("app.welcome")}
       </p>
+      {user && (
+        <div className="flex gap-2">
+          <Link to="/inventory">
+            <Button variant="outline">Vorrat</Button>
+          </Link>
+        </div>
+      )}
       <div className="flex gap-2">
         {user ? (
           <Button onClick={logout}>Abmelden</Button>
@@ -44,6 +52,14 @@ function App() {
         element={
           <ProtectedRoute>
             <HomePage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/inventory"
+        element={
+          <ProtectedRoute>
+            <InventoryPage />
           </ProtectedRoute>
         }
       />
