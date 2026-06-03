@@ -324,6 +324,7 @@ export default function RecipeFormPage() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [importedFrom, setImportedFrom] = useState<string | null>(null)
+  const [isPartialImport, setIsPartialImport] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -356,6 +357,7 @@ export default function RecipeFormPage() {
           source_domain: data.source_domain,
         })
         setImportedFrom(data.source_domain)
+        setIsPartialImport(data.is_partial)
         setError(null)
         const importedRows: IngredientRow[] = data.ingredients.map(
           (item, idx) => {
@@ -396,6 +398,7 @@ export default function RecipeFormPage() {
   const handleDiscardImport = () => {
     setForm(INITIAL_STATE)
     setImportedFrom(null)
+    setIsPartialImport(false)
     setError(null)
     setRows([])
     setSelectedTagIds([])
@@ -491,9 +494,23 @@ export default function RecipeFormPage() {
         {importedFrom && (
           <div
             role="status"
-            className="flex items-center justify-between rounded-md bg-muted p-3 text-sm"
+            className={cn(
+              "flex items-center justify-between rounded-md p-3 text-sm",
+              isPartialImport
+                ? "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200"
+                : "bg-muted"
+            )}
           >
-            <span>Importiert von {importedFrom}</span>
+            <div>
+              {isPartialImport ? (
+                <>
+                  <p className="font-medium">Teilimport — bitte vervollständigen</p>
+                  <p className="text-xs opacity-80">Bitte Zutaten und Zubereitung ergänzen</p>
+                </>
+              ) : (
+                <span>Importiert von {importedFrom}</span>
+              )}
+            </div>
             <button
               type="button"
               onClick={handleDiscardImport}

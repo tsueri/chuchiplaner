@@ -1109,6 +1109,69 @@ describe("RecipeFormPage URL import", () => {
       (screen.getByLabelText(/zubereitung/i) as HTMLTextAreaElement).value
     ).toBe("")
   })
+
+  it("renders an amber 'Teilimport' banner when is_partial is true", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url =
+        typeof input === "string" ? input : (input as Request).url
+      if (url === "/api/tags") {
+        return Promise.resolve(mockFetchResponse([]))
+      }
+      if (url === "/api/recipes/import") {
+        return Promise.resolve(
+          mockFetchResponse({
+            title: "Spaghetti Bolognese",
+            ingredients: [],
+            instructions: "",
+            image_url: "https://example.com/img.jpg",
+            servings: 4,
+            source_url: "https://unknown.example/recipe",
+            source_domain: "unknown.example",
+            is_partial: true,
+          })
+        )
+      }
+      return Promise.resolve(mockFetchResponse([]))
+    })
+
+    renderForm(
+      "/recipes/new?url=" + encodeURIComponent("https://unknown.example/recipe")
+    )
+
+    // Partial banner renders with amber styling
+    await screen.findByText(/teilimport — bitte vervollständigen/i)
+    expect(
+      screen.getByText(/bitte zutaten und zubereitung ergänzen/i)
+    ).toBeInTheDocument()
+
+    // Existing "Importiert von" banner is NOT shown
+    expect(
+      screen.queryByText(/importiert von unknown\.example/i)
+    ).not.toBeInTheDocument()
+
+    // Basic fields are pre-filled from whatever the partial extraction salvaged
+    expect(
+      (screen.getByLabelText(/titel/i) as HTMLInputElement).value
+    ).toBe("Spaghetti Bolognese")
+    expect(
+      (screen.getByLabelText(/bild-?url|bild/i) as HTMLInputElement).value
+    ).toBe("https://example.com/img.jpg")
+
+    // Instructions are empty (partial extraction didn't get them)
+    expect(
+      (screen.getByLabelText(/zubereitung/i) as HTMLTextAreaElement).value
+    ).toBe("")
+
+    // Speichern is still disabled (title is filled but instructions are empty)
+    expect(
+      screen.getByRole("button", { name: /speichern/i })
+    ).toBeDisabled()
+
+    // Verwerfen button present and functional
+    expect(
+      screen.getByRole("button", { name: /verwerfen/i })
+    ).toBeInTheDocument()
+  })
 })
 
 describe("RecipeListPage URL import", () => {
