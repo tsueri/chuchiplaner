@@ -181,6 +181,56 @@ describe("RecipeFormPage", () => {
     expect(screen.queryByText("recipe-detail-stub")).not.toBeInTheDocument()
   })
 
+  it("shows a hard duplicate error with link when 409 is returned, blocks Speichern until source_url changes", async () => {
+    const user = userEvent.setup()
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url =
+        typeof input === "string" ? input : (input as Request).url
+      if (url === "/api/tags") {
+        return Promise.resolve(mockFetchResponse([]))
+      }
+      if (url === "/api/recipes") {
+        return Promise.resolve(
+          mockFetchResponse(
+            {
+              detail: "Duplikat: Ein Rezept mit der URL https://example.com/dup existiert bereits in diesem Haushalt.",
+              existing_recipe_id: 7,
+            },
+            { status: 409 }
+          )
+        )
+      }
+      return Promise.resolve(mockFetchResponse([]))
+    })
+
+    renderForm()
+
+    await user.type(screen.getByLabelText(/titel/i), "Pasta")
+    await user.type(screen.getByLabelText(/zubereitung/i), "Kochen.")
+    await user.click(screen.getByRole("button", { name: /speichern/i }))
+
+    expect(
+      await screen.findByText(/du hast dieses rezept schon importiert/i)
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole("link", { name: /zum bestehenden rezept/i })
+    ).toHaveAttribute("href", "/recipes/7")
+
+    // Speichern is disabled because duplicateBlocked is true
+    expect(
+      screen.getByRole("button", { name: /speichern/i })
+    ).toBeDisabled()
+
+    // Changing the source_url should re-enable Speichern
+    const sourceUrl = screen.getByLabelText(/^quelle$/i)
+    await user.clear(sourceUrl)
+    await user.type(sourceUrl, "https://example.com/other")
+
+    expect(
+      screen.getByRole("button", { name: /speichern/i })
+    ).toBeEnabled()
+  })
+
   it("derives source_domain from source_url on blur when domain is empty", async () => {
     const user = userEvent.setup()
     renderForm()
@@ -1108,6 +1158,51 @@ describe("RecipeFormPage URL import", () => {
     expect(
       (screen.getByLabelText(/zubereitung/i) as HTMLTextAreaElement).value
     ).toBe("")
+  })
+
+  it("renders a soft duplicate warning with link when import carries existing_recipe_id", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url =
+        typeof input === "string" ? input : (input as Request).url
+      if (url === "/api/tags") {
+        return Promise.resolve(mockFetchResponse([]))
+      }
+      if (url === "/api/recipes/import") {
+        return Promise.resolve(
+          mockFetchResponse({
+            title: "Fooby Pasta",
+            ingredients: [],
+            instructions: "Alles mischen.",
+            image_url: null,
+            servings: 4,
+            source_url: "https://www.fooby.ch/recipe",
+            source_domain: "www.fooby.ch",
+            existing_recipe_id: 7,
+            is_partial: false,
+          })
+        )
+      }
+      return Promise.resolve(mockFetchResponse([]))
+    })
+
+    renderForm(
+      "/recipes/new?url=" + encodeURIComponent("https://www.fooby.ch/recipe")
+    )
+
+    await screen.findByText(/du hast dieses rezept schon importiert/i)
+    expect(
+      screen.getByRole("link", { name: /zum bestehenden rezept/i })
+    ).toHaveAttribute("href", "/recipes/7")
+
+    // Import banner still renders
+    expect(
+      screen.getByText(/importiert von www\.fooby\.ch/i)
+    ).toBeInTheDocument()
+
+    // Speichern is still enabled (soft warning does not block save)
+    expect(
+      screen.getByRole("button", { name: /speichern/i })
+    ).not.toBeDisabled()
   })
 
   it("renders an amber 'Teilimport' banner when is_partial is true", async () => {

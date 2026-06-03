@@ -252,6 +252,15 @@ function IngredientCombobox({
   )
 }
 
+class DuplicateRecipeError extends Error {
+  existingRecipeId: number
+  constructor(detail: string, existingRecipeId: number) {
+    super(detail)
+    this.existingRecipeId = existingRecipeId
+    this.name = "DuplicateRecipeError"
+  }
+}
+
 async function postRecipe(body: {
   title: string
   instructions: string
@@ -269,6 +278,12 @@ async function postRecipe(body: {
   })
   if (!res.ok) {
     const data = await res.json().catch(() => ({ detail: "Request failed" }))
+    if (res.status === 409 && data.existing_recipe_id !== undefined) {
+      throw new DuplicateRecipeError(
+        data.detail || "Request failed",
+        data.existing_recipe_id
+      )
+    }
     throw new Error(data.detail || "Request failed")
   }
   return res.json() as Promise<{ id: number }>
@@ -325,6 +340,8 @@ export default function RecipeFormPage() {
   const [error, setError] = useState<string | null>(null)
   const [importedFrom, setImportedFrom] = useState<string | null>(null)
   const [isPartialImport, setIsPartialImport] = useState(false)
+  const [existingRecipeId, setExistingRecipeId] = useState<number | null>(null)
+  const [duplicateBlocked, setDuplicateBlocked] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -358,6 +375,7 @@ export default function RecipeFormPage() {
         })
         setImportedFrom(data.source_domain)
         setIsPartialImport(data.is_partial)
+        setExistingRecipeId(data.existing_recipe_id ?? null)
         setError(null)
         const importedRows: IngredientRow[] = data.ingredients.map(
           (item, idx) => {
@@ -399,6 +417,8 @@ export default function RecipeFormPage() {
     setForm(INITIAL_STATE)
     setImportedFrom(null)
     setIsPartialImport(false)
+    setExistingRecipeId(null)
+    setDuplicateBlocked(false)
     setError(null)
     setRows([])
     setSelectedTagIds([])
@@ -409,6 +429,9 @@ export default function RecipeFormPage() {
 
   const update = <K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }))
+    if (key === "source_url") {
+      setDuplicateBlocked(false)
+    }
   }
 
   const addRow = () => setRows((prev) => [...prev, newRow()])
@@ -418,7 +441,10 @@ export default function RecipeFormPage() {
     setRows((prev) => prev.filter((_, i) => i !== idx))
 
   const canSubmit =
-    form.title.trim() !== "" && form.instructions.trim() !== "" && !submitting
+    form.title.trim() !== "" &&
+    form.instructions.trim() !== "" &&
+    !submitting &&
+    !duplicateBlocked
 
   const handleSourceUrlBlur = () => {
     if (form.source_url.trim() === "") return
@@ -469,7 +495,13 @@ export default function RecipeFormPage() {
       }
       navigate(`/recipes/${created.id}`)
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Speichern fehlgeschlagen")
+      if (err instanceof DuplicateRecipeError) {
+        setExistingRecipeId(err.existingRecipeId)
+        setDuplicateBlocked(true)
+        setError(err.message)
+      } else {
+        setError(err instanceof Error ? err.message : "Speichern fehlgeschlagen")
+      }
       setSubmitting(false)
     }
   }
@@ -487,7 +519,43 @@ export default function RecipeFormPage() {
             role="alert"
             className="rounded-md bg-destructive/10 p-3 text-sm text-destructive"
           >
-            {error}
+            {duplicateBlocked && existingRecipeId !== null ? (
+              <>
+                <p className="font-medium">
+                  Du hast dieses Rezept schon importiert
+                </p>
+                <Link
+                  to={`/recipes/${existingRecipeId}`}
+                  className="text-xs underline"
+                >
+                  Zum bestehenden Rezept
+                </Link>
+              </>
+            ) : (
+              error
+            )}
+          </div>
+        )}
+
+        {importedFrom && existingRecipeId !== null && (
+          <div
+            role="status"
+            className={cn(
+              "flex items-center justify-between rounded-md p-3 text-sm",
+              "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200"
+            )}
+          >
+            <div>
+              <p className="font-medium">
+                Du hast dieses Rezept schon importiert
+              </p>
+              <Link
+                to={`/recipes/${existingRecipeId}`}
+                className="text-xs underline"
+              >
+                Zum bestehenden Rezept
+              </Link>
+            </div>
           </div>
         )}
 
