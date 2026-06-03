@@ -9,6 +9,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
 if TYPE_CHECKING:
+    from app.models.ingredient import Ingredient
     from app.models.user import User
 
 
@@ -56,6 +57,7 @@ class RecipeIngredient(Base):
     order_index: Mapped[int] = mapped_column(default=0)
 
     recipe: Mapped["Recipe"] = relationship(back_populates="ingredients")
+    ingredient: Mapped["Ingredient"] = relationship()
 
 
 class RecipeTag(Base):

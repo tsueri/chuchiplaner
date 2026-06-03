@@ -388,6 +388,185 @@ async def test_get_recipe_detail_wrong_household(client: AsyncClient) -> None:
     assert resp.status_code == 404
 
 
+# ----- ingredient_name on read endpoints -----
+
+
+async def _create_recipe_with_ingredients(
+    client: AsyncClient,
+    cookies,
+    title: str,
+    ingredient_names: list[str],
+) -> dict:
+    ingredient_ids: list[int] = []
+    for name in ingredient_names:
+        list_resp = await client.get(
+            "/api/ingredients", params={"q": name}, cookies=cookies
+        )
+        existing = [i for i in list_resp.json() if i["name"] == name]
+        if existing:
+            ingredient_ids.append(existing[0]["id"])
+            continue
+        ing = await client.post(
+            "/api/ingredients", json={"name": name}, cookies=cookies
+        )
+        ingredient_ids.append(ing.json()["id"])
+
+    body = {
+        "title": title,
+        "instructions": "Cook it.",
+        "servings": 4,
+        "ingredients": [
+            {
+                "ingredient_id": ing_id,
+                "quantity": 100.0,
+                "unit": "g",
+                "order_index": idx,
+            }
+            for idx, ing_id in enumerate(ingredient_ids)
+        ],
+    }
+    resp = await client.post("/api/recipes", json=body, cookies=cookies)
+    assert resp.status_code == 201
+    return resp.json()
+
+
+@pytest.mark.asyncio
+async def test_get_recipe_detail_includes_ingredient_name(
+    client: AsyncClient,
+) -> None:
+    auth = await _register(client, "detailnameuser")
+    cookies = auth["cookies"]
+
+    recipe = await _create_recipe_with_ingredients(
+        client, cookies, title="Named", ingredient_names=["Rahm"]
+    )
+    recipe_id = recipe["id"]
+
+    resp = await client.get(f"/api/recipes/{recipe_id}", cookies=cookies)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data["ingredients"]) == 1
+    assert data["ingredients"][0]["ingredient_name"] == "Rahm"
+
+
+@pytest.mark.asyncio
+async def test_list_recipes_includes_ingredient_name(
+    client: AsyncClient,
+) -> None:
+    auth = await _register(client, "listnameuser")
+    cookies = auth["cookies"]
+
+    await _create_recipe_with_ingredients(
+        client, cookies, title="L1", ingredient_names=["Rahm", "Zwiebeln"]
+    )
+    await _create_recipe_with_ingredients(
+        client, cookies, title="L2", ingredient_names=["Tomaten"]
+    )
+
+    resp = await client.get("/api/recipes", cookies=cookies)
+    assert resp.status_code == 200
+    data = resp.json()
+    by_title = {r["title"]: r for r in data}
+
+    assert len(by_title["L1"]["ingredients"]) == 2
+    l1_names = {i["ingredient_name"] for i in by_title["L1"]["ingredients"]}
+    assert l1_names == {"Rahm", "Zwiebeln"}
+
+    assert len(by_title["L2"]["ingredients"]) == 1
+    assert by_title["L2"]["ingredients"][0]["ingredient_name"] == "Tomaten"
+
+
+@pytest.mark.asyncio
+async def test_list_favorite_recipes_includes_ingredient_name(
+    client: AsyncClient,
+) -> None:
+    auth = await _register(client, "favnameuser")
+    cookies = auth["cookies"]
+
+    fav_recipe = await _create_recipe_with_ingredients(
+        client, cookies, title="FavA", ingredient_names=["Rahm"]
+    )
+    await _create_recipe_with_ingredients(
+        client, cookies, title="FavB", ingredient_names=["Zwiebeln"]
+    )
+
+    await client.post(
+        f"/api/recipes/{fav_recipe['id']}/favorite", cookies=cookies
+    )
+
+    resp = await client.get("/api/recipes/favorites", cookies=cookies)
+    assert resp.status_code == 200
+    favs = resp.json()
+    titles = [f["title"] for f in favs]
+    assert "FavA" in titles
+    assert "FavB" not in titles
+
+    fav_a = next(f for f in favs if f["title"] == "FavA")
+    assert len(fav_a["ingredients"]) == 1
+    assert fav_a["ingredients"][0]["ingredient_name"] == "Rahm"
+
+
+@pytest.mark.asyncio
+async def test_list_recipes_no_n_plus_one(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    from sqlalchemy import event
+
+    auth = await _register(client, "nplusoneuser")
+    cookies = auth["cookies"]
+
+    ingredient_names = [f"Ing{i}" for i in range(3)]
+    for i in range(5):
+        await _create_recipe_with_ingredients(
+            client,
+            cookies,
+            title=f"Recipe {i}",
+            ingredient_names=ingredient_names,
+        )
+
+    queries: list[str] = []
+    sync_engine = db_session.bind.sync_engine
+
+    from sqlalchemy.engine import Connection
+    from sqlalchemy.engine.interfaces import (
+        CoreExecuteOptionsParameter,
+        ExecutionContext,
+    )
+
+    def before_cursor_execute(
+        conn: Connection,
+        cursor: object,
+        statement: str,
+        parameters: CoreExecuteOptionsParameter,
+        context: ExecutionContext,
+        executemany: bool,
+    ) -> None:
+        queries.append(statement)
+
+    event.listen(sync_engine, "before_cursor_execute", before_cursor_execute)
+    try:
+        resp = await client.get(
+            "/api/recipes", params={"limit": 100}, cookies=cookies
+        )
+    finally:
+        event.remove(sync_engine, "before_cursor_execute", before_cursor_execute)
+
+    assert resp.status_code == 200
+    assert len(resp.json()) == 5
+
+    select_recipe_queries = [
+        q for q in queries if "FROM recipes" in q and "SELECT" in q.upper()
+    ]
+    assert len(select_recipe_queries) <= 3, (
+        f"Expected bounded query count for the list endpoint, got "
+        f"{len(select_recipe_queries)} SELECT-from-recipes statements"
+    )
+    assert len(queries) <= 20, (
+        f"Expected bounded query count for the list endpoint, got "
+        f"{len(queries)} total statements"
+    )
+
+
 # ----- Recipe update test -----
 
 

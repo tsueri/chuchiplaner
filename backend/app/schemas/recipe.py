@@ -13,6 +13,7 @@ class RecipeIngredientResponse(BaseModel):
     quantity: float
     unit: str
     order_index: int
+    ingredient_name: str
 
     model_config = {"from_attributes": True}
 
@@ -180,6 +181,7 @@ class RecipeListResponse(BaseModel):
     household_id: int
     tags: list[TagResponse] = []
     is_favorited: bool = False
+    ingredients: list[RecipeIngredientResponse] = []
     created_at: datetime | None = None
 
     @field_serializer("created_at")

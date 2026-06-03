@@ -55,6 +55,19 @@ def _build_tag_response(tag: Tag) -> TagResponse:
     )
 
 
+def _build_recipe_ingredient_response(
+    ri: RecipeIngredient,
+) -> RecipeIngredientResponse:
+    return RecipeIngredientResponse(
+        id=ri.id,
+        ingredient_id=ri.ingredient_id,
+        quantity=ri.quantity,
+        unit=ri.unit,
+        order_index=ri.order_index,
+        ingredient_name=ri.ingredient.name,
+    )
+
+
 def _build_recipe_list_item(
     recipe: Recipe, user_id: int
 ) -> RecipeListResponse:
@@ -78,6 +91,7 @@ def _build_recipe_list_item(
         tags=tag_responses,
         is_favorited=is_favorited,
         created_at=recipe.created_at,
+        ingredients=[_build_recipe_ingredient_response(i) for i in recipe.ingredients],
     )
 
 
@@ -97,16 +111,7 @@ def _build_recipe_detail(recipe: Recipe, user_id: int) -> RecipeDetailResponse:
         source_domain=recipe.source_domain,
         servings=recipe.servings,
         household_id=recipe.household_id,
-        ingredients=[
-            RecipeIngredientResponse(
-                id=i.id,
-                ingredient_id=i.ingredient_id,
-                quantity=i.quantity,
-                unit=i.unit,
-                order_index=i.order_index,
-            )
-            for i in recipe.ingredients
-        ],
+        ingredients=[_build_recipe_ingredient_response(i) for i in recipe.ingredients],
         tags=tag_responses,
         is_favorited=is_favorited,
         created_at=recipe.created_at,
@@ -287,7 +292,9 @@ async def create_recipe(
     refreshed_result = await db.execute(
         select(Recipe)
         .where(Recipe.id == recipe.id)
-        .options(selectinload(Recipe.ingredients))
+        .options(
+            selectinload(Recipe.ingredients).selectinload(RecipeIngredient.ingredient)
+        )
     )
     refreshed = refreshed_result.scalar_one()
     return RecipeResponse(
@@ -300,14 +307,7 @@ async def create_recipe(
         servings=refreshed.servings,
         household_id=refreshed.household_id,
         ingredients=[
-            RecipeIngredientResponse(
-                id=i.id,
-                ingredient_id=i.ingredient_id,
-                quantity=i.quantity,
-                unit=i.unit,
-                order_index=i.order_index,
-            )
-            for i in refreshed.ingredients
+            _build_recipe_ingredient_response(i) for i in refreshed.ingredients
         ],
         created_at=refreshed.created_at,
     )
@@ -381,6 +381,9 @@ async def list_recipes(
         .options(
             selectinload(Recipe.tags).selectinload(RecipeTag.tag),
             selectinload(Recipe.favorites),
+            selectinload(Recipe.ingredients).selectinload(
+                RecipeIngredient.ingredient
+            ),
         )
         .order_by(Recipe.created_at.desc())
         .offset(offset)
@@ -412,6 +415,9 @@ async def list_favorite_recipes(
         .options(
             selectinload(Recipe.tags).selectinload(RecipeTag.tag),
             selectinload(Recipe.favorites),
+            selectinload(Recipe.ingredients).selectinload(
+                RecipeIngredient.ingredient
+            ),
         )
         .order_by(Recipe.created_at.desc())
         .offset(offset)
@@ -435,7 +441,9 @@ async def get_recipe_detail(
             Recipe.deleted_at.is_(None),
         )
         .options(
-            selectinload(Recipe.ingredients),
+            selectinload(Recipe.ingredients).selectinload(
+                RecipeIngredient.ingredient
+            ),
             selectinload(Recipe.tags).selectinload(RecipeTag.tag),
             selectinload(Recipe.favorites),
         )
@@ -464,7 +472,9 @@ async def update_recipe(
             Recipe.deleted_at.is_(None),
         )
         .options(
-            selectinload(Recipe.ingredients),
+            selectinload(Recipe.ingredients).selectinload(
+                RecipeIngredient.ingredient
+            ),
             selectinload(Recipe.tags).selectinload(RecipeTag.tag),
             selectinload(Recipe.favorites),
         )
