@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react"
 import { Link } from "react-router-dom"
-import { Button } from "@/components/ui/button"
+import { Button, buttonVariants } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { PageHeader } from "@/components/PageHeader"
 
@@ -96,7 +96,17 @@ export default function RecipeListPage() {
 
   return (
     <div>
-      <PageHeader title="Rezepte" />
+      <PageHeader
+        title="Rezepte"
+        actions={
+          <Link
+            to="/recipes/new"
+            className={buttonVariants({ variant: "default" })}
+          >
+            Neues Rezept
+          </Link>
+        }
+      />
 
       <div className="mb-4 flex flex-wrap gap-2">
         <input

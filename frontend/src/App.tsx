@@ -8,6 +8,7 @@ import InventoryPage from "@/pages/InventoryPage"
 import LoginPage from "@/pages/LoginPage"
 import PublicPlanPage from "@/pages/PublicPlanPage"
 import RecipeDetailPage from "@/pages/RecipeDetailPage"
+import RecipeFormPage from "@/pages/RecipeFormPage"
 import RecipeListPage from "@/pages/RecipeListPage"
 import RegisterPage from "@/pages/RegisterPage"
 import SettingsPage from "@/pages/SettingsPage"
@@ -41,6 +42,7 @@ function App() {
           <Route path="/plan" element={<WeekPlanPage />} />
           <Route path="/grocery-list" element={<GroceryListPage />} />
           <Route path="/recipes" element={<RecipeListPage />} />
+          <Route path="/recipes/new" element={<RecipeFormPage />} />
           <Route path="/recipes/:id" element={<RecipeDetailPage />} />
           <Route path="/inventory" element={<InventoryPage />} />
           <Route path="/settings" element={<SettingsPage />} />
