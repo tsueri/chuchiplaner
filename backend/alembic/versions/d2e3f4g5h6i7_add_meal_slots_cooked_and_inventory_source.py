@@ -20,7 +20,12 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     with op.batch_alter_table("meal_slots") as batch_op:
         batch_op.add_column(
-            sa.Column("cooked", sa.Boolean(), nullable=False, server_default=sa.text("0")),
+            sa.Column(
+                "cooked",
+                sa.Boolean(),
+                nullable=False,
+                server_default=sa.text("0"),
+            ),
         )
     with op.batch_alter_table("inventory_items") as batch_op:
         batch_op.add_column(
@@ -41,8 +46,12 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     with op.batch_alter_table("inventory_items") as batch_op:
-        batch_op.drop_constraint("fk_inventory_items_source_week_plan_id", type_="foreignkey")
-        batch_op.drop_constraint("fk_inventory_items_source_recipe_id", type_="foreignkey")
+        batch_op.drop_constraint(
+            "fk_inventory_items_source_week_plan_id", type_="foreignkey"
+        )
+        batch_op.drop_constraint(
+            "fk_inventory_items_source_recipe_id", type_="foreignkey"
+        )
         batch_op.drop_column("source_week_plan_id")
         batch_op.drop_column("source_recipe_id")
     with op.batch_alter_table("meal_slots") as batch_op:
