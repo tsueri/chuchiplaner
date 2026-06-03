@@ -696,6 +696,9 @@ describe("RecipeFormPage URL import", () => {
       if (url === "/api/tags") {
         return Promise.resolve(mockFetchResponse([]))
       }
+      if (url.includes("/api/ingredients")) {
+        return Promise.resolve(mockFetchResponse([]))
+      }
       return Promise.reject(new Error(`Unhandled fetch in test: ${url}`))
     })
   })
@@ -855,6 +858,253 @@ describe("RecipeFormPage URL import", () => {
     expect(
       (screen.getByLabelText(/titel/i) as HTMLInputElement).value
     ).toBe("")
+    expect(
+      (screen.getByLabelText(/zubereitung/i) as HTMLTextAreaElement).value
+    ).toBe("")
+  })
+
+  it("renders imported rows in three confidence bands (locked chip, highlighted suggestion, open combobox)", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url =
+        typeof input === "string" ? input : (input as Request).url
+      if (url === "/api/tags") {
+        return Promise.resolve(mockFetchResponse([]))
+      }
+      if (url === "/api/recipes/import") {
+        return Promise.resolve(
+          mockFetchResponse({
+            title: "Test",
+            instructions: "Mix.",
+            image_url: null,
+            servings: 2,
+            source_url: "https://example.com/test",
+            source_domain: "example.com",
+            is_partial: false,
+            existing_recipe_id: null,
+            ingredients: [
+              {
+                raw: "Tomaten",
+                name: "Tomaten",
+                quantity: 500,
+                unit: "g",
+                ingredient_id: 7,
+                confidence: 1.0,
+              },
+              {
+                raw: "Zwiebel",
+                name: "Zwiebeln",
+                quantity: 2,
+                unit: "Stück",
+                ingredient_id: 8,
+                confidence: 0.8,
+              },
+              {
+                raw: "600g Kalbfleisch",
+                name: "Kalbfleisch",
+                quantity: 600,
+                unit: "g",
+                ingredient_id: null,
+                confidence: 0.0,
+              },
+            ],
+          })
+        )
+      }
+      if (url.includes("/api/ingredients?q=Zwiebel")) {
+        return Promise.resolve(
+          mockFetchResponse([
+            { id: 8, name: "Zwiebeln" },
+            { id: 9, name: "Zwiebeln rot" },
+          ])
+        )
+      }
+      return Promise.resolve(mockFetchResponse([]))
+    })
+
+    renderForm(
+      "/recipes/new?url=" + encodeURIComponent("https://example.com/test")
+    )
+
+    await screen.findByText(/importiert von example\.com/i)
+
+    // Three rows exist
+    expect(
+      screen.getAllByRole("button", { name: /zutat entfernen/i })
+    ).toHaveLength(3)
+
+    // Band 1: Locked chip with ↻ override button
+    expect(
+      screen.getByRole("button", { name: /zutat ändern/i })
+    ).toBeInTheDocument()
+
+    // Band 2+3: Two combobox inputs
+    const comboboxes = screen.getAllByRole("combobox", { name: /zutat/i })
+    expect(comboboxes).toHaveLength(2)
+    expect((comboboxes[0] as HTMLInputElement).value).toBe("Zwiebel")
+    expect((comboboxes[1] as HTMLInputElement).value).toBe("600g Kalbfleisch")
+
+    // Band 2: Highlighted suggestion and "Anderer Vorschlag…"
+    await waitFor(() => {
+      expect(screen.getByRole("listbox")).toBeInTheDocument()
+    }, { timeout: 3000 })
+    const listbox = screen.getByRole("listbox")
+    const options = listbox.querySelectorAll('[role="option"]')
+    const highlighted = Array.from(options).find(
+      (o) => o.getAttribute("aria-selected") === "true"
+    )
+    expect(highlighted).toBeDefined()
+    expect(highlighted).toHaveTextContent("Zwiebeln")
+    expect(
+      screen.getByRole("option", { name: /anderer vorschlag/i })
+    ).toBeInTheDocument()
+    expect(highlighted).toHaveTextContent("Zwiebeln")
+    expect(
+      screen.getByRole("option", { name: /anderer vorschlag/i })
+    ).toBeInTheDocument()
+
+    // Prefilled quantities and units
+    const menges = screen.getAllByLabelText(/menge/i) as HTMLInputElement[]
+    expect(menges[0].value).toBe("500")
+    expect(menges[1].value).toBe("2")
+    expect(menges[2].value).toBe("600")
+
+    const unitSelects = screen.getAllByLabelText(/einheit/i) as HTMLSelectElement[]
+    expect(unitSelects[0].value).toBe("g")
+    expect(unitSelects[1].value).toBe("Stück")
+    expect(unitSelects[2].value).toBe("g")
+
+    // Raw text is visible on each row
+    expect(screen.getByText("Zwiebel")).toBeInTheDocument()
+    expect(screen.getByText("600g Kalbfleisch")).toBeInTheDocument()
+  })
+
+  it("'↻' override button on a locked chip unlocks the row and opens the catalog search", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url =
+        typeof input === "string" ? input : (input as Request).url
+      if (url === "/api/tags") {
+        return Promise.resolve(mockFetchResponse([]))
+      }
+      if (url === "/api/recipes/import") {
+        return Promise.resolve(
+          mockFetchResponse({
+            title: "Test",
+            instructions: "Mix.",
+            image_url: null,
+            servings: 2,
+            source_url: "https://example.com/test",
+            source_domain: "example.com",
+            is_partial: false,
+            existing_recipe_id: null,
+            ingredients: [
+              {
+                raw: "Tomaten",
+                name: "Tomaten",
+                quantity: 500,
+                unit: "g",
+                ingredient_id: 7,
+                confidence: 1.0,
+              },
+            ],
+          })
+        )
+      }
+      return Promise.resolve(mockFetchResponse([]))
+    })
+
+    const user = userEvent.setup()
+    renderForm(
+      "/recipes/new?url=" + encodeURIComponent("https://example.com/test")
+    )
+
+    await screen.findByText(/importiert von example\.com/i)
+
+    // Band 1: Locked chip, no combobox
+    expect(
+      screen.getByRole("button", { name: /zutat ändern/i })
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole("combobox", { name: /zutat/i })
+    ).not.toBeInTheDocument()
+
+    // Click ↻
+    await user.click(screen.getByRole("button", { name: /zutat ändern/i }))
+
+    // Now combobox appears with the ingredient name
+    const combobox = screen.getByRole("combobox", { name: /zutat/i })
+    expect(combobox).toBeInTheDocument()
+    expect((combobox as HTMLInputElement).value).toBe("Tomaten")
+
+    // Locked chip override button is gone
+    expect(
+      screen.queryByRole("button", { name: /zutat ändern/i })
+    ).not.toBeInTheDocument()
+  })
+
+  it("'Verwerfen' clears imported rows in addition to basic fields", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url =
+        typeof input === "string" ? input : (input as Request).url
+      if (url === "/api/tags") {
+        return Promise.resolve(mockFetchResponse([]))
+      }
+      if (url === "/api/recipes/import") {
+        return Promise.resolve(
+          mockFetchResponse({
+            title: "Test",
+            instructions: "Mix.",
+            image_url: null,
+            servings: 2,
+            source_url: "https://example.com/test",
+            source_domain: "example.com",
+            is_partial: false,
+            existing_recipe_id: null,
+            ingredients: [
+              {
+                raw: "Tomaten",
+                name: "Tomaten",
+                quantity: 500,
+                unit: "g",
+                ingredient_id: 7,
+                confidence: 1.0,
+              },
+              {
+                raw: "Zwiebel",
+                name: "Zwiebeln",
+                quantity: 2,
+                unit: "Stück",
+                ingredient_id: 8,
+                confidence: 0.8,
+              },
+            ],
+          })
+        )
+      }
+      return Promise.resolve(mockFetchResponse([]))
+    })
+
+    const user = userEvent.setup()
+    renderForm(
+      "/recipes/new?url=" + encodeURIComponent("https://example.com/test")
+    )
+
+    await screen.findByText(/importiert von example\.com/i)
+
+    // Rows are present
+    expect(
+      screen.getAllByRole("button", { name: /zutat entfernen/i })
+    ).toHaveLength(2)
+
+    // Click Verwerfen
+    await user.click(screen.getByRole("button", { name: /verwerfen/i }))
+
+    // Rows are cleared
+    expect(
+      screen.queryByRole("button", { name: /zutat entfernen/i })
+    ).not.toBeInTheDocument()
+
+    // Form cleared
+    expect((screen.getByLabelText(/titel/i) as HTMLInputElement).value).toBe("")
     expect(
       (screen.getByLabelText(/zubereitung/i) as HTMLTextAreaElement).value
     ).toBe("")

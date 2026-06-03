@@ -23,6 +23,9 @@ interface IngredientRow {
   query: string
   quantity: string
   unit: string
+  suggestedIngredientId: number | null
+  confidence: number
+  raw: string
 }
 
 interface Ingredient {
@@ -87,6 +90,9 @@ function newRow(): IngredientRow {
     query: "",
     quantity: "",
     unit: "g",
+    suggestedIngredientId: null,
+    confidence: 0,
+    raw: "",
   }
 }
 
@@ -138,17 +144,41 @@ function IngredientCombobox({
 
   if (locked) {
     return (
-      <span
-        aria-label="Zutat"
-        className="flex-1 truncate rounded-md border border-input bg-muted px-2.5 py-1 text-sm"
-      >
-        {row.ingredientName}
-      </span>
+      <div className="flex-1 flex flex-col gap-0.5">
+        <div className="flex items-center gap-1">
+          <span
+            aria-label="Zutat"
+            className="flex-1 truncate rounded-md border border-input bg-muted px-2.5 py-1 text-sm"
+          >
+            {row.ingredientName}
+          </span>
+          <button
+            type="button"
+            aria-label="Zutat ändern"
+            className="inline-flex items-center justify-center rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground shrink-0"
+            onClick={() => {
+              onChange({
+                ...row,
+                ingredientId: null,
+                ingredientName: "",
+                query: row.ingredientName,
+                suggestedIngredientId: null,
+                confidence: 0,
+              })
+            }}
+          >
+            ↻
+          </button>
+        </div>
+        {row.raw && (
+          <span className="text-xs text-muted-foreground truncate">{row.raw}</span>
+        )}
+      </div>
     )
   }
 
   return (
-    <div className="relative flex-1">
+    <div className="relative flex-1 flex flex-col gap-0.5">
       <Input
         type="text"
         role="combobox"
@@ -162,11 +192,14 @@ function IngredientCombobox({
         onChange={(e) => {
           setResults([])
           setManuallyClosed(false)
-          onChange({ ...row, query: e.target.value })
+          onChange({ ...row, query: e.target.value, suggestedIngredientId: null })
         }}
         onFocus={() => setManuallyClosed(false)}
         onBlur={() => setManuallyClosed(true)}
       />
+      {row.raw && (
+        <span className="text-xs text-muted-foreground truncate">{row.raw}</span>
+      )}
       {showDropdown && (
         <ul
           id={`ingredient-list-${row.key}`}
@@ -177,6 +210,7 @@ function IngredientCombobox({
             <li
               key={ing.id}
               role="option"
+              aria-selected={ing.id === row.suggestedIngredientId}
               tabIndex={0}
               onMouseDown={(e) => {
                 e.preventDefault()
@@ -185,13 +219,33 @@ function IngredientCombobox({
                   ingredientId: ing.id,
                   ingredientName: ing.name,
                   query: "",
+                  suggestedIngredientId: null,
                 })
               }}
-              className="cursor-pointer px-2.5 py-1 text-sm hover:bg-muted"
+              className={cn(
+                "cursor-pointer px-2.5 py-1 text-sm hover:bg-muted",
+                ing.id === row.suggestedIngredientId && "bg-muted font-medium"
+              )}
             >
               {ing.name}
             </li>
           ))}
+          {row.suggestedIngredientId !== null && (
+            <li
+              role="option"
+              tabIndex={0}
+              onMouseDown={(e) => {
+                e.preventDefault()
+                onChange({
+                  ...row,
+                  suggestedIngredientId: null,
+                })
+              }}
+              className="cursor-pointer px-2.5 py-1 text-sm text-muted-foreground border-t hover:bg-muted"
+            >
+              Anderer Vorschlag…
+            </li>
+          )}
         </ul>
       )}
     </div>
@@ -303,6 +357,27 @@ export default function RecipeFormPage() {
         })
         setImportedFrom(data.source_domain)
         setError(null)
+        const importedRows: IngredientRow[] = data.ingredients.map(
+          (item, idx) => {
+            const isLocked =
+              item.confidence >= 1.0 && item.ingredient_id !== null
+            return {
+              key: `import-${idx}`,
+              ingredientId: isLocked ? (item.ingredient_id as number) : null,
+              ingredientName: isLocked ? item.name : "",
+              query: isLocked ? "" : (item.raw || item.name),
+              quantity: item.quantity !== null ? String(item.quantity) : "",
+              unit: item.unit || "g",
+              suggestedIngredientId:
+                !isLocked && item.ingredient_id !== null
+                  ? (item.ingredient_id as number)
+                  : null,
+              confidence: item.confidence,
+              raw: item.raw,
+            }
+          }
+        )
+        setRows(importedRows)
       } catch (err) {
         if (cancelled) return
         setError(
