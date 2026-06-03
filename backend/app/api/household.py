@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import get_current_user
@@ -256,7 +257,16 @@ async def add_alias(
         ingredient_id=body.ingredient_id,
     )
     db.add(alias)
-    await db.flush()
+    try:
+        await db.flush()
+    except IntegrityError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"Der Alias '{body.alias_name}' existiert bereits "
+                "in diesem Haushalt."
+            ),
+        )
     return alias
 
 

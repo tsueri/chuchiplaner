@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import ForeignKey, String, func
+from sqlalchemy import ForeignKey, Index, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -27,3 +27,12 @@ class IngredientAlias(Base):
     )
 
     ingredient: Mapped[Ingredient] = relationship(back_populates="aliases")
+
+    __table_args__ = (
+        Index(
+            "uq_ingredient_aliases_household_lower_alias",
+            "household_id",
+            func.lower(alias_name),
+            unique=True,
+        ),
+    )

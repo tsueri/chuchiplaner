@@ -469,3 +469,108 @@ async def test_export_no_password_hashes(client: AsyncClient) -> None:
 async def test_export_requires_auth(client: AsyncClient) -> None:
     resp = await client.get("/api/household/export")
     assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_alias_duplicate_returns_409(client: AsyncClient) -> None:
+    resp = await _register(client, "aliasdup")
+    cookies = resp.cookies
+
+    ing = await client.post(
+        "/api/ingredients", json={"name": "Pouletbrust"}, cookies=cookies
+    )
+    ingredient_id = ing.json()["id"]
+
+    first = await client.post(
+        "/api/household/aliases",
+        json={"ingredient_id": ingredient_id, "alias_name": "Hähnchenbrust"},
+        cookies=cookies,
+    )
+    assert first.status_code == 201
+
+    second = await client.post(
+        "/api/household/aliases",
+        json={"ingredient_id": ingredient_id, "alias_name": "Hähnchenbrust"},
+        cookies=cookies,
+    )
+    assert second.status_code == 409
+    assert "detail" in second.json()
+
+
+@pytest.mark.asyncio
+async def test_alias_case_insensitive_duplicate_returns_409(
+    client: AsyncClient,
+) -> None:
+    resp = await _register(client, "aliascase")
+    cookies = resp.cookies
+
+    ing = await client.post(
+        "/api/ingredients", json={"name": "Pouletbrust"}, cookies=cookies
+    )
+    ingredient_id = ing.json()["id"]
+
+    first = await client.post(
+        "/api/household/aliases",
+        json={"ingredient_id": ingredient_id, "alias_name": "Hähnchenbrust"},
+        cookies=cookies,
+    )
+    assert first.status_code == 201
+
+    second = await client.post(
+        "/api/household/aliases",
+        json={"ingredient_id": ingredient_id, "alias_name": "hähnchenbrust"},
+        cookies=cookies,
+    )
+    assert second.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_alias_fresh_returns_201(client: AsyncClient) -> None:
+    resp = await _register(client, "aliasfresh")
+    cookies = resp.cookies
+
+    ing = await client.post(
+        "/api/ingredients", json={"name": "Pouletbrust"}, cookies=cookies
+    )
+    ingredient_id = ing.json()["id"]
+
+    response = await client.post(
+        "/api/household/aliases",
+        json={"ingredient_id": ingredient_id, "alias_name": "Hähnchenbrust"},
+        cookies=cookies,
+    )
+    assert response.status_code == 201
+    data = response.json()
+    assert data["household_id"] is not None
+    assert data["alias_name"] == "Hähnchenbrust"
+    assert data["ingredient_id"] == ingredient_id
+
+
+@pytest.mark.asyncio
+async def test_alias_cross_household_same_alias_returns_201(
+    client: AsyncClient,
+) -> None:
+    resp1 = await _register(client, "household1")
+    cookies1 = resp1.cookies
+
+    resp2 = await _register(client, "household2")
+    cookies2 = resp2.cookies
+
+    ing = await client.post(
+        "/api/ingredients", json={"name": "Pouletbrust"}, cookies=cookies1
+    )
+    ingredient_id = ing.json()["id"]
+
+    first = await client.post(
+        "/api/household/aliases",
+        json={"ingredient_id": ingredient_id, "alias_name": "Hähnchenbrust"},
+        cookies=cookies1,
+    )
+    assert first.status_code == 201
+
+    second = await client.post(
+        "/api/household/aliases",
+        json={"ingredient_id": ingredient_id, "alias_name": "Hähnchenbrust"},
+        cookies=cookies2,
+    )
+    assert second.status_code == 201
