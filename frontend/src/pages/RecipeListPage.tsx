@@ -5,6 +5,15 @@ import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 import { PageHeader } from "@/components/PageHeader"
 
+interface RecipeIngredient {
+  id: number
+  ingredient_id: number
+  ingredient_name: string
+  quantity: number
+  unit: string
+  order_index: number
+}
+
 interface RecipeItem {
   id: number
   title: string
@@ -17,6 +26,7 @@ interface RecipeItem {
   tags: TagItem[]
   is_favorited: boolean
   created_at: string | null
+  ingredients: RecipeIngredient[]
 }
 
 interface TagItem {
@@ -50,6 +60,7 @@ export default function RecipeListPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [importUrl, setImportUrl] = useState("")
+  const [expandedId, setExpandedId] = useState<number | null>(null)
 
   const handleImportSubmit = (e: FormEvent) => {
     e.preventDefault()
@@ -102,6 +113,10 @@ export default function RecipeListPage() {
   const toggleFavorite = async (id: number) => {
     await api(`/recipes/${id}/favorite`, { method: "POST" })
     refreshRecipes(search, tagFilter, favoritesOnly)
+  }
+
+  const toggleExpanded = (id: number) => {
+    setExpandedId((prev) => (prev === id ? null : id))
   }
 
   return (
@@ -193,60 +208,88 @@ export default function RecipeListPage() {
         <p className="text-muted-foreground">Keine Rezepte gefunden.</p>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2">
-          {recipes.map((r) => (
-            <div
-              key={r.id}
-              className="rounded-lg border bg-card p-4 shadow-sm transition hover:shadow-md"
-            >
-              <div className="flex items-start justify-between">
-                <Link
-                  to={`/recipes/${r.id}`}
-                  className="text-lg font-semibold hover:underline"
-                >
-                  {r.title}
-                </Link>
-                <button
-                  onClick={() => toggleFavorite(r.id)}
-                  className={cn(
-                    "text-xl",
-                    r.is_favorited ? "text-yellow-500" : "text-gray-300"
-                  )}
-                  title={r.is_favorited ? "Favorit entfernen" : "Favorit"}
-                >
-                  ★
-                </button>
-              </div>
-              {r.image_url && (
-                <img
-                  src={r.image_url}
-                  alt={r.title}
-                  className="mt-2 h-32 w-full rounded object-cover"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).style.display = "none"
-                  }}
-                />
-              )}
-              <div className="mt-2 flex flex-wrap gap-1">
-                {r.tags.map((tag) => (
-                  <span
-                    key={tag.id}
-                    className={cn(
-                      "rounded-full px-2 py-0.5 text-xs",
-                      tag.group === "season"
-                        ? "bg-green-100 text-green-800"
-                        : "bg-blue-100 text-blue-800"
-                    )}
+          {recipes.map((r) => {
+            const isExpanded = expandedId === r.id
+            const sortedIngredients = [...r.ingredients].sort(
+              (a, b) => a.order_index - b.order_index
+            )
+            return (
+              <div
+                key={r.id}
+                className="rounded-lg border bg-card p-4 shadow-sm transition hover:shadow-md"
+              >
+                <div className="flex items-start justify-between">
+                  <Link
+                    to={`/recipes/${r.id}`}
+                    className="text-lg font-semibold hover:underline"
                   >
-                    {tag.name}
-                  </span>
-                ))}
+                    {r.title}
+                  </Link>
+                  <button
+                    onClick={() => toggleFavorite(r.id)}
+                    className={cn(
+                      "text-xl",
+                      r.is_favorited ? "text-yellow-500" : "text-gray-300"
+                    )}
+                    title={r.is_favorited ? "Favorit entfernen" : "Favorit"}
+                  >
+                    ★
+                  </button>
+                </div>
+                {r.image_url && (
+                  <img
+                    src={r.image_url}
+                    alt={r.title}
+                    className="mt-2 h-32 w-full rounded object-cover"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).style.display = "none"
+                    }}
+                  />
+                )}
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {r.tags.map((tag) => (
+                    <span
+                      key={tag.id}
+                      className={cn(
+                        "rounded-full px-2 py-0.5 text-xs",
+                        tag.group === "season"
+                          ? "bg-green-100 text-green-800"
+                          : "bg-blue-100 text-blue-800"
+                      )}
+                    >
+                      {tag.name}
+                    </span>
+                  ))}
+                </div>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  {r.servings} Portionen
+                  {r.source_domain ? ` \u00b7 ${r.source_domain}` : ""}
+                </p>
+                {sortedIngredients.length > 0 && (
+                  <div className="mt-3">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      aria-expanded={isExpanded}
+                      onClick={() => toggleExpanded(r.id)}
+                    >
+                      {isExpanded ? "Zutaten verbergen" : "Zutaten anzeigen"}
+                    </Button>
+                    {isExpanded && (
+                      <ul className="mt-2 list-inside list-disc text-sm">
+                        {sortedIngredients.map((ing) => (
+                          <li key={ing.id}>
+                            {ing.quantity} {ing.unit} {ing.ingredient_name}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
               </div>
-              <p className="mt-2 text-sm text-muted-foreground">
-                {r.servings} Portionen
-                {r.source_domain ? ` \u00b7 ${r.source_domain}` : ""}
-              </p>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>
