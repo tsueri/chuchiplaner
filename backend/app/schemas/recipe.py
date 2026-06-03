@@ -197,5 +197,7 @@ class RecipeUpdateRequest(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=255)
     instructions: str | None = Field(default=None, min_length=1)
     image_url: str | None = Field(default=None, max_length=2048)
+    source_url: str | None = Field(default=None, max_length=2048)
     servings: int | None = Field(default=None, ge=1)
     tag_ids: list[int] | None = None
+    ingredients: list["RecipeIngredientItem"] | None = None

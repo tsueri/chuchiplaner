@@ -463,7 +463,7 @@ async def update_recipe(
     body: RecipeUpdateRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-) -> RecipeDetailResponse:
+) -> JSONResponse | RecipeDetailResponse:
     result = await db.execute(
         select(Recipe)
         .where(
@@ -486,12 +486,36 @@ async def update_recipe(
             detail="Recipe not found",
         )
 
+    if body.source_url is not None and body.source_url != recipe.source_url:
+        dup_result = await db.execute(
+            select(Recipe).where(
+                Recipe.source_url == body.source_url,
+                Recipe.household_id == current_user.household_id,
+                Recipe.id != recipe_id,
+                Recipe.deleted_at.is_(None),
+            )
+        )
+        dup = dup_result.scalar_one_or_none()
+        if dup is not None:
+            return JSONResponse(
+                status_code=status.HTTP_409_CONFLICT,
+                content={
+                    "detail": (
+                        f"Duplikat: Ein Rezept mit der URL {body.source_url} "
+                        "existiert bereits in diesem Haushalt."
+                    ),
+                    "existing_recipe_id": dup.id,
+                },
+            )
+
     if body.title is not None:
         recipe.title = body.title
     if body.instructions is not None:
         recipe.instructions = body.instructions
     if body.image_url is not None:
         recipe.image_url = body.image_url
+    if body.source_url is not None:
+        recipe.source_url = body.source_url
     if body.servings is not None:
         recipe.servings = body.servings
 
@@ -505,6 +529,34 @@ async def update_recipe(
 
         for tid in tag_ids_set - recipe_tag_ids:
             recipe.tags.append(RecipeTag(tag_id=tid))
+
+    if body.ingredients is not None:
+        for item in body.ingredients:
+            ing_result = await db.execute(
+                select(Ingredient).where(Ingredient.id == item.ingredient_id)
+            )
+            if ing_result.scalar_one_or_none() is None:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=(
+                        f"Ungültiger ingredient_id: "
+                        f"Zutat mit ID {item.ingredient_id} existiert nicht."
+                    ),
+                )
+
+        for existing in list(recipe.ingredients):
+            recipe.ingredients.remove(existing)
+
+        for idx, item in enumerate(body.ingredients):
+            db.add(
+                RecipeIngredient(
+                    recipe_id=recipe.id,
+                    ingredient_id=item.ingredient_id,
+                    quantity=item.quantity,
+                    unit=item.unit,
+                    order_index=idx,
+                )
+            )
 
     await db.flush()
 
