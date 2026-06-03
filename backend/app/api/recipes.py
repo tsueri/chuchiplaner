@@ -9,6 +9,7 @@ from sqlalchemy.orm import selectinload
 
 from app.api.auth import get_current_user
 from app.db.session import get_db
+from app.models.ingredient import Ingredient, IngredientAlias
 from app.models.recipe import (
     Recipe,
     RecipeFavorite,
@@ -30,10 +31,13 @@ from app.schemas.recipe import (
     RecipeResponse,
     RecipeSaveRequest,
     RecipeUpdateRequest,
+    ScrapedIngredientItem,
     ScrapedRecipeResponse,
     TagCreateRequest,
     TagResponse,
 )
+from app.services.ingredient_line_parser import IngredientLineParser
+from app.services.normalizer import IngredientNormalizer
 from app.services.scraper import RecipeScraper
 
 router = APIRouter(prefix="/recipes", tags=["recipes"])
@@ -138,15 +142,53 @@ async def import_recipe(
             detail="Could not extract recipe from this URL",
         )
 
+    alias_rows = await db.execute(
+        select(IngredientAlias).where(
+            IngredientAlias.household_id == current_user.household_id
+        )
+    )
+    household_aliases: dict[str, int] = {
+        a.alias_name: a.ingredient_id for a in alias_rows.scalars().all()
+    }
+
+    ingredient_rows = await db.execute(select(Ingredient))
+    ingredient_map: dict[str, int] = {
+        i.name: i.id for i in ingredient_rows.scalars().all()
+    }
+
+    normalizer = IngredientNormalizer(ingredient_map)
+
+    parsed_items: list[ScrapedIngredientItem] = []
+    for raw_line in scraped.ingredients:
+        parsed_line = IngredientLineParser.parse(raw_line)
+        if parsed_line.quantity is not None and parsed_line.name:
+            resolved_id, confidence = normalizer.resolve(
+                parsed_line.name, household_aliases
+            )
+        else:
+            resolved_id, confidence = None, 0.0
+
+        parsed_items.append(
+            ScrapedIngredientItem(
+                raw=raw_line,
+                name=parsed_line.name,
+                quantity=parsed_line.quantity,
+                unit=parsed_line.unit,
+                ingredient_id=resolved_id,
+                confidence=confidence,
+            )
+        )
+
     return ScrapedRecipeResponse(
         title=scraped.title,
-        ingredients=scraped.ingredients,
+        ingredients=parsed_items,
         instructions=scraped.instructions,
         image_url=scraped.image_url,
         servings=scraped.servings,
         source_url=scraped.source_url,
         source_domain=scraped.source_domain,
         existing_recipe_id=existing.id if existing else None,
+        is_partial=False,
     )
 
 

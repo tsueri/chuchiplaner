@@ -38,15 +38,25 @@ class RecipeResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ScrapedIngredientItem(BaseModel):
+    raw: str
+    name: str
+    quantity: float | None = None
+    unit: str | None = None
+    ingredient_id: int | None = None
+    confidence: float = 0.0
+
+
 class ScrapedRecipeResponse(BaseModel):
     title: str
-    ingredients: list[str]
+    ingredients: list[ScrapedIngredientItem]
     instructions: str
     image_url: str | None = None
     servings: int
     source_url: str
     source_domain: str
     existing_recipe_id: int | None = None
+    is_partial: bool = False
 
 
 class RecipeSaveRequest(BaseModel):

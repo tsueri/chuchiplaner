@@ -733,12 +733,16 @@ describe("RecipeFormPage URL import", () => {
           return Promise.resolve(
             mockFetchResponse({
               title: "Fooby Pasta",
-              ingredients: ["Tomaten", "Zwiebeln"],
+              ingredients: [
+                { raw: "Tomaten", name: "Tomaten", quantity: null, unit: null, ingredient_id: null, confidence: 0.0 },
+                { raw: "Zwiebeln", name: "Zwiebeln", quantity: null, unit: null, ingredient_id: null, confidence: 0.0 },
+              ],
               instructions: "Alles mischen.",
               image_url: "https://example.com/img.jpg",
               servings: 2,
               source_url: "https://www.fooby.ch/recipe",
               source_domain: "www.fooby.ch",
+              is_partial: false,
             })
           )
         }
@@ -792,6 +796,7 @@ describe("RecipeFormPage URL import", () => {
             servings: 4,
             source_url: "https://www.fooby.ch/recipe",
             source_domain: "www.fooby.ch",
+            is_partial: false,
           })
         )
       }

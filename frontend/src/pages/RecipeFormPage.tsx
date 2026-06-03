@@ -44,15 +44,25 @@ interface Tag {
   household_id: number | null
 }
 
+interface ScrapedIngredientItem {
+  raw: string
+  name: string
+  quantity: number | null
+  unit: string | null
+  ingredient_id: number | null
+  confidence: number
+}
+
 interface ScrapedRecipe {
   title: string
-  ingredients: string[]
+  ingredients: ScrapedIngredientItem[]
   instructions: string
   image_url: string | null
   servings: number
   source_url: string
   source_domain: string
   existing_recipe_id: number | null
+  is_partial: boolean
 }
 
 const INITIAL_STATE: FormState = {

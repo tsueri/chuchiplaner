@@ -13,8 +13,8 @@ A self-hosted family meal planner for Swiss households. Reduces food waste by pl
 | Term | Definition |
 |---|---|
 | **Ingredient** | A canonical food item in the global catalog (e.g. "Pouletbrust"). Shared across all households. |
-| **IngredientAlias** | A per-household mapping from a scraped ingredient name (e.g. "Hähnchenbrust") to a canonical Ingredient. Learned when users confirm matches during recipe import. |
-| **Recipe** | A meal imported from a Swiss cooking site or created manually. Contains title, instructions, image_url, source_url, source_domain, servings (default 4), and a list of RecipeIngredients (ingredient + quantity + unit + order_index). Soft-deleted via `deleted_at`. |
+| **IngredientAlias** | A per-household mapping from a scraped ingredient name (e.g. "Hähnchenbrust") to a canonical Ingredient. Learned when users confirm matches during recipe import. Uniqueness is enforced by a DB index on `(household_id, lower(alias_name))`; conflicting writes return 409. Aliases are persisted only for rows the user *actively confirmed or changed* during the import flow — not for every row the form touched — to keep the alias table small. |
+| **Recipe** | A meal imported from a Swiss cooking site or created manually. Contains title, instructions, image_url, source_url, source_domain, servings (default 4), and a list of RecipeIngredients (ingredient + quantity + unit + order_index). Soft-deleted via `deleted_at`. `(household_id, source_url)` is unique among non-deleted rows — re-saving the same URL returns 409 with the existing recipe's id. |
 | **RecipeTag** | A tag attached to a Recipe. Tags have a `group`: `"season"` (fixed: Frühling/Sommer/Herbst/Winter/Ganzjährig) or `"ingredient"` (free-form per household). |
 | **RecipeFavorite** | Per-user bookmark on a Recipe. |
 | **RecipeNote** | Per-user note on a Recipe. Visibility: `"private"` or `"household"`. |
@@ -29,7 +29,10 @@ A self-hosted family meal planner for Swiss households. Reduces food waste by pl
 | **GroceryListItem** | A single line in the grocery list. Has quantity, unit, checked (bool), and an optional `recipe_breakdown` (JSON) showing per-recipe sources. |
 | **MatchingEngine** | Core algorithm that scores recipes against available inventory. Returns `ScoredRecipe` objects sorted by match percentage + urgency boost (ingredients expiring within 3 days get +0.1). Three modes: `exact` (all ingredients available), `partial` (any match), `ingredient_first` (filter by specific ingredient). |
 | **UnitConverter** | Static utility that normalizes ingredient quantities to canonical units. Input: (amount, unit_str). Output: (grams, milliliters, pieces) — exactly one non-None. Supports g, kg, ml, l, EL (15ml), TL (5ml), Stück, Bund, Prise. |
-| **IngredientNormalizer** | Resolves scraped ingredient names to canonical Ingredient IDs. Uses household aliases first, then fuzzy matching (SequenceMatcher, threshold 0.6). Returns (ingredient_id, confidence). Not currently wired into API endpoints. |
+| **IngredientLineParser** | Splits a raw scraped ingredient string (e.g. `"600g Kalbfleisch"`, `"1 Zwiebel, gehackt"`) into `(quantity, unit, name)`. Returns `quantity=None, unit=None, name=line` for unparseable lines (e.g. `"Salz und Pfeffer"`). Uses the source-side unit vocabulary — canonical synonyms (Esslöffel, Teelöffel, Dose, Becher, …) plus the standard `UnitConverter` set — and is the only module that knows those synonyms. Unit name maps to the canonical form (`"EL"` not `"Esslöffel"`). Ranges (`"2-3 EL"`) collapse to the lower bound. |
+| **IngredientNormalizer** | Resolves parsed ingredient names to canonical Ingredient IDs. Uses household aliases first, then exact name match, then fuzzy matching (SequenceMatcher, threshold 0.6). Returns `(ingredient_id, confidence)` where 1.0 means exact/alias. Wired into the import pipeline: `POST /api/recipes/import` runs the parser + normalizer for every scraped line and returns one `ScrapedIngredientItem` per line. |
+| **ScrapedIngredientItem** | Per-scraped-line payload inside the import response. Fields: `raw` (original string), `name` (parsed), `quantity` (float or null), `unit` (canonical form or null), `ingredient_id` (matched canonical or null), `confidence` (0.0–1.0). The form pre-fills one row per item, locking rows at confidence 1.0, pre-selecting the suggestion at 0.6–1.0, and leaving rows open at < 0.6. |
+| **ScrapedRecipe.is_partial** | Boolean flag on the import response. `True` means the full recipe-scrapers library failed and the scraper fell back to best-effort extraction (title from `<title>`, image from `og:image`); the user must fill the rest by hand. `False` means a structured recipe was extracted. The 422 "could not extract" case is reserved for `is_partial=False` AND no data was found at all. |
 
 ## Architecture
 
@@ -226,7 +229,8 @@ When a recipe is planned but not yet cooked, its ingredients are reserved (scale
 | Test file | Scope |
 |---|---|
 | `test_unit_converter.py` | UnitConverter: normalization for all unit types, unknown units, edge cases |
-| `test_normalizer.py` | IngredientNormalizer: alias resolution, fuzzy matching, threshold behavior |
+| `test_ingredient_line_parser.py` | IngredientLineParser: quantity/unit/name extraction, German unit synonyms, unparseable lines, ranges, comma-separated prep notes |
+| `test_normalizer.py` | IngredientNormalizer: alias resolution, fuzzy matching, threshold behavior, integration into the import pipeline |
 | `test_matching_engine.py` | MatchingEngine: exact/partial/ingredient_first modes, scoring, urgency boost, reservations |
 | `test_scraper.py` | RecipeScraper: caching, rate limiting, URL parsing |
 | `test_auth.py` | Register, login, logout, session validation, password change |

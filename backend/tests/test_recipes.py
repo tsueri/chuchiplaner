@@ -84,7 +84,16 @@ async def test_import_recipe_supported_url(client: AsyncClient) -> None:
     assert response.status_code == 200
     data = response.json()
     assert data["title"] == "Z\u00fcrcher Geschnetzeltes"
-    assert data["ingredients"] == ["600g Kalbfleisch", "200ml Rahm"]
+    assert len(data["ingredients"]) == 2
+    assert data["ingredients"][0]["raw"] == "600g Kalbfleisch"
+    assert data["ingredients"][0]["name"] == "Kalbfleisch"
+    assert data["ingredients"][0]["quantity"] == 600.0
+    assert data["ingredients"][0]["unit"] == "g"
+    assert data["ingredients"][1]["raw"] == "200ml Rahm"
+    assert data["ingredients"][1]["name"] == "Rahm"
+    assert data["ingredients"][1]["quantity"] == 200.0
+    assert data["ingredients"][1]["unit"] == "ml"
+    assert data["is_partial"] is False
     assert data["servings"] == 4
     assert data["source_url"] == "https://www.swissmilk.ch/recipe"
     assert data["existing_recipe_id"] is None
