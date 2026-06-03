@@ -13,3 +13,5 @@ media/uploads/
 .ruff_cache/
 .pytest_cache/
 data/
+backups/
+.codegraph/

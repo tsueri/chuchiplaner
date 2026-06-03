@@ -101,6 +101,7 @@ class RecipeNoteResponse(BaseModel):
     text: str
     visibility: str
     username: str | None = None
+    recipe_title: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 

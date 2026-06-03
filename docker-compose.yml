@@ -7,3 +7,14 @@ services:
       - ./data:/app/data
     environment:
       - CHUCHI_DATABASE_URL=sqlite+aiosqlite:///./data/chuchiplaner.db
+
+  backup:
+    build: ./backup
+    volumes:
+      - ./data:/data:ro
+      - ./backups:/backups
+    environment:
+      - CHUCHI_DB_PATH=/data/chuchiplaner.db
+      - CHUCHI_BACKUP_DIR=/backups
+      - CHUCHI_BACKUP_RETENTION=7
+      - CHUCHI_BACKUP_INTERVAL=86400

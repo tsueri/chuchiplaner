@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react"
+import { useNavigate } from "react-router-dom"
 import { useAuth } from "@/contexts/AuthContext"
 import { Button } from "@/components/ui/button"
 
@@ -32,6 +33,22 @@ interface SlotUpdate {
   meal_type: string
   active?: boolean
   default_portions?: number
+}
+
+interface FavoriteRecipe {
+  id: number
+  title: string
+  image_url: string | null
+  source_url: string | null
+  source_domain: string | null
+}
+
+interface UserNote {
+  id: number
+  recipe_id: number
+  text: string
+  visibility: string
+  recipe_title: string | null
 }
 
 const DAY_LABELS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
@@ -68,6 +85,15 @@ export default function SettingsPage() {
   const [slotChanges, setSlotChanges] = useState<Map<string, SlotUpdate>>(new Map())
   const [slotSaving, setSlotSaving] = useState(false)
   const [sizeSaving, setSizeSaving] = useState(false)
+  const [pwCurrent, setPwCurrent] = useState("")
+  const [pwNew, setPwNew] = useState("")
+  const [pwConfirm, setPwConfirm] = useState("")
+  const [pwSaving, setPwSaving] = useState(false)
+  const [pwSuccess, setPwSuccess] = useState("")
+  const [favorites, setFavorites] = useState<FavoriteRecipe[]>([])
+  const [notes, setNotes] = useState<UserNote[]>([])
+  const [exporting, setExporting] = useState(false)
+  const navigate = useNavigate()
 
   const slotKey = (day: number, meal: string) => `${day}-${meal}`
 
@@ -98,6 +124,20 @@ export default function SettingsPage() {
     const cancel = refreshAll()
     return cancel
   }, [refreshAll])
+
+  useEffect(() => {
+    let cancelled = false
+    Promise.all([
+      api("/auth/user/favorites").catch(() => [] as FavoriteRecipe[]),
+      api("/auth/user/notes").catch(() => [] as UserNote[]),
+    ]).then(([favData, noteData]) => {
+      if (!cancelled) {
+        setFavorites(favData as FavoriteRecipe[])
+        setNotes(noteData as UserNote[])
+      }
+    })
+    return () => { cancelled = true }
+  }, [])
 
   const copyInviteCode = async () => {
     if (!household) return
@@ -218,6 +258,56 @@ export default function SettingsPage() {
     }
   }
 
+  const changePassword = async () => {
+    if (pwNew !== pwConfirm) {
+      setError("Die neuen Passwörter stimmen nicht überein.")
+      return
+    }
+    setPwSaving(true)
+    setPwSuccess("")
+    setError("")
+    try {
+      await api("/auth/password", {
+        method: "PUT",
+        body: JSON.stringify({ current_password: pwCurrent, new_password: pwNew }),
+      })
+      setPwSuccess("Passwort wurde geändert.")
+      setPwCurrent("")
+      setPwNew("")
+      setPwConfirm("")
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to change password")
+    } finally {
+      setPwSaving(false)
+    }
+  }
+
+  const exportData = async () => {
+    setExporting(true)
+    try {
+      const res = await fetch("/api/household/export", {
+        credentials: "same-origin",
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({ detail: "Export failed" }))
+        throw new Error(data.detail || "Export failed")
+      }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      const disposition = res.headers.get("content-disposition")
+      const match = disposition?.match(/filename="?([^"]+)"?/)
+      a.download = match?.[1] ?? "export.json"
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Export failed")
+    } finally {
+      setExporting(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -246,6 +336,53 @@ export default function SettingsPage() {
           {error}
         </div>
       )}
+
+      <div className="space-y-4 rounded-lg border p-4">
+        <h2 className="text-lg font-semibold">Profil</h2>
+        <div className="space-y-3">
+          <div>
+            <span className="text-sm text-muted-foreground">Benutzername: </span>
+            <span className="text-sm font-medium">{user?.username}</span>
+          </div>
+          <div className="space-y-2 max-w-sm">
+            <h3 className="text-sm font-medium">Passwort ändern</h3>
+            <input
+              type="password"
+              placeholder="Aktuelles Passwort"
+              value={pwCurrent}
+              onChange={(e) => setPwCurrent(e.target.value)}
+              className="w-full rounded border px-3 py-2 text-sm"
+            />
+            <input
+              type="password"
+              placeholder="Neues Passwort (min. 8 Zeichen)"
+              value={pwNew}
+              onChange={(e) => setPwNew(e.target.value)}
+              className="w-full rounded border px-3 py-2 text-sm"
+            />
+            <input
+              type="password"
+              placeholder="Neues Passwort bestätigen"
+              value={pwConfirm}
+              onChange={(e) => setPwConfirm(e.target.value)}
+              className="w-full rounded border px-3 py-2 text-sm"
+            />
+            <div className="flex items-center gap-3">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={changePassword}
+                disabled={pwSaving || !pwCurrent || !pwNew || !pwConfirm}
+              >
+                {pwSaving ? "..." : "Passwort ändern"}
+              </Button>
+              {pwSuccess && (
+                <span className="text-sm text-green-600">{pwSuccess}</span>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
 
       <div className="space-y-4 rounded-lg border p-4">
         <h2 className="text-lg font-semibold">Haushalt</h2>
@@ -426,6 +563,68 @@ export default function SettingsPage() {
             </li>
           ))}
         </ul>
+      </div>
+
+      <div className="space-y-4 rounded-lg border p-4">
+        <h2 className="text-lg font-semibold">Meine Daten</h2>
+
+        <div>
+          <h3 className="text-sm font-medium mb-2">
+            Meine Favoriten ({favorites.length})
+          </h3>
+          {favorites.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Keine Favoriten.</p>
+          ) : (
+            <ul className="divide-y">
+              {favorites.map((fav) => (
+                <li key={fav.id} className="py-2">
+                  <button
+                    onClick={() => navigate(`/recipes/${fav.id}`)}
+                    className="text-sm text-primary hover:underline text-left"
+                  >
+                    {fav.title}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <div>
+          <h3 className="text-sm font-medium mb-2">
+            Meine Notizen ({notes.length})
+          </h3>
+          {notes.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Keine Notizen.</p>
+          ) : (
+            <ul className="divide-y">
+              {notes.map((note) => (
+                <li key={note.id} className="py-2 space-y-1">
+                  <button
+                    onClick={() => navigate(`/recipes/${note.recipe_id}`)}
+                    className="text-sm text-primary hover:underline text-left"
+                  >
+                    {note.recipe_title || `Rezept #${note.recipe_id}`}
+                  </button>
+                  <p className="text-sm text-muted-foreground">
+                    {note.text.slice(0, 100)}{note.text.length > 100 ? "…" : ""}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+
+      <div className="space-y-4 rounded-lg border p-4">
+        <h2 className="text-lg font-semibold">Datensicherung</h2>
+        <p className="text-sm text-muted-foreground">
+          Lade alle Daten deines Haushalts als JSON-Datei herunter. Kein
+          Passwort-Hash im Export enthalten.
+        </p>
+        <Button variant="outline" onClick={exportData} disabled={exporting}>
+          {exporting ? "Exportiere..." : "Daten exportieren"}
+        </Button>
       </div>
     </div>
   )

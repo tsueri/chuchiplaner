@@ -419,3 +419,53 @@ async def test_default_size_flows_into_new_slots(
     slots2 = (await client.get("/api/household/meal-template", cookies=cookies)).json()
     for s in slots2:
         assert s["default_portions"] == 3
+
+
+@pytest.mark.asyncio
+async def test_export_household_data(client: AsyncClient) -> None:
+    response = await _register(client, "exportadmin")
+    assert response.status_code == 200
+    cookies = response.cookies
+
+    export_resp = await client.get("/api/household/export", cookies=cookies)
+    assert export_resp.status_code == 200
+    assert export_resp.headers["content-type"] == "application/json"
+    assert "attachment" in export_resp.headers.get("content-disposition", "")
+
+    data = export_resp.json()
+    assert "household" in data
+    assert data["household"]["name"] is not None
+    assert data["household"]["slug"] is not None
+    assert "members" in data
+    assert len(data["members"]) == 1
+    assert "password_hash" not in str(data)
+    assert "meal_template" in data
+    assert len(data["meal_template"]) == 28
+    assert "recipes" in data
+    assert "week_plans" in data
+    assert "inventory" in data
+    assert "grocery_lists" in data
+    assert "aliases" in data
+
+
+@pytest.mark.asyncio
+async def test_export_no_password_hashes(client: AsyncClient) -> None:
+    response = await _register(client, "exportadmin2")
+    assert response.status_code == 200
+    cookies = response.cookies
+
+    export_resp = await client.get("/api/household/export", cookies=cookies)
+    assert export_resp.status_code == 200
+
+    import json
+    raw = export_resp.text
+    data = json.loads(raw)
+    raw_lower = raw.lower()
+    assert "password_hash" not in raw_lower
+    assert "password" not in data.get("members", [{}])[0]
+
+
+@pytest.mark.asyncio
+async def test_export_requires_auth(client: AsyncClient) -> None:
+    resp = await client.get("/api/household/export")
+    assert resp.status_code == 401

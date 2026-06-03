@@ -138,3 +138,87 @@ async def test_session_persists_across_requests(client: AsyncClient) -> None:
         response = await client.get("/api/auth/me", cookies=cookies)
         assert response.status_code == 200
         assert response.json()["username"] == "persistuser"
+
+
+@pytest.mark.asyncio
+async def test_change_password_success(client: AsyncClient) -> None:
+    register_resp = await client.post(
+        "/api/auth/register",
+        json={"username": "pwuser", "password": "secret123"},
+    )
+    cookies = register_resp.cookies
+
+    response = await client.put(
+        "/api/auth/password",
+        json={"current_password": "secret123", "new_password": "newsecret456"},
+        cookies=cookies,
+    )
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+
+    await client.post("/api/auth/logout", cookies=cookies)
+
+    login_resp = await client.post(
+        "/api/auth/login",
+        json={"username": "pwuser", "password": "newsecret456"},
+    )
+    assert login_resp.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_change_password_wrong_current(client: AsyncClient) -> None:
+    register_resp = await client.post(
+        "/api/auth/register",
+        json={"username": "pwuser2", "password": "secret123"},
+    )
+    cookies = register_resp.cookies
+
+    response = await client.put(
+        "/api/auth/password",
+        json={"current_password": "wrongpass", "new_password": "newsecret456"},
+        cookies=cookies,
+    )
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Current password is incorrect"
+
+
+@pytest.mark.asyncio
+async def test_change_password_same_as_current(client: AsyncClient) -> None:
+    register_resp = await client.post(
+        "/api/auth/register",
+        json={"username": "pwuser3", "password": "secret123"},
+    )
+    cookies = register_resp.cookies
+
+    response = await client.put(
+        "/api/auth/password",
+        json={"current_password": "secret123", "new_password": "secret123"},
+        cookies=cookies,
+    )
+    assert response.status_code == 400
+    assert response.json()["detail"] == "New password must differ from current password"
+
+
+@pytest.mark.asyncio
+async def test_change_password_too_short(client: AsyncClient) -> None:
+    register_resp = await client.post(
+        "/api/auth/register",
+        json={"username": "pwuser4", "password": "secret123"},
+    )
+    cookies = register_resp.cookies
+
+    response = await client.put(
+        "/api/auth/password",
+        json={"current_password": "secret123", "new_password": "short"},
+        cookies=cookies,
+    )
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_change_password_requires_auth(client: AsyncClient) -> None:
+    response = await client.put(
+        "/api/auth/password",
+        json={"current_password": "secret123", "new_password": "newsecret456"},
+    )
+    assert response.status_code == 401

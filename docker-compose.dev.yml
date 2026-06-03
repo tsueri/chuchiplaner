@@ -22,3 +22,14 @@ services:
     volumes:
       - ./frontend:/app
       - /app/node_modules
+
+  backup:
+    build: ./backup
+    volumes:
+      - ./data:/data:ro
+      - ./backups:/backups
+    environment:
+      - CHUCHI_DB_PATH=/data/chuchiplaner.db
+      - CHUCHI_BACKUP_DIR=/backups
+      - CHUCHI_BACKUP_RETENTION=7
+      - CHUCHI_BACKUP_INTERVAL=86400
