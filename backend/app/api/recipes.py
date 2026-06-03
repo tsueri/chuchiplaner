@@ -188,7 +188,7 @@ async def import_recipe(
         source_url=scraped.source_url,
         source_domain=scraped.source_domain,
         existing_recipe_id=existing.id if existing else None,
-        is_partial=False,
+        is_partial=scraped.is_partial,
     )
 
 

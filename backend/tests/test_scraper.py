@@ -94,3 +94,114 @@ def test_scrape_instructions_failure_returns_none() -> None:
     with patch("app.services.scraper.scrape_me", return_value=mock):
         result = RecipeScraper.scrape("https://www.swissmilk.ch/rezept-instructions-fail")
     assert result is None
+
+
+# ----- Partial extraction tests -----
+
+
+def test_partial_scrape_title_when_scraper_fails() -> None:
+    html = "<html><head><title>Rezept</title></head><body></body></html>"
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.text = html
+
+    with patch(
+        "app.services.scraper.scrape_me", side_effect=Exception("fail")
+    ):
+        with patch("httpx.Client.get", return_value=mock_response):
+            result = RecipeScraper.scrape(
+                "https://example.com/partial-title"
+            )
+
+    assert result is not None
+    assert result.is_partial is True
+    assert result.title == "Rezept"
+    assert result.ingredients == []
+    assert result.instructions == ""
+    assert result.source_url == "https://example.com/partial-title"
+    assert result.source_domain == "example.com"
+
+
+def test_partial_scrape_extracts_og_image() -> None:
+    html = (
+        "<html><head>"
+        '<meta property="og:image" content="https://example.com/photo.jpg">'
+        "</head><body></body></html>"
+    )
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.text = html
+
+    with patch(
+        "app.services.scraper.scrape_me", side_effect=Exception("fail")
+    ):
+        with patch("httpx.Client.get", return_value=mock_response):
+            result = RecipeScraper.scrape(
+                "https://example.com/og-image-recipe"
+            )
+
+    assert result is not None
+    assert result.is_partial is True
+    assert result.image_url == "https://example.com/photo.jpg"
+
+
+def test_partial_scrape_empty_page_returns_none() -> None:
+    html = "<html><head></head><body></body></html>"
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.text = html
+
+    with patch(
+        "app.services.scraper.scrape_me", side_effect=Exception("fail")
+    ):
+        with patch("httpx.Client.get", return_value=mock_response):
+            result = RecipeScraper.scrape(
+                "https://example.com/empty-page"
+            )
+
+    assert result is None
+
+
+def test_full_scrape_returns_is_partial_false() -> None:
+    mock = make_mock_scraper()
+    with patch("app.services.scraper.scrape_me", return_value=mock):
+        result = RecipeScraper.scrape("https://www.swissmilk.ch/rezept")
+    assert result is not None
+    assert result.is_partial is False
+
+
+def test_partial_scrape_shares_cache() -> None:
+    html = "<html><head><title>Rezept</title></head><body></body></html>"
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.text = html
+
+    with patch(
+        "app.services.scraper.scrape_me", side_effect=Exception("fail")
+    ) as mock_scrape:
+        with patch("httpx.Client.get", return_value=mock_response) as mock_http:
+            result1 = RecipeScraper.scrape(
+                "https://example.com/cached-partial"
+            )
+            result2 = RecipeScraper.scrape(
+                "https://example.com/cached-partial"
+            )
+
+    assert result1 is result2
+    assert mock_scrape.call_count == 1
+    assert mock_http.call_count == 1
+
+
+def test_partial_scrape_http_error_returns_none() -> None:
+    with patch(
+        "app.services.scraper.scrape_me", side_effect=Exception("fail")
+    ):
+        with patch(
+            "httpx.Client.get",
+            side_effect=Exception("connection error"),
+        ):
+            result = RecipeScraper.scrape(
+                "https://example.com/http-error"
+            )
+
+    assert result is None
