@@ -40,6 +40,11 @@ interface RecipeIngredientPayload {
   order_index: number
 }
 
+interface LearnedAliasPayload {
+  alias_name: string
+  ingredient_id: number
+}
+
 interface Tag {
   id: number
   name: string
@@ -269,6 +274,7 @@ async function postRecipe(body: {
   source_url: string | null
   source_domain: string | null
   ingredients: RecipeIngredientPayload[]
+  learned_aliases: LearnedAliasPayload[]
 }): Promise<{ id: number }> {
   const res = await fetch("/api/recipes", {
     method: "POST",
@@ -471,6 +477,17 @@ export default function RecipeFormPage() {
           unit: r.unit,
           order_index: idx,
         }))
+      const learnedAliases: LearnedAliasPayload[] = rows
+        .filter(
+          (r) =>
+            r.ingredientId !== null &&
+            r.confidence < 1.0 &&
+            r.raw.trim() !== ""
+        )
+        .map((r) => ({
+          alias_name: r.raw,
+          ingredient_id: r.ingredientId as number,
+        }))
       const created = await postRecipe({
         title: form.title.trim(),
         instructions: form.instructions.trim(),
@@ -479,6 +496,7 @@ export default function RecipeFormPage() {
         source_url: toNull(form.source_url),
         source_domain: toNull(form.source_domain),
         ingredients,
+        learned_aliases: learnedAliases,
       })
       if (selectedTagIds.length > 0) {
         try {

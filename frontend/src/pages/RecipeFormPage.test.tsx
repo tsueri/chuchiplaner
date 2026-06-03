@@ -149,6 +149,7 @@ describe("RecipeFormPage", () => {
       source_url: null,
       source_domain: null,
       ingredients: [],
+      learned_aliases: [],
     })
   })
 
@@ -1203,6 +1204,241 @@ describe("RecipeFormPage URL import", () => {
     expect(
       screen.getByRole("button", { name: /speichern/i })
     ).not.toBeDisabled()
+  })
+
+  it("sends learned_aliases for fuzzy-accepted rows (0.6 ≤ confidence < 1.0)", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation((input) => {
+        const url =
+          typeof input === "string" ? input : (input as Request).url
+        if (url === "/api/tags") {
+          return Promise.resolve(mockFetchResponse([]))
+        }
+        if (url === "/api/recipes/import") {
+          return Promise.resolve(
+            mockFetchResponse({
+              title: "Test",
+              instructions: "Mix.",
+              image_url: null,
+              servings: 2,
+              source_url: "https://example.com/test",
+              source_domain: "example.com",
+              is_partial: false,
+              existing_recipe_id: null,
+              ingredients: [
+                {
+                  raw: "Zwiebel",
+                  name: "Zwiebeln",
+                  quantity: 2,
+                  unit: "Stück",
+                  ingredient_id: 8,
+                  confidence: 0.8,
+                },
+              ],
+            })
+          )
+        }
+        if (url.includes("/api/ingredients?q=Zwiebel")) {
+          return Promise.resolve(
+            mockFetchResponse([
+              { id: 8, name: "Zwiebeln" },
+            ])
+          )
+        }
+        if (url === "/api/recipes") {
+          return Promise.resolve(
+            mockFetchResponse({ id: 42, title: "Test" }, { status: 201 })
+          )
+        }
+        return Promise.resolve(mockFetchResponse([]))
+      })
+
+    const user = userEvent.setup()
+    renderForm(
+      "/recipes/new?url=" + encodeURIComponent("https://example.com/test")
+    )
+
+    await screen.findByText(/importiert von example\.com/i)
+
+    // The fuzzy row shows a combobox with suggestion dropdown
+    const listbox = await screen.findByRole("listbox")
+    const suggested = Array.from(
+      listbox.querySelectorAll('[role="option"]')
+    ).find((o) => o.getAttribute("aria-selected") === "true")
+    expect(suggested).toBeDefined()
+    expect(suggested).toHaveTextContent("Zwiebeln")
+
+    // Accept the fuzzy suggestion
+    await user.click(suggested!)
+
+    await user.type(screen.getByLabelText(/zubereitung/i), "Kochen.")
+    await user.click(screen.getByRole("button", { name: /speichern/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText("recipe-detail-stub")).toBeInTheDocument()
+    })
+
+    const recipeCall = fetchSpy.mock.calls.find(
+      ([u]) => u === "/api/recipes"
+    ) as [string, RequestInit]
+    const body = JSON.parse(recipeCall[1].body as string)
+    expect(body.learned_aliases).toEqual([
+      { alias_name: "Zwiebel", ingredient_id: 8 },
+    ])
+  })
+
+  it("sends learned_aliases for overridden rows (user changed from suggestion)", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation((input) => {
+        const url =
+          typeof input === "string" ? input : (input as Request).url
+        if (url === "/api/tags") {
+          return Promise.resolve(mockFetchResponse([]))
+        }
+        if (url === "/api/recipes/import") {
+          return Promise.resolve(
+            mockFetchResponse({
+              title: "Test",
+              instructions: "Mix.",
+              image_url: null,
+              servings: 2,
+              source_url: "https://example.com/test",
+              source_domain: "example.com",
+              is_partial: false,
+              existing_recipe_id: null,
+              ingredients: [
+                {
+                  raw: "Tomaten",
+                  name: "Tomaten",
+                  quantity: 500,
+                  unit: "g",
+                  ingredient_id: 7,
+                  confidence: 1.0,
+                },
+              ],
+            })
+          )
+        }
+        if (url.includes("/api/ingredients?q=Tomaten")) {
+          return Promise.resolve(
+            mockFetchResponse([
+              { id: 7, name: "Tomaten" },
+              { id: 42, name: "Cherrytomaten" },
+            ])
+          )
+        }
+        if (url === "/api/recipes") {
+          return Promise.resolve(
+            mockFetchResponse({ id: 42, title: "Test" }, { status: 201 })
+          )
+        }
+        return Promise.resolve(mockFetchResponse([]))
+      })
+
+    const user = userEvent.setup()
+    renderForm(
+      "/recipes/new?url=" + encodeURIComponent("https://example.com/test")
+    )
+
+    await screen.findByText(/importiert von example\.com/i)
+
+    // Row is locked, click ↻ to override
+    await user.click(screen.getByRole("button", { name: /zutat ändern/i }))
+
+    // Dropdown appears, pick a different ingredient
+    const listbox = await screen.findByRole("listbox")
+    const cherryOption = Array.from(
+      listbox.querySelectorAll('[role="option"]')
+    ).find((o) => o.textContent?.includes("Cherrytomaten"))
+    expect(cherryOption).toBeDefined()
+    await user.click(cherryOption!)
+
+    await user.type(screen.getByLabelText(/zubereitung/i), "Kochen.")
+    await user.click(screen.getByRole("button", { name: /speichern/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText("recipe-detail-stub")).toBeInTheDocument()
+    })
+
+    const recipeCall = fetchSpy.mock.calls.find(
+      ([u]) => u === "/api/recipes"
+    ) as [string, RequestInit]
+    const body = JSON.parse(recipeCall[1].body as string)
+    expect(body.learned_aliases).toEqual([
+      { alias_name: "Tomaten", ingredient_id: 42 },
+    ])
+  })
+
+  it("sends empty learned_aliases when all rows are exact match (confidence 1.0) left alone", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation((input) => {
+        const url =
+          typeof input === "string" ? input : (input as Request).url
+        if (url === "/api/tags") {
+          return Promise.resolve(mockFetchResponse([]))
+        }
+        if (url === "/api/recipes/import") {
+          return Promise.resolve(
+            mockFetchResponse({
+              title: "Test",
+              instructions: "Mix.",
+              image_url: null,
+              servings: 2,
+              source_url: "https://example.com/test",
+              source_domain: "example.com",
+              is_partial: false,
+              existing_recipe_id: null,
+              ingredients: [
+                {
+                  raw: "Tomaten",
+                  name: "Tomaten",
+                  quantity: 500,
+                  unit: "g",
+                  ingredient_id: 7,
+                  confidence: 1.0,
+                },
+                {
+                  raw: "Zwiebeln",
+                  name: "Zwiebeln",
+                  quantity: 2,
+                  unit: "Stück",
+                  ingredient_id: 8,
+                  confidence: 1.0,
+                },
+              ],
+            })
+          )
+        }
+        if (url === "/api/recipes") {
+          return Promise.resolve(
+            mockFetchResponse({ id: 42, title: "Test" }, { status: 201 })
+          )
+        }
+        return Promise.resolve(mockFetchResponse([]))
+      })
+
+    const user = userEvent.setup()
+    renderForm(
+      "/recipes/new?url=" + encodeURIComponent("https://example.com/test")
+    )
+
+    await screen.findByText(/importiert von example\.com/i)
+
+    await user.type(screen.getByLabelText(/zubereitung/i), "Kochen.")
+    await user.click(screen.getByRole("button", { name: /speichern/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText("recipe-detail-stub")).toBeInTheDocument()
+    })
+
+    const recipeCall = fetchSpy.mock.calls.find(
+      ([u]) => u === "/api/recipes"
+    ) as [string, RequestInit]
+    const body = JSON.parse(recipeCall[1].body as string)
+    expect(body.learned_aliases).toEqual([])
   })
 
   it("renders an amber 'Teilimport' banner when is_partial is true", async () => {
