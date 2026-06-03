@@ -1,5 +1,7 @@
 # Chuchiplaner
 
+[![CI](https://github.com/tsueri/chuchiplaner/actions/workflows/ci.yml/badge.svg)](https://github.com/tsueri/chuchiplaner/actions/workflows/ci.yml)
+
 Familien-Menuplaner zur Reduktion von Food Waste. Plane deine Wochenmenus basierend auf verfügbaren Zutaten im Kühlschrank.
 
 ## Stack
