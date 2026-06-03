@@ -34,25 +34,26 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('slug')
     )
-    op.add_column('users', sa.Column('household_id', sa.Integer(), nullable=True))
-    op.add_column(
-        'users',
-        sa.Column(
-            'role',
-            sa.String(length=20),
-            nullable=False,
-            server_default='member',
-        ),
-    )
-    op.create_foreign_key(
-        'fk_users_household_id', 'users', 'households',
-        ['household_id'], ['id'],
-    )
+    with op.batch_alter_table('users') as batch_op:
+        batch_op.add_column(sa.Column('household_id', sa.Integer(), nullable=True))
+        batch_op.add_column(
+            sa.Column(
+                'role',
+                sa.String(length=20),
+                nullable=False,
+                server_default='member',
+            ),
+        )
+        batch_op.create_foreign_key(
+            'fk_users_household_id', 'households',
+            ['household_id'], ['id'],
+        )
 
 
 def downgrade() -> None:
     """Downgrade schema."""
-    op.drop_constraint('fk_users_household_id', 'users', type_='foreignkey')
-    op.drop_column('users', 'role')
-    op.drop_column('users', 'household_id')
+    with op.batch_alter_table('users') as batch_op:
+        batch_op.drop_constraint('fk_users_household_id', type_='foreignkey')
+        batch_op.drop_column('role')
+        batch_op.drop_column('household_id')
     op.drop_table('households')

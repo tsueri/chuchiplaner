@@ -18,31 +18,32 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "meal_slots",
-        sa.Column("cooked", sa.Boolean(), nullable=False, server_default=sa.text("0")),
-    )
-    op.add_column(
-        "inventory_items",
-        sa.Column(
-            "source_recipe_id",
-            sa.Integer(),
-            sa.ForeignKey("recipes.id"),
-            nullable=True,
-        ),
-    )
-    op.add_column(
-        "inventory_items",
-        sa.Column(
-            "source_week_plan_id",
-            sa.Integer(),
-            sa.ForeignKey("week_plans.id"),
-            nullable=True,
-        ),
-    )
+    with op.batch_alter_table("meal_slots") as batch_op:
+        batch_op.add_column(
+            sa.Column("cooked", sa.Boolean(), nullable=False, server_default=sa.text("0")),
+        )
+    with op.batch_alter_table("inventory_items") as batch_op:
+        batch_op.add_column(
+            sa.Column(
+                "source_recipe_id",
+                sa.Integer(),
+                sa.ForeignKey("recipes.id"),
+                nullable=True,
+            ),
+        )
+        batch_op.add_column(
+            sa.Column(
+                "source_week_plan_id",
+                sa.Integer(),
+                sa.ForeignKey("week_plans.id"),
+                nullable=True,
+            ),
+        )
 
 
 def downgrade() -> None:
-    op.drop_column("inventory_items", "source_week_plan_id")
-    op.drop_column("inventory_items", "source_recipe_id")
-    op.drop_column("meal_slots", "cooked")
+    with op.batch_alter_table("inventory_items") as batch_op:
+        batch_op.drop_column("source_week_plan_id")
+        batch_op.drop_column("source_recipe_id")
+    with op.batch_alter_table("meal_slots") as batch_op:
+        batch_op.drop_column("cooked")
