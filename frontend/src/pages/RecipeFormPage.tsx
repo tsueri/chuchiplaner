@@ -1,5 +1,6 @@
-import { useState, type FormEvent } from "react"
+import { useEffect, useState, type FormEvent } from "react"
 import { Link, useNavigate } from "react-router-dom"
+import { X } from "lucide-react"
 
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -14,6 +15,27 @@ interface FormState {
   source_domain: string
 }
 
+interface IngredientRow {
+  key: string
+  ingredientId: number | null
+  ingredientName: string
+  query: string
+  quantity: string
+  unit: string
+}
+
+interface Ingredient {
+  id: number
+  name: string
+}
+
+interface RecipeIngredientPayload {
+  ingredient_id: number
+  quantity: number
+  unit: string
+  order_index: number
+}
+
 const INITIAL_STATE: FormState = {
   title: "",
   instructions: "",
@@ -23,17 +45,139 @@ const INITIAL_STATE: FormState = {
   source_domain: "",
 }
 
-async function postRecipe(
-  body: {
-    title: string
-    instructions: string
-    servings: number
-    image_url: string | null
-    source_url: string | null
-    source_domain: string | null
-    ingredients: []
+const UNITS = ["g", "kg", "ml", "l", "EL", "TL", "Stück", "Bund", "Prise"]
+const INGREDIENT_DEBOUNCE_MS = 200
+
+let rowIdCounter = 0
+function newRow(): IngredientRow {
+  rowIdCounter += 1
+  return {
+    key: `row-${rowIdCounter}`,
+    ingredientId: null,
+    ingredientName: "",
+    query: "",
+    quantity: "",
+    unit: "g",
   }
-): Promise<{ id: number }> {
+}
+
+function IngredientCombobox({
+  row,
+  onChange,
+}: {
+  row: IngredientRow
+  onChange: (row: IngredientRow) => void
+}) {
+  const [results, setResults] = useState<Ingredient[]>([])
+  const [manuallyClosed, setManuallyClosed] = useState(false)
+  const locked = row.ingredientId !== null
+
+  useEffect(() => {
+    if (locked) return
+    const query = row.query.trim()
+    if (query === "") return
+    const controller = new AbortController()
+    const t = setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `/api/ingredients?q=${encodeURIComponent(query)}`,
+          {
+            credentials: "same-origin",
+            signal: controller.signal,
+          }
+        )
+        if (!res.ok) return
+        const data = (await res.json()) as Ingredient[]
+        if (!controller.signal.aborted) {
+          setResults(data)
+        }
+      } catch {
+        // aborted or network error — ignore
+      }
+    }, INGREDIENT_DEBOUNCE_MS)
+    return () => {
+      clearTimeout(t)
+      controller.abort()
+    }
+  }, [row.query, locked])
+
+  const showDropdown =
+    !locked &&
+    row.query.trim() !== "" &&
+    !manuallyClosed &&
+    results.length > 0
+
+  if (locked) {
+    return (
+      <span
+        aria-label="Zutat"
+        className="flex-1 truncate rounded-md border border-input bg-muted px-2.5 py-1 text-sm"
+      >
+        {row.ingredientName}
+      </span>
+    )
+  }
+
+  return (
+    <div className="relative flex-1">
+      <Input
+        type="text"
+        role="combobox"
+        value={row.query}
+        placeholder="Zutat suchen..."
+        aria-label="Zutat"
+        aria-autocomplete="list"
+        aria-expanded={showDropdown}
+        aria-controls={`ingredient-list-${row.key}`}
+        className="w-full"
+        onChange={(e) => {
+          setResults([])
+          setManuallyClosed(false)
+          onChange({ ...row, query: e.target.value })
+        }}
+        onFocus={() => setManuallyClosed(false)}
+        onBlur={() => setManuallyClosed(true)}
+      />
+      {showDropdown && (
+        <ul
+          id={`ingredient-list-${row.key}`}
+          role="listbox"
+          className="absolute z-10 mt-1 max-h-40 w-full overflow-auto rounded-md border bg-popover shadow"
+        >
+          {results.map((ing) => (
+            <li
+              key={ing.id}
+              role="option"
+              tabIndex={0}
+              onMouseDown={(e) => {
+                e.preventDefault()
+                onChange({
+                  ...row,
+                  ingredientId: ing.id,
+                  ingredientName: ing.name,
+                  query: "",
+                })
+              }}
+              className="cursor-pointer px-2.5 py-1 text-sm hover:bg-muted"
+            >
+              {ing.name}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+async function postRecipe(body: {
+  title: string
+  instructions: string
+  servings: number
+  image_url: string | null
+  source_url: string | null
+  source_domain: string | null
+  ingredients: RecipeIngredientPayload[]
+}): Promise<{ id: number }> {
   const res = await fetch("/api/recipes", {
     method: "POST",
     credentials: "same-origin",
@@ -51,15 +195,27 @@ function toNull(value: string): string | null {
   return value.trim() === "" ? null : value
 }
 
+function parseQuantity(value: string): number {
+  const n = parseFloat(value)
+  return Number.isFinite(n) ? n : 0
+}
+
 export default function RecipeFormPage() {
   const navigate = useNavigate()
   const [form, setForm] = useState<FormState>(INITIAL_STATE)
+  const [rows, setRows] = useState<IngredientRow[]>([])
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const update = <K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }))
   }
+
+  const addRow = () => setRows((prev) => [...prev, newRow()])
+  const updateRow = (idx: number, row: IngredientRow) =>
+    setRows((prev) => prev.map((r, i) => (i === idx ? row : r)))
+  const removeRow = (idx: number) =>
+    setRows((prev) => prev.filter((_, i) => i !== idx))
 
   const canSubmit =
     form.title.trim() !== "" && form.instructions.trim() !== "" && !submitting
@@ -81,6 +237,14 @@ export default function RecipeFormPage() {
     setSubmitting(true)
     setError(null)
     try {
+      const ingredients: RecipeIngredientPayload[] = rows
+        .filter((r) => r.ingredientId !== null)
+        .map((r, idx) => ({
+          ingredient_id: r.ingredientId as number,
+          quantity: parseQuantity(r.quantity),
+          unit: r.unit,
+          order_index: idx,
+        }))
       const created = await postRecipe({
         title: form.title.trim(),
         instructions: form.instructions.trim(),
@@ -88,7 +252,7 @@ export default function RecipeFormPage() {
         image_url: toNull(form.image_url),
         source_url: toNull(form.source_url),
         source_domain: toNull(form.source_domain),
-        ingredients: [],
+        ingredients,
       })
       navigate(`/recipes/${created.id}`)
     } catch (err) {
@@ -192,6 +356,63 @@ export default function RecipeFormPage() {
             value={form.source_domain}
             onChange={(e) => update("source_domain", e.target.value)}
           />
+        </div>
+
+        <div className="space-y-2">
+          <h2 className="text-sm font-medium">Zutaten</h2>
+          <div className="space-y-2">
+            {rows.map((row, idx) => (
+              <div key={row.key} className="flex items-center gap-2">
+                <IngredientCombobox
+                  row={row}
+                  onChange={(r) => updateRow(idx, r)}
+                />
+                <Input
+                  type="number"
+                  step="any"
+                  min="0"
+                  value={row.quantity}
+                  placeholder="Menge"
+                  aria-label="Menge"
+                  className="w-20"
+                  onChange={(e) =>
+                    updateRow(idx, { ...row, quantity: e.target.value })
+                  }
+                />
+                <select
+                  aria-label="Einheit"
+                  value={row.unit}
+                  onChange={(e) =>
+                    updateRow(idx, { ...row, unit: e.target.value })
+                  }
+                  className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm"
+                >
+                  {UNITS.map((u) => (
+                    <option key={u} value={u}>
+                      {u}
+                    </option>
+                  ))}
+                </select>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Zutat entfernen"
+                  onClick={() => removeRow(idx)}
+                >
+                  <X />
+                </Button>
+              </div>
+            ))}
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={addRow}
+          >
+            + Zutat hinzufügen
+          </Button>
         </div>
 
         <div className="flex items-center justify-end gap-2 pt-2">

@@ -173,3 +173,156 @@ describe("RecipeFormPage", () => {
     expect(newButton).toHaveAttribute("href", "/recipes/new")
   })
 })
+
+describe("RecipeFormPage ingredient rows", () => {
+  beforeEach(() => {
+    cleanup()
+    vi.restoreAllMocks()
+  })
+
+  it("'Zutat hinzufügen' appends an empty row; each row has a remove button", async () => {
+    const user = userEvent.setup()
+    renderForm()
+
+    expect(screen.queryByRole("combobox", { name: /zutat/i })).not.toBeInTheDocument()
+
+    await user.click(
+      screen.getByRole("button", { name: /zutat hinzufügen/i })
+    )
+
+    expect(screen.getByRole("combobox", { name: /zutat/i })).toBeInTheDocument()
+    expect(screen.getByLabelText(/menge/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/einheit/i)).toBeInTheDocument()
+    expect(
+      screen.getByRole("button", { name: /zutat entfernen/i })
+    ).toBeInTheDocument()
+  })
+
+  it("typing in the combobox debounces and queries /api/ingredients?q=…", async () => {
+    const user = userEvent.setup()
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(mockFetchResponse([]))
+
+    renderForm()
+    await user.click(
+      screen.getByRole("button", { name: /zutat hinzufügen/i })
+    )
+
+    const combobox = screen.getByRole("combobox", { name: /zutat/i })
+    await user.type(combobox, "Tom")
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        expect.stringContaining("/api/ingredients?q=Tom"),
+        expect.objectContaining({ credentials: "same-origin" })
+      )
+    })
+  })
+
+  it("clicking a result locks the row to that ingredient (name in place of input)", async () => {
+    const user = userEvent.setup()
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url = typeof input === "string" ? input : (input as Request).url
+      if (url.includes("/api/ingredients")) {
+        return Promise.resolve(
+          mockFetchResponse([{ id: 7, name: "Tomaten" }])
+        )
+      }
+      return Promise.resolve(mockFetchResponse([]))
+    })
+
+    renderForm()
+    await user.click(
+      screen.getByRole("button", { name: /zutat hinzufügen/i })
+    )
+
+    const combobox = screen.getByRole("combobox", { name: /zutat/i })
+    await user.type(combobox, "Tom")
+    const option = await screen.findByRole("option", { name: /tomaten/i })
+    await user.click(option)
+
+    expect(screen.getByText("Tomaten")).toBeInTheDocument()
+    expect(
+      screen.queryByRole("combobox", { name: /zutat/i })
+    ).not.toBeInTheDocument()
+  })
+
+  it("submits fully-filled rows with order_index + parsed quantity; drops empty rows", async () => {
+    const user = userEvent.setup()
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation((input) => {
+        const url = typeof input === "string" ? input : (input as Request).url
+        if (url.includes("/api/ingredients")) {
+          return Promise.resolve(
+            mockFetchResponse([
+              { id: 1, name: "Tomaten" },
+              { id: 2, name: "Zwiebeln" },
+            ])
+          )
+        }
+        if (url === "/api/recipes") {
+          return Promise.resolve(
+            mockFetchResponse({ id: 99, title: "Pasta" }, { status: 201 })
+          )
+        }
+        return Promise.resolve(mockFetchResponse([]))
+      })
+
+    renderForm()
+    await user.type(screen.getByLabelText(/titel/i), "Pasta")
+    await user.type(screen.getByLabelText(/zubereitung/i), "Kochen.")
+
+    // Add 3 rows: row 0 filled, row 1 left empty, row 2 filled
+    await user.click(
+      screen.getByRole("button", { name: /zutat hinzufügen/i })
+    )
+    await user.click(
+      screen.getByRole("button", { name: /zutat hinzufügen/i })
+    )
+    await user.click(
+      screen.getByRole("button", { name: /zutat hinzufügen/i })
+    )
+
+    // Row 0: Tomaten / 500 / g
+    let comboboxes = screen.getAllByRole("combobox", { name: /zutat/i })
+    await user.type(comboboxes[0], "Tom")
+    await user.click(
+      await screen.findByRole("option", { name: /tomaten/i })
+    )
+    let mengen = screen.getAllByLabelText(/menge/i)
+    await user.type(mengen[0], "500")
+
+    // Row 1 stays empty (will be dropped on submit)
+
+    // Row 2: Zwiebeln / 1 / Stück
+    comboboxes = screen.getAllByRole("combobox", { name: /zutat/i })
+    await user.type(comboboxes[1], "Zwi")
+    await user.click(
+      await screen.findByRole("option", { name: /zwiebeln/i })
+    )
+    mengen = screen.getAllByLabelText(/menge/i)
+    const units = screen.getAllByLabelText(/einheit/i)
+    await user.selectOptions(units[2], "Stück")
+    await user.type(mengen[2], "1")
+
+    await user.click(screen.getByRole("button", { name: /speichern/i }))
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/recipes",
+        expect.objectContaining({ method: "POST" })
+      )
+    })
+
+    const recipeCall = fetchSpy.mock.calls.find(
+      ([u]) => u === "/api/recipes"
+    ) as [string, RequestInit]
+    const body = JSON.parse(recipeCall[1].body as string)
+    expect(body.ingredients).toEqual([
+      { ingredient_id: 1, quantity: 500, unit: "g", order_index: 0 },
+      { ingredient_id: 2, quantity: 1, unit: "Stück", order_index: 1 },
+    ])
+  })
+})

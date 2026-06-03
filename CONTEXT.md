@@ -121,6 +121,7 @@ frontend/src/
 │   ├── LoginPage.tsx          # Username + password form
 │   ├── RegisterPage.tsx       # Username + password + optional invite code (from ?invite_code= query param)
 │   ├── RecipeListPage.tsx     # Search input, favorites toggle, tag filter pills, grid of recipe cards
+│   ├── RecipeFormPage.tsx     # Create-recipe form: basic fields + dynamic ingredient rows (combobox with debounced /api/ingredients?q=…, quantity, unit, remove). Clicking a result locks the row; empty rows dropped on submit.
 │   ├── RecipeDetailPage.tsx   # Full recipe view: ingredients, instructions, tags, notes CRUD, favorites, delete (admin)
 │   ├── WeekPlanPage.tsx       # Split-pane: 7×4 meal grid (left) + suggestions panel (right). Drag-and-drop, cooking flow, public toggle
 │   ├── GroceryListPage.tsx    # Aggregated list with check-off, inline edit, regenerate, share, complete
@@ -247,6 +248,7 @@ When a recipe is planned but not yet cooked, its ingredients are reserved (scale
 | `src/components/AppLayout.test.tsx` | `AppLayout`: topbar shows the title from `PageHeaderContext`; subtitle + actions render; authenticated username surfaces in the sidebar footer. |
 | `src/components/ProtectedRoute.test.tsx` | `ProtectedRoute`: renders children when authenticated, redirects to `/login` when not, loading state is inline (no full-screen stretch). |
 | `src/App.test.tsx` | `App` routing: `/` redirects to `/plan`; public routes (`/login`, `/register`, shared grocery list, shared week plan) render without the shell; unauthenticated users are bounced from protected routes; `/__shell-preview` is gone. |
+| `src/pages/RecipeFormPage.test.tsx` | `RecipeFormPage` (split into two describe blocks: base form, ingredient rows): basic field rendering + submit + error render + `source_domain` blur derivation; `RecipeListPage` "Neues Rezept" action; ingredient row add/remove, combobox debounce + lock-on-click, submit body shape (order_index + parsed quantity, empty rows dropped). |
 
 **What's NOT tested**: `PageHeader` (trivial context-setter), `SidebarNav` (visual + NavLink integration), drag-and-drop, E2E workflows, visual behavior, the no-flash inline `<script>` in `index.html`. Hook- and route-level tests are in; granular component tests for `PageHeader`/`SidebarNav` are out until the frontend test story expands.
 
