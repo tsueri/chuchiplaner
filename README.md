@@ -64,12 +64,25 @@ docker compose up app --build
 
 ## Environment Variables
 
-All backend settings use the `CHUCHI_` prefix. The `.env` file is gitignored.
+All settings use the `CHUCHI_` prefix. Copy `.env.example` to `.env` and adjust as needed (`.env` is gitignored).
+
+### App
 
 | Variable | Default | Description |
 |---|---|---|
-| `CHUCHI_DATABASE_URL` | `sqlite+aiosqlite:///./chuchiplaner.db` | SQLite database path |
+| `CHUCHI_APP_NAME` | `Chuchiplaner` | Application name |
+| `CHUCHI_APP_VERSION` | `0.1.0` | Application version |
+| `CHUCHI_DATABASE_URL` | `sqlite+aiosqlite:///./chuchiplaner.db` | SQLite database path (SQLAlchemy URL) |
 | `CHUCHI_CORS_ORIGINS` | `["http://localhost:5173"]` | Allowed CORS origins (JSON list) |
+
+### Backup sidecar (Docker Compose only)
+
+| Variable | Default | Description |
+|---|---|---|
+| `CHUCHI_DB_PATH` | `/data/chuchiplaner.db` | Path to the SQLite database |
+| `CHUCHI_BACKUP_DIR` | `/backups` | Backup output directory |
+| `CHUCHI_BACKUP_RETENTION` | `7` | Days to retain backups |
+| `CHUCHI_BACKUP_INTERVAL` | `86400` | Seconds between backups (default: daily) |
 
 ## Testing, Linting & Type Checking
 
