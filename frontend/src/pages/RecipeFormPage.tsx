@@ -1,9 +1,13 @@
 import { useEffect, useState, type FormEvent } from "react"
 import { Link, useNavigate, useSearchParams } from "react-router-dom"
-import { X } from "lucide-react"
 
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { EditableIngredientRow } from "@/components/EditableIngredientRow"
+import {
+  defaultEditableIngredientValue,
+  type EditableIngredientValue,
+} from "@/components/EditableIngredientRow.types"
 import { PageHeader } from "@/components/PageHeader"
 import { cn } from "@/lib/utils"
 
@@ -16,22 +20,7 @@ interface FormState {
   source_domain: string
 }
 
-interface IngredientRow {
-  key: string
-  ingredientId: number | null
-  ingredientName: string
-  query: string
-  quantity: string
-  unit: string
-  suggestedIngredientId: number | null
-  confidence: number
-  raw: string
-}
-
-interface Ingredient {
-  id: number
-  name: string
-}
+type IngredientRow = EditableIngredientValue
 
 interface RecipeIngredientPayload {
   ingredient_id: number
@@ -82,179 +71,8 @@ const INITIAL_STATE: FormState = {
   source_domain: "",
 }
 
-const UNITS = ["g", "kg", "ml", "l", "EL", "TL", "Stück", "Bund", "Prise"]
-const INGREDIENT_DEBOUNCE_MS = 200
-
-let rowIdCounter = 0
 function newRow(): IngredientRow {
-  rowIdCounter += 1
-  return {
-    key: `row-${rowIdCounter}`,
-    ingredientId: null,
-    ingredientName: "",
-    query: "",
-    quantity: "",
-    unit: "g",
-    suggestedIngredientId: null,
-    confidence: 0,
-    raw: "",
-  }
-}
-
-function IngredientCombobox({
-  row,
-  onChange,
-}: {
-  row: IngredientRow
-  onChange: (row: IngredientRow) => void
-}) {
-  const [results, setResults] = useState<Ingredient[]>([])
-  const [manuallyClosed, setManuallyClosed] = useState(false)
-  const locked = row.ingredientId !== null
-
-  useEffect(() => {
-    if (locked) return
-    const query = row.query.trim()
-    if (query === "") return
-    const controller = new AbortController()
-    const t = setTimeout(async () => {
-      try {
-        const res = await fetch(
-          `/api/ingredients?q=${encodeURIComponent(query)}`,
-          {
-            credentials: "same-origin",
-            signal: controller.signal,
-          }
-        )
-        if (!res.ok) return
-        const data = (await res.json()) as Ingredient[]
-        if (!controller.signal.aborted) {
-          setResults(data)
-        }
-      } catch {
-        // aborted or network error — ignore
-      }
-    }, INGREDIENT_DEBOUNCE_MS)
-    return () => {
-      clearTimeout(t)
-      controller.abort()
-    }
-  }, [row.query, locked])
-
-  const showDropdown =
-    !locked &&
-    row.query.trim() !== "" &&
-    !manuallyClosed &&
-    results.length > 0
-
-  if (locked) {
-    return (
-      <div className="flex-1 flex flex-col gap-0.5">
-        <div className="flex items-center gap-1">
-          <span
-            aria-label="Zutat"
-            className="flex-1 truncate rounded-md border border-input bg-muted px-2.5 py-1 text-sm"
-          >
-            {row.ingredientName}
-          </span>
-          <button
-            type="button"
-            aria-label="Zutat ändern"
-            className="inline-flex items-center justify-center rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground shrink-0"
-            onClick={() => {
-              onChange({
-                ...row,
-                ingredientId: null,
-                ingredientName: "",
-                query: row.ingredientName,
-                suggestedIngredientId: null,
-                confidence: 0,
-              })
-            }}
-          >
-            ↻
-          </button>
-        </div>
-        {row.raw && (
-          <span className="text-xs text-muted-foreground truncate">{row.raw}</span>
-        )}
-      </div>
-    )
-  }
-
-  return (
-    <div className="relative flex-1 flex flex-col gap-0.5">
-      <Input
-        type="text"
-        role="combobox"
-        value={row.query}
-        placeholder="Zutat suchen..."
-        aria-label="Zutat"
-        aria-autocomplete="list"
-        aria-expanded={showDropdown}
-        aria-controls={`ingredient-list-${row.key}`}
-        className="w-full"
-        onChange={(e) => {
-          setResults([])
-          setManuallyClosed(false)
-          onChange({ ...row, query: e.target.value, suggestedIngredientId: null })
-        }}
-        onFocus={() => setManuallyClosed(false)}
-        onBlur={() => setManuallyClosed(true)}
-      />
-      {row.raw && (
-        <span className="text-xs text-muted-foreground truncate">{row.raw}</span>
-      )}
-      {showDropdown && (
-        <ul
-          id={`ingredient-list-${row.key}`}
-          role="listbox"
-          className="absolute z-10 mt-1 max-h-40 w-full overflow-auto rounded-md border bg-popover shadow"
-        >
-          {results.map((ing) => (
-            <li
-              key={ing.id}
-              role="option"
-              aria-selected={ing.id === row.suggestedIngredientId}
-              tabIndex={0}
-              onMouseDown={(e) => {
-                e.preventDefault()
-                onChange({
-                  ...row,
-                  ingredientId: ing.id,
-                  ingredientName: ing.name,
-                  query: "",
-                  suggestedIngredientId: null,
-                })
-              }}
-              className={cn(
-                "cursor-pointer px-2.5 py-1 text-sm hover:bg-muted",
-                ing.id === row.suggestedIngredientId && "bg-muted font-medium"
-              )}
-            >
-              {ing.name}
-            </li>
-          ))}
-          {row.suggestedIngredientId !== null && (
-            <li
-              role="option"
-              tabIndex={0}
-              onMouseDown={(e) => {
-                e.preventDefault()
-                onChange({
-                  ...row,
-                  suggestedIngredientId: null,
-                })
-              }}
-              className="cursor-pointer px-2.5 py-1 text-sm text-muted-foreground border-t hover:bg-muted"
-            >
-              Anderer Vorschlag…
-            </li>
-          )}
-        </ul>
-      )}
-    </div>
-  )
+  return defaultEditableIngredientValue()
 }
 
 class DuplicateRecipeError extends Error {
@@ -722,47 +540,12 @@ export default function RecipeFormPage() {
           <h2 className="text-sm font-medium">Zutaten</h2>
           <div className="space-y-2">
             {rows.map((row, idx) => (
-              <div key={row.key} className="flex items-center gap-2">
-                <IngredientCombobox
-                  row={row}
-                  onChange={(r) => updateRow(idx, r)}
-                />
-                <Input
-                  type="number"
-                  step="any"
-                  min="0"
-                  value={row.quantity}
-                  placeholder="Menge"
-                  aria-label="Menge"
-                  className="w-20"
-                  onChange={(e) =>
-                    updateRow(idx, { ...row, quantity: e.target.value })
-                  }
-                />
-                <select
-                  aria-label="Einheit"
-                  value={row.unit}
-                  onChange={(e) =>
-                    updateRow(idx, { ...row, unit: e.target.value })
-                  }
-                  className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm"
-                >
-                  {UNITS.map((u) => (
-                    <option key={u} value={u}>
-                      {u}
-                    </option>
-                  ))}
-                </select>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label="Zutat entfernen"
-                  onClick={() => removeRow(idx)}
-                >
-                  <X />
-                </Button>
-              </div>
+              <EditableIngredientRow
+                key={row.key}
+                value={row}
+                onChange={(r) => updateRow(idx, r)}
+                onRemove={() => removeRow(idx)}
+              />
             ))}
           </div>
           <Button
