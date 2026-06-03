@@ -12,6 +12,7 @@ from app.api.inventory import router as inventory_router
 from app.api.matching import router as matching_router
 from app.api.recipes import router as recipes_router
 from app.api.recipes import tag_router
+from app.api.weeks import router as weeks_router
 from app.core.config import settings
 from app.core.middleware import SessionMiddleware
 
@@ -36,6 +37,7 @@ def create_app() -> FastAPI:
     app.include_router(matching_router, prefix="/api")
     app.include_router(recipes_router, prefix="/api")
     app.include_router(tag_router, prefix="/api")
+    app.include_router(weeks_router, prefix="/api")
 
     static_dir = os.path.join(os.path.dirname(__file__), "..", "static")
     if os.path.isdir(static_dir):

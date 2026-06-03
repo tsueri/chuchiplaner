@@ -9,6 +9,7 @@ import RecipeDetailPage from "@/pages/RecipeDetailPage"
 import RecipeListPage from "@/pages/RecipeListPage"
 import RegisterPage from "@/pages/RegisterPage"
 import SettingsPage from "@/pages/SettingsPage"
+import WeekPlanPage from "@/pages/WeekPlanPage"
 
 function HomePage() {
   const { t } = useTranslation()
@@ -24,6 +25,9 @@ function HomePage() {
       </p>
       {user && (
         <div className="flex gap-2">
+          <Link to="/plan">
+            <Button variant="outline">Wochenplan</Button>
+          </Link>
           <Link to="/recipes">
             <Button variant="outline">Rezepte</Button>
           </Link>
@@ -93,6 +97,14 @@ function App() {
         element={
           <ProtectedRoute>
             <SettingsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/plan"
+        element={
+          <ProtectedRoute>
+            <WeekPlanPage />
           </ProtectedRoute>
         }
       />

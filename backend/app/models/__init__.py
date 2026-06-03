@@ -9,6 +9,7 @@ from app.models.recipe import (
     RecipeTag,
     Tag,
 )
+from app.models.week_plan import MealSlot, WeekPlan
 
 __all__ = [
     "User",
@@ -24,4 +25,6 @@ __all__ = [
     "RecipeTag",
     "Tag",
     "MealSlotTemplate",
+    "WeekPlan",
+    "MealSlot",
 ]
