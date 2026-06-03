@@ -1,13 +1,17 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.api.auth import get_current_user
 from app.db.session import get_db
+from app.models.ingredient import Ingredient
+from app.models.inventory import InventoryItem
 from app.models.recipe import Recipe
 from app.models.user import User
 from app.models.week_plan import MealSlot
 from app.schemas.week_plan import (
+    LeftoversRequest,
     MealSlotResponse,
     SlotBulkUpdate,
     WeekPlanCreateRequest,
@@ -58,6 +62,7 @@ def _slot_to_response(
         recipe_title=recipe_title,
         portions=slot.portions,
         dietary_filter_tag_id=slot.dietary_filter_tag_id,
+        cooked=slot.cooked,
         created_at=slot.created_at,
         updated_at=slot.updated_at,
     )
@@ -217,3 +222,173 @@ async def get_week_reservations(
     if current_user.household_id is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
     return {}
+
+
+@router.post("/{year}/{iso_week}/slots/{slot_id}/cook")
+async def cook_slot(
+    year: int,
+    iso_week: int,
+    slot_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> dict[str, str | bool | list[dict[str, object]]]:
+    if current_user.household_id is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
+
+    plan = await get_plan(db, current_user.household_id, year, iso_week)
+    if plan is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NOT_FOUND)
+
+    slot = next((s for s in plan.slots if s.id == slot_id), None)
+    if slot is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=_SLOT_NOT_FOUND
+        )
+
+    if slot.recipe_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Slot has no recipe planned",
+        )
+
+    if slot.cooked:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Slot already cooked",
+        )
+
+    recipe_result = await db.execute(
+        select(Recipe)
+        .where(Recipe.id == slot.recipe_id)
+        .options(selectinload(Recipe.ingredients))
+    )
+    recipe = recipe_result.scalar_one()
+
+    scale = slot.portions / recipe.servings if recipe.servings > 0 else 1
+
+    from app.services.unit_converter import UnitConverter
+
+    deductions: list[dict[str, object]] = []
+    for ri in recipe.ingredients:
+        grams, ml, pieces = UnitConverter.normalize(ri.quantity, ri.unit)
+        needed = grams or ml or pieces
+        if needed is None or needed == 0:
+            continue
+        needed *= scale
+        dim = "g" if grams else ("ml" if ml else "Stück")
+        actual_deducted = 0.0
+
+        inv_result = await db.execute(
+            select(InventoryItem)
+            .where(
+                InventoryItem.household_id == current_user.household_id,
+                InventoryItem.ingredient_id == ri.ingredient_id,
+                InventoryItem.category == "raw",
+            )
+            .order_by(
+                InventoryItem.expiry_date.is_(None),
+                InventoryItem.expiry_date.asc(),
+            )
+        )
+        items = list(inv_result.scalars().all())
+
+        remaining = needed
+        for item in items:
+            if remaining <= 0:
+                break
+            norm = UnitConverter.normalize(item.quantity, item.unit)
+            available = norm[0] or norm[1] or norm[2] or 0
+            deduct = min(available, remaining)
+            if deduct <= 0:
+                continue
+
+            new_qty = round(item.quantity - (deduct / (item.quantity / available)), 3)
+            if new_qty <= 0.001:
+                await db.delete(item)
+            else:
+                item.quantity = new_qty
+
+            remaining -= deduct
+            actual_deducted += deduct
+
+        if actual_deducted > 0:
+            ing_result = await db.execute(
+                select(Ingredient.name).where(Ingredient.id == ri.ingredient_id)
+            )
+            name = ing_result.scalar_one()
+            deductions.append({
+                "ingredient_id": ri.ingredient_id,
+                "ingredient_name": name,
+                "deducted": round(actual_deducted, 3),
+                "unit": dim,
+            })
+
+    slot.cooked = True
+    await db.flush()
+
+    return {"cooked": True, "deductions": deductions}
+
+
+@router.post("/{year}/{iso_week}/slots/{slot_id}/leftovers")
+async def create_leftovers(
+    year: int,
+    iso_week: int,
+    slot_id: int,
+    body: LeftoversRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> dict[str, object]:
+    if current_user.household_id is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
+
+    plan = await get_plan(db, current_user.household_id, year, iso_week)
+    if plan is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NOT_FOUND)
+
+    slot = next((s for s in plan.slots if s.id == slot_id), None)
+    if slot is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=_SLOT_NOT_FOUND
+        )
+
+    if slot.recipe_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Slot has no recipe planned",
+        )
+
+    recipe_result = await db.execute(
+        select(Recipe).where(Recipe.id == slot.recipe_id)
+    )
+    recipe = recipe_result.scalar_one()
+
+    title = f"{recipe.title} (Reste)"
+    existing_ing = await db.execute(
+        select(Ingredient).where(Ingredient.name == title)
+    )
+    leftover_ingredient = existing_ing.scalar_one_or_none()
+    if leftover_ingredient is None:
+        leftover_ingredient = Ingredient(name=title)
+        db.add(leftover_ingredient)
+        await db.flush()
+
+    item = InventoryItem(
+        household_id=current_user.household_id,
+        ingredient_id=leftover_ingredient.id,
+        quantity=float(body.portions_count),
+        unit="Stück",
+        category="cooked",
+        source_recipe_id=recipe.id,
+        source_week_plan_id=plan.id,
+    )
+    db.add(item)
+    await db.flush()
+
+    return {
+        "id": item.id,
+        "ingredient_name": title,
+        "quantity": float(body.portions_count),
+        "unit": "Stück",
+        "category": "cooked",
+        "source_recipe_id": recipe.id,
+    }

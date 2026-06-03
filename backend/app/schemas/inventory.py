@@ -30,6 +30,8 @@ class InventoryItemResponse(BaseModel):
     unit: str
     expiry_date: date | None = None
     category: str
+    source_recipe_id: int | None = None
+    source_week_plan_id: int | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 

@@ -12,6 +12,16 @@ interface Recipe {
   expiring_ingredients: string[]
 }
 
+interface LeftoverItem {
+  id: number
+  ingredient_name: string
+  quantity: number
+  unit: string
+  category: string
+  source_recipe_id: number | null
+  source_week_plan_id: number | null
+}
+
 interface MealSlot {
   id: number
   week_plan_id: number
@@ -22,6 +32,7 @@ interface MealSlot {
   recipe_title: string | null
   portions: number
   dietary_filter_tag_id: number | null
+  cooked: boolean
 }
 
 interface WeekData {
@@ -91,6 +102,7 @@ export default function WeekPlanPage() {
   const [cy, cw] = getCurrentIsoWeek()
   const [weekData, setWeekData] = useState<WeekData | null>(null)
   const [suggestions, setSuggestions] = useState<Recipe[]>([])
+  const [leftovers, setLeftovers] = useState<LeftoverItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [activeMode, setActiveMode] = useState<string>("partial")
@@ -103,6 +115,9 @@ export default function WeekPlanPage() {
   const [isoWeek, setIsoWeek] = useState<number>(cw)
   const [editable, setEditable] = useState(true)
   const [copied, setCopied] = useState(false)
+  const [cookConfirm, setCookConfirm] = useState<number | null>(null)
+  const [leftoverSlot, setLeftoverSlot] = useState<{id: number; title: string} | null>(null)
+  const [leftoverPortions, setLeftoverPortions] = useState(2)
 
   const refreshAll = useCallback(() => {
     let cancelled = false
@@ -115,12 +130,16 @@ export default function WeekPlanPage() {
           current_plan_reservations: null,
         }),
       }),
+      api("/inventory?category=cooked"),
     ])
-      .then(([weekResult, matchResult]) => {
+      .then(([weekResult, matchResult, leftoversResult]) => {
         if (!cancelled) {
           setWeekData(weekResult as WeekData)
           setEditable(isCurrentOrFuture(year, isoWeek))
           setSuggestions(matchResult.suggestions || [])
+          setLeftovers(
+            (leftoversResult as LeftoverItem[]) || []
+          )
           setError("")
         }
       })
@@ -249,6 +268,59 @@ export default function WeekPlanPage() {
     navigator.clipboard.writeText(url)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
+  }
+
+  const cookSlot = async (slotId: number) => {
+    setSaving(true)
+    setCookConfirm(null)
+    try {
+      await api(`/weeks/${year}/${isoWeek}/slots/${slotId}/cook`, {
+        method: "POST",
+      })
+      setLeftoverSlot({
+        id: slotId,
+        title: getSlotSlotTitle(slotId) || "",
+      })
+      refreshAll()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to cook")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const submitLeftovers = async () => {
+    if (!leftoverSlot) return
+    setSaving(true)
+    try {
+      await api(
+        `/weeks/${year}/${isoWeek}/slots/${leftoverSlot.id}/leftovers`,
+        {
+          method: "POST",
+          body: JSON.stringify({ portions_count: leftoverPortions }),
+        }
+      )
+      setLeftoverSlot(null)
+      setLeftoverPortions(2)
+      refreshAll()
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to save leftovers"
+      )
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const skipLeftovers = () => {
+    setLeftoverSlot(null)
+    setLeftoverPortions(2)
+  }
+
+  const getSlotSlotTitle = (slotId: number): string | null => {
+    if (!weekData) return null
+    const slot = weekData.slots.find((s) => s.id === slotId)
+    return slot?.recipe_title || null
   }
 
   const getSlot = (day: number, meal: string): MealSlot | undefined => {
@@ -439,6 +511,11 @@ export default function WeekPlanPage() {
                       >
                         {slot?.recipe_id ? (
                           <div className="flex flex-col items-center gap-1">
+                            {slot.cooked && (
+                              <span className="text-green-600 text-xs font-bold">
+                                ✓ Gekocht
+                              </span>
+                            )}
                             <span className="font-medium truncate w-full text-center">
                               {slot.recipe_title || `#${slot.recipe_id}`}
                             </span>
@@ -455,17 +532,25 @@ export default function WeekPlanPage() {
                                   )
                                   updatePortions(dayIdx, meal, v)
                                 }}
-                                disabled={!editable || saving}
+                                disabled={!editable || saving || slot.cooked}
                               />
                               <span className="text-muted-foreground">Port.</span>
                             </div>
-                            {editable && (
-                              <button
-                                className="mt-0.5 text-destructive hover:underline"
-                                onClick={() => unplanRecipe(slot.id)}
-                              >
-                                ✕
-                              </button>
+                            {editable && !slot.cooked && (
+                              <div className="flex gap-1 mt-0.5">
+                                <button
+                                  className="text-green-600 hover:underline text-xs"
+                                  onClick={() => setCookConfirm(slot.id)}
+                                >
+                                  Gekocht
+                                </button>
+                                <button
+                                  className="text-destructive hover:underline"
+                                  onClick={() => unplanRecipe(slot.id)}
+                                >
+                                  ✕
+                                </button>
+                              </div>
                             )}
                           </div>
                         ) : isActive && editable ? (
@@ -548,6 +633,86 @@ export default function WeekPlanPage() {
                   )}
                 </div>
               ))}
+              {leftovers.length > 0 && (
+                <>
+                  <h3 className="text-xs font-semibold text-muted-foreground mt-3">
+                    Resten
+                  </h3>
+                  {leftovers.map((item) => (
+                    <div
+                      key={`leftover-${item.id}`}
+                      className="rounded border p-2 text-sm bg-green-50 dark:bg-green-950 border-green-200 dark:border-green-800"
+                    >
+                      <span className="font-medium truncate">
+                        {item.ingredient_name}
+                      </span>
+                      <span className="ml-2 text-xs text-muted-foreground">
+                        — {item.quantity} {item.unit === "Stück" ? "Portionen" : item.unit}
+                      </span>
+                    </div>
+                  ))}
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {cookConfirm !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+          <div className="bg-background rounded-lg shadow-lg p-6 w-80 space-y-3">
+            <p className="font-medium">Zutaten vom Vorrat abbuchen?</p>
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCookConfirm(null)}
+              >
+                Abbrechen
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => cookSlot(cookConfirm)}
+                disabled={saving}
+              >
+                {saving ? "..." : "Bestätigen"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {leftoverSlot !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+          <div className="bg-background rounded-lg shadow-lg p-6 w-80 space-y-3">
+            <p className="font-medium">
+              Portionen Resten von &quot;{leftoverSlot.title}&quot;?
+            </p>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min={1}
+                className="w-16 rounded border px-2 py-1 text-sm text-center"
+                value={leftoverPortions}
+                onChange={(e) =>
+                  setLeftoverPortions(
+                    Math.max(1, parseInt(e.target.value) || 1)
+                  )
+                }
+              />
+              <span className="text-sm text-muted-foreground">Portionen</span>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={skipLeftovers}>
+                Überspringen
+              </Button>
+              <Button
+                size="sm"
+                onClick={submitLeftovers}
+                disabled={saving}
+              >
+                {saving ? "..." : "Speichern"}
+              </Button>
             </div>
           </div>
         </div>

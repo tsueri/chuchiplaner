@@ -13,6 +13,7 @@ class MealSlotResponse(BaseModel):
     recipe_title: str | None = None
     portions: int
     dietary_filter_tag_id: int | None = None
+    cooked: bool = False
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -60,3 +61,7 @@ class SlotUpdate(BaseModel):
 
 class SlotBulkUpdate(BaseModel):
     slots: list[SlotUpdate]
+
+
+class LeftoversRequest(BaseModel):
+    portions_count: int = Field(ge=1)

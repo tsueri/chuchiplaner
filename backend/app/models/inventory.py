@@ -18,6 +18,12 @@ class InventoryItem(Base):
     unit: Mapped[str] = mapped_column(String(50), nullable=False)
     expiry_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     category: Mapped[str] = mapped_column(String(20), nullable=False)
+    source_recipe_id: Mapped[int | None] = mapped_column(
+        ForeignKey("recipes.id"), nullable=True
+    )
+    source_week_plan_id: Mapped[int | None] = mapped_column(
+        ForeignKey("week_plans.id"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         server_default=func.now(), onupdate=func.now()
