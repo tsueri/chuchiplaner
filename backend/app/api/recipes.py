@@ -3,6 +3,7 @@ from datetime import datetime as dt
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -130,6 +131,7 @@ async def import_recipe(
     result = await db.execute(
         select(Recipe).where(
             Recipe.source_url == body.url,
+            Recipe.household_id == current_user.household_id,
             Recipe.deleted_at.is_(None),
         )
     )
@@ -197,7 +199,28 @@ async def create_recipe(
     body: RecipeSaveRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-) -> RecipeResponse:
+) -> JSONResponse | RecipeResponse:
+    if body.source_url is not None:
+        dup_result = await db.execute(
+            select(Recipe).where(
+                Recipe.source_url == body.source_url,
+                Recipe.household_id == current_user.household_id,
+                Recipe.deleted_at.is_(None),
+            )
+        )
+        dup = dup_result.scalar_one_or_none()
+        if dup is not None:
+            return JSONResponse(
+                status_code=status.HTTP_409_CONFLICT,
+                content={
+                    "detail": (
+                        f"Duplikat: Ein Rezept mit der URL {body.source_url} "
+                        "existiert bereits in diesem Haushalt."
+                    ),
+                    "existing_recipe_id": dup.id,
+                },
+            )
+
     recipe = Recipe(
         title=body.title,
         instructions=body.instructions,

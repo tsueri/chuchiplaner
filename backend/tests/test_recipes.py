@@ -871,3 +871,192 @@ async def test_recipe_list_pagination(client: AsyncClient) -> None:
     assert resp.status_code == 200
     data = resp.json()
     assert len(data) == 2
+
+
+# ----- Source URL duplicate checks -----
+
+
+@pytest.mark.asyncio
+async def test_create_recipe_409_same_household_duplicate_source_url(
+    client: AsyncClient,
+) -> None:
+    auth = await _register(client, "dup409user")
+    cookies = auth["cookies"]
+
+    await client.post(
+        "/api/recipes",
+        json={
+            "title": "Original",
+            "instructions": "Steps.",
+            "source_url": "https://example.com/duplicate",
+            "servings": 2,
+        },
+        cookies=cookies,
+    )
+
+    resp = await client.post(
+        "/api/recipes",
+        json={
+            "title": "Duplicate",
+            "instructions": "Steps.",
+            "source_url": "https://example.com/duplicate",
+            "servings": 2,
+        },
+        cookies=cookies,
+    )
+    assert resp.status_code == 409
+    data = resp.json()
+    assert "detail" in data
+    assert data["existing_recipe_id"] is not None
+
+
+@pytest.mark.asyncio
+async def test_create_recipe_no_409_cross_household_source_url(
+    client: AsyncClient,
+) -> None:
+    auth1 = await _register(client, "crossh1")
+    cookies1 = auth1["cookies"]
+
+    await client.post(
+        "/api/recipes",
+        json={
+            "title": "H1 Recipe",
+            "instructions": "Steps.",
+            "source_url": "https://example.com/crosshouse",
+            "servings": 2,
+        },
+        cookies=cookies1,
+    )
+
+    auth2 = await _register(client, "crossh2")
+    cookies2 = auth2["cookies"]
+
+    resp = await client.post(
+        "/api/recipes",
+        json={
+            "title": "H2 Recipe",
+            "instructions": "Steps.",
+            "source_url": "https://example.com/crosshouse",
+            "servings": 2,
+        },
+        cookies=cookies2,
+    )
+    assert resp.status_code == 201
+
+
+@pytest.mark.asyncio
+async def test_create_recipe_201_after_soft_delete_source_url(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    auth = await _register_and_set_role(
+        client, db_session, "softdeldup", role="admin"
+    )
+    cookies = auth["cookies"]
+
+    recipe = await _create_recipe(
+        client,
+        cookies,
+        title="To Soft Delete",
+        source_url="https://example.com/softdel",
+    )
+    recipe_id = recipe["id"]
+
+    del_resp = await client.delete(
+        f"/api/recipes/{recipe_id}", cookies=cookies
+    )
+    assert del_resp.status_code == 204
+
+    resp = await client.post(
+        "/api/recipes",
+        json={
+            "title": "Fresh",
+            "instructions": "Steps.",
+            "source_url": "https://example.com/softdel",
+            "servings": 2,
+        },
+        cookies=cookies,
+    )
+    assert resp.status_code == 201
+
+
+@pytest.mark.asyncio
+async def test_create_recipe_no_false_409_null_source_url(
+    client: AsyncClient,
+) -> None:
+    auth = await _register(client, "nullurluser")
+    cookies = auth["cookies"]
+
+    r1 = await client.post(
+        "/api/recipes",
+        json={
+            "title": "First",
+            "instructions": "Steps.",
+            "servings": 2,
+        },
+        cookies=cookies,
+    )
+    assert r1.status_code == 201
+
+    r2 = await client.post(
+        "/api/recipes",
+        json={
+            "title": "Second",
+            "instructions": "Steps.",
+            "servings": 2,
+        },
+        cookies=cookies,
+    )
+    assert r2.status_code == 201
+
+
+@pytest.mark.asyncio
+async def test_import_existing_lookup_filters_by_household(
+    client: AsyncClient,
+) -> None:
+    mock_recipe = ScrapedRecipe(
+        title="Shared URL",
+        ingredients=["1 egg"],
+        instructions="Fry.",
+        servings=1,
+        source_url="https://www.swissmilk.ch/crosshouse-import",
+        source_domain="www.swissmilk.ch",
+    )
+
+    auth1 = await _register(client, "imph1")
+    cookies1 = auth1["cookies"]
+
+    with patch(
+        "app.api.recipes.RecipeScraper.scrape", return_value=mock_recipe
+    ):
+        import1 = await client.post(
+            "/api/recipes/import",
+            json={"url": "https://www.swissmilk.ch/crosshouse-import"},
+            cookies=cookies1,
+        )
+    assert import1.status_code == 200
+    assert import1.json()["existing_recipe_id"] is None
+
+    await client.post(
+        "/api/recipes",
+        json={
+            "title": "H1 Saved",
+            "instructions": "Fry.",
+            "source_url": "https://www.swissmilk.ch/crosshouse-import",
+            "servings": 1,
+        },
+        cookies=cookies1,
+    )
+
+    auth2 = await _register(client, "imph2")
+    cookies2 = auth2["cookies"]
+
+    with patch(
+        "app.api.recipes.RecipeScraper.scrape", return_value=mock_recipe
+    ):
+        import2 = await client.post(
+            "/api/recipes/import",
+            json={"url": "https://www.swissmilk.ch/crosshouse-import"},
+            cookies=cookies2,
+        )
+    assert import2.status_code == 200
+    assert import2.json()["existing_recipe_id"] is None
