@@ -24,7 +24,12 @@ def upgrade() -> None:
         sa.Column("household_id", sa.Integer(), nullable=False),
         sa.Column("year", sa.Integer(), nullable=False),
         sa.Column("iso_week", sa.Integer(), nullable=False),
-        sa.Column("is_public", sa.Boolean(), nullable=False, server_default=sa.text("0")),
+        sa.Column(
+            "is_public",
+            sa.Boolean(),
+            nullable=False,
+            server_default=sa.text("0"),
+        ),
         sa.Column("created_at", sa.DateTime(), server_default=sa.func.now()),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("household_id", "year", "iso_week", name="uq_week_plan"),
@@ -33,17 +38,34 @@ def upgrade() -> None:
     op.create_table(
         "meal_slots",
         sa.Column("id", sa.Integer(), nullable=False),
-        sa.Column("week_plan_id", sa.Integer(), sa.ForeignKey("week_plans.id"), nullable=False),
+        sa.Column(
+            "week_plan_id",
+            sa.Integer(),
+            sa.ForeignKey("week_plans.id"),
+            nullable=False,
+        ),
         sa.Column("meal_type", sa.String(length=20), nullable=False),
         sa.Column("day_of_week", sa.Integer(), nullable=False),
         sa.Column("active", sa.Boolean(), nullable=False, server_default=sa.text("1")),
-        sa.Column("recipe_id", sa.Integer(), sa.ForeignKey("recipes.id"), nullable=True),
+        sa.Column(
+            "recipe_id",
+            sa.Integer(),
+            sa.ForeignKey("recipes.id"),
+            nullable=True,
+        ),
         sa.Column("portions", sa.Integer(), nullable=False, server_default="1"),
-        sa.Column("dietary_filter_tag_id", sa.Integer(), sa.ForeignKey("tags.id"), nullable=True),
+        sa.Column(
+            "dietary_filter_tag_id",
+            sa.Integer(),
+            sa.ForeignKey("tags.id"),
+            nullable=True,
+        ),
         sa.Column("created_at", sa.DateTime(), server_default=sa.func.now()),
         sa.Column("updated_at", sa.DateTime(), server_default=sa.func.now()),
         sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint("week_plan_id", "day_of_week", "meal_type", name="uq_meal_slot"),
+        sa.UniqueConstraint(
+            "week_plan_id", "day_of_week", "meal_type", name="uq_meal_slot",
+        ),
     )
 
 

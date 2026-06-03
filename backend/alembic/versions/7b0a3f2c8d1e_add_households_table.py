@@ -25,13 +25,29 @@ def upgrade() -> None:
     sa.Column('name', sa.String(length=255), nullable=False),
     sa.Column('slug', sa.String(length=255), nullable=False),
     sa.Column('invite_code', sa.String(length=32), nullable=False),
-    sa.Column('created_at', sa.DateTime(), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
+    sa.Column(
+        'created_at',
+        sa.DateTime(),
+        server_default=sa.text('(CURRENT_TIMESTAMP)'),
+        nullable=False,
+    ),
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('slug')
     )
     op.add_column('users', sa.Column('household_id', sa.Integer(), nullable=True))
-    op.add_column('users', sa.Column('role', sa.String(length=20), nullable=False, server_default='member'))
-    op.create_foreign_key('fk_users_household_id', 'users', 'households', ['household_id'], ['id'])
+    op.add_column(
+        'users',
+        sa.Column(
+            'role',
+            sa.String(length=20),
+            nullable=False,
+            server_default='member',
+        ),
+    )
+    op.create_foreign_key(
+        'fk_users_household_id', 'users', 'households',
+        ['household_id'], ['id'],
+    )
 
 
 def downgrade() -> None:

@@ -2,7 +2,11 @@ import pytest
 from httpx import AsyncClient
 
 
-async def _register(client: AsyncClient, username: str = "testuser", invite_code: str | None = None) -> dict:
+async def _register(
+    client: AsyncClient,
+    username: str = "testuser",
+    invite_code: str | None = None,
+) -> dict:
     body = {"username": username, "password": "secret123"}
     if invite_code is not None:
         body["invite_code"] = invite_code

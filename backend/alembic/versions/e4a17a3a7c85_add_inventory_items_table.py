@@ -7,9 +7,9 @@ Create Date: 2026-06-02 22:19:39.465897
 """
 from typing import Sequence, Union
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = 'e4a17a3a7c85'
@@ -29,8 +29,18 @@ def upgrade() -> None:
     sa.Column('unit', sa.String(length=50), nullable=False),
     sa.Column('expiry_date', sa.Date(), nullable=True),
     sa.Column('category', sa.String(length=20), nullable=False),
-    sa.Column('created_at', sa.DateTime(), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
-    sa.Column('updated_at', sa.DateTime(), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
+    sa.Column(
+        'created_at',
+        sa.DateTime(),
+        server_default=sa.text('(CURRENT_TIMESTAMP)'),
+        nullable=False,
+    ),
+    sa.Column(
+        'updated_at',
+        sa.DateTime(),
+        server_default=sa.text('(CURRENT_TIMESTAMP)'),
+        nullable=False,
+    ),
     sa.ForeignKeyConstraint(['ingredient_id'], ['ingredients.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
