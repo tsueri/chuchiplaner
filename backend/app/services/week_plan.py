@@ -55,11 +55,19 @@ async def get_or_create_plan(
     if existing is not None:
         return existing
 
+    from app.models.household import Household
+
+    household_result = await db.execute(
+        select(Household).where(Household.id == household_id)
+    )
+    household = household_result.scalar_one_or_none()
+    is_public = household.default_public if household else False
+
     plan = WeekPlan(
         household_id=household_id,
         year=year,
         iso_week=iso_week,
-        is_public=False,
+        is_public=is_public,
     )
     db.add(plan)
     await db.flush()

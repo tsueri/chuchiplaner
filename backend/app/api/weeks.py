@@ -14,6 +14,7 @@ from app.schemas.week_plan import (
     LeftoversRequest,
     MealSlotResponse,
     SlotBulkUpdate,
+    VisibilityUpdateRequest,
     WeekPlanCreateRequest,
     WeekPlanListItem,
     WeekPlanResponse,
@@ -222,6 +223,31 @@ async def get_week_reservations(
     if current_user.household_id is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
     return {}
+
+
+@router.put("/{year}/{iso_week}/visibility")
+async def update_week_visibility(
+    year: int,
+    iso_week: int,
+    body: VisibilityUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> dict[str, bool]:
+    if current_user.household_id is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
+    if current_user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only admins can update visibility",
+        )
+
+    plan = await get_plan(db, current_user.household_id, year, iso_week)
+    if plan is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NOT_FOUND)
+
+    plan.is_public = body.is_public
+    await db.flush()
+    return {"is_public": plan.is_public}
 
 
 @router.post("/{year}/{iso_week}/slots/{slot_id}/cook")

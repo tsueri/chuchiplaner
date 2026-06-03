@@ -11,6 +11,7 @@ from app.api.household import router as household_router
 from app.api.ingredients import router as ingredients_router
 from app.api.inventory import router as inventory_router
 from app.api.matching import router as matching_router
+from app.api.public_plan import router as public_plan_router
 from app.api.recipes import router as recipes_router
 from app.api.recipes import tag_router
 from app.api.weeks import router as weeks_router
@@ -37,6 +38,7 @@ def create_app() -> FastAPI:
     app.include_router(inventory_router, prefix="/api")
     app.include_router(household_router, prefix="/api")
     app.include_router(matching_router, prefix="/api")
+    app.include_router(public_plan_router, prefix="/api")
     app.include_router(recipes_router, prefix="/api")
     app.include_router(tag_router, prefix="/api")
     app.include_router(weeks_router, prefix="/api")

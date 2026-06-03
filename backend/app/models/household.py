@@ -20,6 +20,7 @@ class Household(Base):
     slug: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     invite_code: Mapped[str] = mapped_column(String(32), nullable=False)
     default_size: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    default_public: Mapped[bool] = mapped_column(default=False)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
     members: Mapped[list["User"]] = relationship(back_populates="household")

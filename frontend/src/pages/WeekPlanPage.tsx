@@ -118,6 +118,8 @@ export default function WeekPlanPage() {
   const [cookConfirm, setCookConfirm] = useState<number | null>(null)
   const [leftoverSlot, setLeftoverSlot] = useState<{id: number; title: string} | null>(null)
   const [leftoverPortions, setLeftoverPortions] = useState(2)
+  const [householdSlug, setHouseholdSlug] = useState("")
+  const [publicSaving, setPublicSaving] = useState(false)
 
   const refreshAll = useCallback(() => {
     let cancelled = false
@@ -131,8 +133,9 @@ export default function WeekPlanPage() {
         }),
       }),
       api("/inventory?category=cooked"),
+      api("/household"),
     ])
-      .then(([weekResult, matchResult, leftoversResult]) => {
+      .then(([weekResult, matchResult, leftoversResult, householdResult]) => {
         if (!cancelled) {
           setWeekData(weekResult as WeekData)
           setEditable(isCurrentOrFuture(year, isoWeek))
@@ -140,6 +143,7 @@ export default function WeekPlanPage() {
           setLeftovers(
             (leftoversResult as LeftoverItem[]) || []
           )
+          setHouseholdSlug((householdResult as { slug: string }).slug || "")
           setError("")
         }
       })
@@ -262,12 +266,33 @@ export default function WeekPlanPage() {
     }
   }
 
-  const copyInviteLink = () => {
-    if (!weekData) return
-    const url = `${window.location.origin}/plan/${year}/${isoWeek}?public=true`
+  const copyPublicLink = () => {
+    if (!weekData || !householdSlug) return
+    const url = `${window.location.origin}/plan/${householdSlug}/${year}/kw${isoWeek}`
     navigator.clipboard.writeText(url)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
+  }
+
+  const toggleWeekVisibility = async () => {
+    if (!weekData) return
+    setPublicSaving(true)
+    try {
+      const res = await api(
+        `/weeks/${year}/${isoWeek}/visibility`,
+        {
+          method: "PUT",
+          body: JSON.stringify({ is_public: !weekData.is_public }),
+        }
+      )
+      setWeekData({ ...weekData, is_public: res.is_public })
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to update visibility"
+      )
+    } finally {
+      setPublicSaving(false)
+    }
   }
 
   const cookSlot = async (slotId: number) => {
@@ -407,9 +432,22 @@ export default function WeekPlanPage() {
             Archiv
           </span>
         )}
-        <div className="ml-auto flex gap-1">
+        <div className="ml-auto flex gap-1 items-center">
+          {editable && (
+            <button
+              onClick={toggleWeekVisibility}
+              disabled={publicSaving}
+              className={`inline-flex items-center gap-1 px-2 py-1 text-xs rounded border ${
+                weekData?.is_public
+                  ? "bg-primary/10 border-primary text-primary"
+                  : "bg-muted border-muted-foreground/20 text-muted-foreground"
+              }`}
+            >
+              {weekData?.is_public ? "Öffentlich" : "Privat"}
+            </button>
+          )}
           {weekData?.is_public && (
-            <Button variant="outline" size="sm" onClick={copyInviteLink}>
+            <Button variant="outline" size="sm" onClick={copyPublicLink}>
               {copied ? "Kopiert!" : "Link kopieren"}
             </Button>
           )}

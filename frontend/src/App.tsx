@@ -7,6 +7,7 @@ import GroceryListPage from "@/pages/GroceryListPage"
 import GroceryListSharePage from "@/pages/GroceryListSharePage"
 import InventoryPage from "@/pages/InventoryPage"
 import LoginPage from "@/pages/LoginPage"
+import PublicPlanPage from "@/pages/PublicPlanPage"
 import RecipeDetailPage from "@/pages/RecipeDetailPage"
 import RecipeListPage from "@/pages/RecipeListPage"
 import RegisterPage from "@/pages/RegisterPage"
@@ -122,6 +123,7 @@ function App() {
         }
       />
       <Route path="/grocery-list/share/:token" element={<GroceryListSharePage />} />
+      <Route path="/plan/:slug/:year/kw:week" element={<PublicPlanPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
     </Routes>

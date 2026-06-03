@@ -65,3 +65,7 @@ class SlotBulkUpdate(BaseModel):
 
 class LeftoversRequest(BaseModel):
     portions_count: int = Field(ge=1)
+
+
+class VisibilityUpdateRequest(BaseModel):
+    is_public: bool

@@ -50,6 +50,7 @@ async def get_household(
         slug=hwm.slug,
         invite_code=hwm.invite_code,
         default_size=hwm.default_size,
+        default_public=hwm.default_public,
         members=[_to_member(m) for m in hwm.members],
     )
 
@@ -87,6 +88,9 @@ async def update_household(
         for slot in result.scalars().all():
             slot.default_portions = body.default_size
 
+    if body.default_public is not None:
+        household.default_public = body.default_public
+
     await db.flush()
 
     hwm = await get_household_with_members(db, household.id)
@@ -97,6 +101,7 @@ async def update_household(
         slug=hwm.slug,
         invite_code=hwm.invite_code,
         default_size=hwm.default_size,
+        default_public=hwm.default_public,
         members=[_to_member(m) for m in hwm.members],
     )
 

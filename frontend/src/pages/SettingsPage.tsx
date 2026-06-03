@@ -14,6 +14,7 @@ interface Household {
   slug: string
   invite_code: string
   default_size: number
+  default_public: boolean
   members: Member[]
 }
 
@@ -202,6 +203,21 @@ export default function SettingsPage() {
     }
   }
 
+  const toggleDefaultPublic = async () => {
+    if (!household) return
+    const next = !household.default_public
+    try {
+      await api("/household", {
+        method: "PUT",
+        body: JSON.stringify({ default_public: next }),
+      })
+      setHousehold({ ...household, default_public: next })
+      setError("")
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save visibility setting")
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -267,6 +283,34 @@ export default function SettingsPage() {
           <p className="text-xs text-muted-foreground">
             Ändert die Standardportionen aller Mahlzeiten auf diesen Wert.
           </p>
+        </div>
+      )}
+
+      {isAdmin && (
+        <div className="space-y-4 rounded-lg border p-4">
+          <h2 className="text-lg font-semibold">Sichtbarkeit</h2>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium">
+                Neue Wochen standardmaessig oeffentlich
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Wenn aktiv, werden neu erstellte Wochenplaene fuer jeden mit dem Link sichtbar.
+              </p>
+            </div>
+            <button
+              onClick={toggleDefaultPublic}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                household?.default_public ? "bg-primary" : "bg-muted"
+              }`}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  household?.default_public ? "translate-x-6" : "translate-x-1"
+                }`}
+              />
+            </button>
+          </div>
         </div>
       )}
 

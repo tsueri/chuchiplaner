@@ -17,6 +17,7 @@ class HouseholdResponse(BaseModel):
     slug: str
     invite_code: str
     default_size: int
+    default_public: bool
     members: list[MemberResponse]
 
     model_config = {"from_attributes": True}
@@ -25,6 +26,7 @@ class HouseholdResponse(BaseModel):
 class HouseholdUpdateRequest(BaseModel):
     name: str | None = None
     default_size: int | None = Field(default=None, ge=1)
+    default_public: bool | None = None
 
 
 class MealSlotTemplateResponse(BaseModel):

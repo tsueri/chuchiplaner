@@ -70,6 +70,7 @@ class HouseholdWithMembers:
     slug: str
     invite_code: str
     default_size: int
+    default_public: bool
     members: list["User"]
 
 
@@ -104,6 +105,7 @@ async def get_household_with_members(
         slug=household.slug,
         invite_code=household.invite_code,
         default_size=household.default_size,
+        default_public=household.default_public,
         members=list(members_result.scalars().all()),
     )
 
