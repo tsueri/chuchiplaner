@@ -17,6 +17,7 @@ interface RecipeDetail {
   ingredients: {
     id: number
     ingredient_id: number
+    ingredient_name: string
     quantity: number
     unit: string
     order_index: number
@@ -256,7 +257,7 @@ export default function RecipeDetailPage() {
           <ul className="mt-2 list-inside list-disc">
             {recipe.ingredients.map((ing) => (
               <li key={ing.id}>
-                {ing.quantity} {ing.unit}
+                {ing.quantity} {ing.unit} {ing.ingredient_name}
               </li>
             ))}
           </ul>
