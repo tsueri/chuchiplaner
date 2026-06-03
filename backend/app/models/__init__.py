@@ -1,3 +1,4 @@
+from app.models.grocery_list import GroceryList, GroceryListItem
 from app.models.household import Household, MealSlotTemplate
 from app.models.ingredient import Ingredient, IngredientAlias
 from app.models.inventory import InventoryItem
@@ -27,4 +28,6 @@ __all__ = [
     "MealSlotTemplate",
     "WeekPlan",
     "MealSlot",
+    "GroceryList",
+    "GroceryListItem",
 ]

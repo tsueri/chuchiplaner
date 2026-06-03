@@ -3,6 +3,8 @@ import { Link, Route, Routes } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { ProtectedRoute } from "@/components/ProtectedRoute"
 import { useAuth } from "@/contexts/AuthContext"
+import GroceryListPage from "@/pages/GroceryListPage"
+import GroceryListSharePage from "@/pages/GroceryListSharePage"
 import InventoryPage from "@/pages/InventoryPage"
 import LoginPage from "@/pages/LoginPage"
 import RecipeDetailPage from "@/pages/RecipeDetailPage"
@@ -27,6 +29,9 @@ function HomePage() {
         <div className="flex gap-2">
           <Link to="/plan">
             <Button variant="outline">Wochenplan</Button>
+          </Link>
+          <Link to="/grocery-list">
+            <Button variant="outline">Einkaufsliste</Button>
           </Link>
           <Link to="/recipes">
             <Button variant="outline">Rezepte</Button>
@@ -108,6 +113,15 @@ function App() {
           </ProtectedRoute>
         }
       />
+      <Route
+        path="/grocery-list"
+        element={
+          <ProtectedRoute>
+            <GroceryListPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route path="/grocery-list/share/:token" element={<GroceryListSharePage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
     </Routes>
