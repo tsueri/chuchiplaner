@@ -143,7 +143,7 @@ describe("RecipeFormPage", () => {
     expect(init.method).toBe("POST")
     expect(JSON.parse(init.body as string)).toEqual({
       title: "Pasta",
-      instructions: "Wasser kochen.",
+      steps: [{ position: 0, text: "Wasser kochen.", name: null }],
       servings: 4,
       image_url: null,
       source_url: null,
@@ -791,7 +791,7 @@ describe("RecipeFormPage URL import", () => {
                 { raw: "Tomaten", name: "Tomaten", quantity: null, unit: null, ingredient_id: null, confidence: 0.0 },
                 { raw: "Zwiebeln", name: "Zwiebeln", quantity: null, unit: null, ingredient_id: null, confidence: 0.0 },
               ],
-              instructions: "Alles mischen.",
+              steps: [{ position: 0, text: "Alles mischen.", name: null }],
               image_url: "https://example.com/img.jpg",
               servings: 2,
               source_url: "https://www.fooby.ch/recipe",
@@ -845,7 +845,7 @@ describe("RecipeFormPage URL import", () => {
           mockFetchResponse({
             title: "Fooby Pasta",
             ingredients: [],
-            instructions: "Alles mischen.",
+            steps: [{ position: 0, text: "Alles mischen.", name: null }],
             image_url: null,
             servings: 4,
             source_url: "https://www.fooby.ch/recipe",
@@ -925,7 +925,7 @@ describe("RecipeFormPage URL import", () => {
         return Promise.resolve(
           mockFetchResponse({
             title: "Test",
-            instructions: "Mix.",
+            steps: [{ position: 0, text: "Mix.", name: null }],
             image_url: null,
             servings: 2,
             source_url: "https://example.com/test",
@@ -1040,7 +1040,7 @@ describe("RecipeFormPage URL import", () => {
         return Promise.resolve(
           mockFetchResponse({
             title: "Test",
-            instructions: "Mix.",
+            steps: [{ position: 0, text: "Mix.", name: null }],
             image_url: null,
             servings: 2,
             source_url: "https://example.com/test",
@@ -1103,7 +1103,7 @@ describe("RecipeFormPage URL import", () => {
         return Promise.resolve(
           mockFetchResponse({
             title: "Test",
-            instructions: "Mix.",
+            steps: [{ position: 0, text: "Mix.", name: null }],
             image_url: null,
             servings: 2,
             source_url: "https://example.com/test",
@@ -1173,7 +1173,7 @@ describe("RecipeFormPage URL import", () => {
           mockFetchResponse({
             title: "Fooby Pasta",
             ingredients: [],
-            instructions: "Alles mischen.",
+            steps: [{ position: 0, text: "Alles mischen.", name: null }],
             image_url: null,
             servings: 4,
             source_url: "https://www.fooby.ch/recipe",
@@ -1219,7 +1219,7 @@ describe("RecipeFormPage URL import", () => {
           return Promise.resolve(
             mockFetchResponse({
               title: "Test",
-              instructions: "Mix.",
+              steps: [{ position: 0, text: "Mix.", name: null }],
               image_url: null,
               servings: 2,
               source_url: "https://example.com/test",
@@ -1301,7 +1301,7 @@ describe("RecipeFormPage URL import", () => {
           return Promise.resolve(
             mockFetchResponse({
               title: "Test",
-              instructions: "Mix.",
+              steps: [{ position: 0, text: "Mix.", name: null }],
               image_url: null,
               servings: 2,
               source_url: "https://example.com/test",
@@ -1384,7 +1384,7 @@ describe("RecipeFormPage URL import", () => {
           return Promise.resolve(
             mockFetchResponse({
               title: "Test",
-              instructions: "Mix.",
+              steps: [{ position: 0, text: "Mix.", name: null }],
               image_url: null,
               servings: 2,
               source_url: "https://example.com/test",
@@ -1453,7 +1453,7 @@ describe("RecipeFormPage URL import", () => {
           mockFetchResponse({
             title: "Spaghetti Bolognese",
             ingredients: [],
-            instructions: "",
+            steps: [],
             image_url: "https://example.com/img.jpg",
             servings: 4,
             source_url: "https://unknown.example/recipe",

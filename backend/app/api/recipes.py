@@ -17,6 +17,7 @@ from app.models.recipe import (
     RecipeFavorite,
     RecipeIngredient,
     RecipeNote,
+    RecipeStep,
     RecipeTag,
     Tag,
 )
@@ -32,9 +33,12 @@ from app.schemas.recipe import (
     RecipeNoteUpdateRequest,
     RecipeResponse,
     RecipeSaveRequest,
+    RecipeStepItem,
+    RecipeStepResponse,
     RecipeUpdateRequest,
     ScrapedIngredientItem,
     ScrapedRecipeResponse,
+    ScrapedStepItem,
     TagCreateRequest,
     TagResponse,
 )
@@ -68,30 +72,81 @@ def _build_recipe_ingredient_response(
     )
 
 
+def _build_recipe_step_response(step: RecipeStep) -> RecipeStepResponse:
+    return RecipeStepResponse(
+        id=step.id,
+        position=step.position,
+        text=step.text,
+        name=step.name,
+    )
+
+
+def _build_recipe_step_responses(
+    steps: list[RecipeStep],
+) -> list[RecipeStepResponse]:
+    sorted_steps = sorted(steps, key=lambda s: s.position)
+    return [_build_recipe_step_response(s) for s in sorted_steps]
+
+
+def _fts_row_payload(
+    recipe: Recipe,
+    steps: list[RecipeStep] | None = None,
+    ingredients: list[RecipeIngredient] | None = None,
+    tags: list[RecipeTag] | None = None,
+) -> dict[str, object]:
+    steps_text = " ".join(s.text for s in (steps or recipe.steps or []))
+    ingredients_text = " ".join(
+        ri.ingredient.name for ri in (ingredients or recipe.ingredients or [])
+        if ri.ingredient is not None
+    )
+    tag_names = " ".join(
+        rt.tag.name for rt in (tags or recipe.tags or [])
+        if rt.tag is not None
+    )
+    return {
+        "id": recipe.id,
+        "title": recipe.title,
+        "description": recipe.description or "",
+        "steps": steps_text,
+        "ingredients": ingredients_text,
+        "keywords": recipe.keywords or "",
+        "author": recipe.author or "",
+        "tags": tag_names,
+    }
+
+
 def _build_recipe_list_item(
     recipe: Recipe, user_id: int
 ) -> RecipeListResponse:
     tag_responses = [
         _build_tag_response(rt.tag) for rt in recipe.tags if rt.tag is not None
     ]
-    is_favorited = bool(recipe.favorites)
     recipe_fav_ids = [f.user_id for f in recipe.favorites]
-    if user_id in recipe_fav_ids:
-        is_favorited = True
+    is_favorited = user_id in recipe_fav_ids
 
     return RecipeListResponse(
         id=recipe.id,
         title=recipe.title,
-        instructions=recipe.instructions,
+        description=recipe.description,
         image_url=recipe.image_url,
         source_url=recipe.source_url,
         source_domain=recipe.source_domain,
         servings=recipe.servings,
+        prep_time_minutes=recipe.prep_time_minutes,
+        cook_time_minutes=recipe.cook_time_minutes,
+        total_time_minutes=recipe.total_time_minutes,
+        perform_time_minutes=recipe.perform_time_minutes,
+        nutrition=recipe.nutrition,
+        aggregate_rating=recipe.aggregate_rating,
+        keywords=recipe.keywords,
+        author=recipe.author,
+        date_published=recipe.date_published,
         household_id=recipe.household_id,
         tags=tag_responses,
         is_favorited=is_favorited,
         created_at=recipe.created_at,
         ingredients=[_build_recipe_ingredient_response(i) for i in recipe.ingredients],
+        steps=_build_recipe_step_responses(recipe.steps),
     )
 
 
@@ -105,13 +160,23 @@ def _build_recipe_detail(recipe: Recipe, user_id: int) -> RecipeDetailResponse:
     return RecipeDetailResponse(
         id=recipe.id,
         title=recipe.title,
-        instructions=recipe.instructions,
+        description=recipe.description,
         image_url=recipe.image_url,
         source_url=recipe.source_url,
         source_domain=recipe.source_domain,
         servings=recipe.servings,
+        prep_time_minutes=recipe.prep_time_minutes,
+        cook_time_minutes=recipe.cook_time_minutes,
+        total_time_minutes=recipe.total_time_minutes,
+        perform_time_minutes=recipe.perform_time_minutes,
+        nutrition=recipe.nutrition,
+        aggregate_rating=recipe.aggregate_rating,
+        keywords=recipe.keywords,
+        author=recipe.author,
+        date_published=recipe.date_published,
         household_id=recipe.household_id,
         ingredients=[_build_recipe_ingredient_response(i) for i in recipe.ingredients],
+        steps=_build_recipe_step_responses(recipe.steps),
         tags=tag_responses,
         is_favorited=is_favorited,
         created_at=recipe.created_at,
@@ -187,17 +252,71 @@ async def import_recipe(
             )
         )
 
+    steps: list[ScrapedStepItem] = []
+    if scraped.instructions:
+        steps.append(ScrapedStepItem(position=0, text=scraped.instructions, name=None))
+
     return ScrapedRecipeResponse(
         title=scraped.title,
         ingredients=parsed_items,
-        instructions=scraped.instructions,
         image_url=scraped.image_url,
         servings=scraped.servings,
         source_url=scraped.source_url,
         source_domain=scraped.source_domain,
         existing_recipe_id=existing.id if existing else None,
         is_partial=scraped.is_partial,
+        steps=steps,
     )
+
+
+def _assign_recipe_fields(
+    recipe: Recipe, body: RecipeSaveRequest | RecipeUpdateRequest
+) -> None:
+    if body.title is not None:
+        recipe.title = body.title
+    if body.description is not None:
+        recipe.description = body.description
+    if body.image_url is not None:
+        recipe.image_url = body.image_url
+    if body.source_url is not None:
+        recipe.source_url = body.source_url
+    if body.servings is not None:
+        recipe.servings = body.servings
+    if body.prep_time_minutes is not None:
+        recipe.prep_time_minutes = body.prep_time_minutes
+    if body.cook_time_minutes is not None:
+        recipe.cook_time_minutes = body.cook_time_minutes
+    if body.total_time_minutes is not None:
+        recipe.total_time_minutes = body.total_time_minutes
+    if body.perform_time_minutes is not None:
+        recipe.perform_time_minutes = body.perform_time_minutes
+    if body.nutrition is not None:
+        recipe.nutrition = body.nutrition
+    if body.aggregate_rating is not None:
+        recipe.aggregate_rating = body.aggregate_rating
+    if body.keywords is not None:
+        recipe.keywords = body.keywords
+    if body.author is not None:
+        recipe.author = body.author
+    if body.date_published is not None:
+        recipe.date_published = body.date_published
+
+
+async def _apply_recipe_steps(
+    db: AsyncSession, recipe: Recipe, step_items: list[RecipeStepItem]
+) -> None:
+    for existing in list(recipe.steps):
+        recipe.steps.remove(existing)
+    await db.flush()
+    for idx, step_item in enumerate(step_items):
+        recipe.steps.append(
+            RecipeStep(
+                recipe_id=recipe.id,
+                position=idx,
+                text=step_item.text,
+                name=step_item.name,
+            )
+        )
 
 
 @router.post("", response_model=RecipeResponse, status_code=status.HTTP_201_CREATED)
@@ -229,16 +348,37 @@ async def create_recipe(
 
     recipe = Recipe(
         title=body.title,
-        instructions=body.instructions,
+        description=body.description,
         image_url=body.image_url,
         source_url=body.source_url,
         source_domain=body.source_domain,
         servings=body.servings,
+        prep_time_minutes=body.prep_time_minutes,
+        cook_time_minutes=body.cook_time_minutes,
+        total_time_minutes=body.total_time_minutes,
+        perform_time_minutes=body.perform_time_minutes,
+        nutrition=body.nutrition,
+        aggregate_rating=body.aggregate_rating,
+        keywords=body.keywords,
+        author=body.author,
+        date_published=body.date_published,
         created_by=current_user.id,
         household_id=current_user.household_id,
     )
     db.add(recipe)
     await db.flush()
+
+    if body.steps:
+        for idx, step_item in enumerate(body.steps):
+            db.add(
+                RecipeStep(
+                    recipe_id=recipe.id,
+                    position=idx,
+                    text=step_item.text,
+                    name=step_item.name,
+                )
+            )
+        await db.flush()
 
     for item in body.ingredients:
         recipe_ingredient = RecipeIngredient(
@@ -280,35 +420,62 @@ async def create_recipe(
             ),
         )
 
+    await db.flush()
+
     from sqlalchemy import text as sqla_text
+    fts_payload = {
+        "id": recipe.id,
+        "title": recipe.title,
+        "description": recipe.description or "",
+        "steps": " ".join(s.text for s in body.steps),
+        "ingredients": "",
+        "keywords": recipe.keywords or "",
+        "author": recipe.author or "",
+        "tags": "",
+    }
     await db.execute(
         sqla_text(
-            "INSERT INTO recipes_fts(rowid, title, instructions) "
-            "VALUES (:id, :title, :instructions)"
+            "INSERT INTO recipes_fts(rowid, title, description, steps, "
+            "ingredients, keywords, author, tags) "
+            "VALUES (:id, :title, :description, :steps, "
+            ":ingredients, :keywords, :author, :tags)"
         ),
-        {"id": recipe.id, "title": recipe.title, "instructions": recipe.instructions},
+        fts_payload,
     )
 
     refreshed_result = await db.execute(
         select(Recipe)
         .where(Recipe.id == recipe.id)
         .options(
-            selectinload(Recipe.ingredients).selectinload(RecipeIngredient.ingredient)
+            selectinload(Recipe.ingredients).selectinload(RecipeIngredient.ingredient),
+            selectinload(Recipe.steps),
+            selectinload(Recipe.tags).selectinload(RecipeTag.tag),
+            selectinload(Recipe.favorites),
         )
     )
-    refreshed = refreshed_result.scalar_one()
+    refreshed = refreshed_result.unique().scalar_one()
     return RecipeResponse(
         id=refreshed.id,
         title=refreshed.title,
-        instructions=refreshed.instructions,
+        description=refreshed.description,
         image_url=refreshed.image_url,
         source_url=refreshed.source_url,
         source_domain=refreshed.source_domain,
         servings=refreshed.servings,
+        prep_time_minutes=refreshed.prep_time_minutes,
+        cook_time_minutes=refreshed.cook_time_minutes,
+        total_time_minutes=refreshed.total_time_minutes,
+        perform_time_minutes=refreshed.perform_time_minutes,
+        nutrition=refreshed.nutrition,
+        aggregate_rating=refreshed.aggregate_rating,
+        keywords=refreshed.keywords,
+        author=refreshed.author,
+        date_published=refreshed.date_published,
         household_id=refreshed.household_id,
         ingredients=[
             _build_recipe_ingredient_response(i) for i in refreshed.ingredients
         ],
+        steps=_build_recipe_step_responses(refreshed.steps),
         created_at=refreshed.created_at,
     )
 
@@ -384,6 +551,7 @@ async def list_recipes(
             selectinload(Recipe.ingredients).selectinload(
                 RecipeIngredient.ingredient
             ),
+            selectinload(Recipe.steps),
         )
         .order_by(Recipe.created_at.desc())
         .offset(offset)
@@ -418,6 +586,7 @@ async def list_favorite_recipes(
             selectinload(Recipe.ingredients).selectinload(
                 RecipeIngredient.ingredient
             ),
+            selectinload(Recipe.steps),
         )
         .order_by(Recipe.created_at.desc())
         .offset(offset)
@@ -444,6 +613,7 @@ async def get_recipe_detail(
             selectinload(Recipe.ingredients).selectinload(
                 RecipeIngredient.ingredient
             ),
+            selectinload(Recipe.steps),
             selectinload(Recipe.tags).selectinload(RecipeTag.tag),
             selectinload(Recipe.favorites),
         )
@@ -475,6 +645,7 @@ async def update_recipe(
             selectinload(Recipe.ingredients).selectinload(
                 RecipeIngredient.ingredient
             ),
+            selectinload(Recipe.steps),
             selectinload(Recipe.tags).selectinload(RecipeTag.tag),
             selectinload(Recipe.favorites),
         )
@@ -508,16 +679,7 @@ async def update_recipe(
                 },
             )
 
-    if body.title is not None:
-        recipe.title = body.title
-    if body.instructions is not None:
-        recipe.instructions = body.instructions
-    if body.image_url is not None:
-        recipe.image_url = body.image_url
-    if body.source_url is not None:
-        recipe.source_url = body.source_url
-    if body.servings is not None:
-        recipe.servings = body.servings
+    _assign_recipe_fields(recipe, body)
 
     if body.tag_ids is not None:
         tag_ids_set = set(body.tag_ids)
@@ -527,8 +689,15 @@ async def update_recipe(
             if tr.tag_id not in tag_ids_set:
                 recipe.tags.remove(tr)
 
-        for tid in tag_ids_set - recipe_tag_ids:
-            recipe.tags.append(RecipeTag(tag_id=tid))
+        new_tag_ids = tag_ids_set - recipe_tag_ids
+        if new_tag_ids:
+            tag_rows_result = await db.execute(
+                select(Tag).where(Tag.id.in_(new_tag_ids))
+            )
+            tag_rows = {t.id: t for t in tag_rows_result.scalars().all()}
+            for tid in new_tag_ids:
+                tag = tag_rows.get(tid)
+                recipe.tags.append(RecipeTag(tag_id=tid, tag=tag))
 
     if body.ingredients is not None:
         for item in body.ingredients:
@@ -558,29 +727,40 @@ async def update_recipe(
                 )
             )
 
+    if body.steps is not None:
+        await _apply_recipe_steps(db, recipe, body.steps)
+
     await db.flush()
 
     from sqlalchemy import text as sqla_text
-    if body.title is not None or body.instructions is not None:
+    fts_reindex = (
+        body.title is not None
+        or body.description is not None
+        or body.keywords is not None
+        or body.author is not None
+        or body.steps is not None
+        or body.ingredients is not None
+        or body.tag_ids is not None
+    )
+    if fts_reindex:
         await db.execute(
-            sqla_text(
-                "DELETE FROM recipes_fts WHERE rowid = :id"
-            ),
+            sqla_text("DELETE FROM recipes_fts WHERE rowid = :id"),
             {"id": recipe_id},
         )
+        fts_payload = _fts_row_payload(recipe)
         await db.execute(
             sqla_text(
-                "INSERT INTO recipes_fts(rowid, title, instructions) "
-                "VALUES (:id, :title, :instructions)"
+                "INSERT INTO recipes_fts(rowid, title, description, steps, "
+                "ingredients, keywords, author, tags) "
+                "VALUES (:id, :title, :description, :steps, "
+                ":ingredients, :keywords, :author, :tags)"
             ),
-            {
-                "id": recipe.id,
-                "title": recipe.title,
-                "instructions": recipe.instructions,
-            },
+            fts_payload,
         )
 
-    await db.refresh(recipe, ["ingredients", "tags", "favorites"])
+    await db.refresh(
+        recipe, ["ingredients", "steps", "tags", "favorites"]
+    )
     return _build_recipe_detail(recipe, current_user.id)
 
 

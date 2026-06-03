@@ -14,19 +14,36 @@ interface RecipeIngredient {
   order_index: number
 }
 
+interface RecipeStep {
+  id: number
+  position: number
+  text: string
+  name: string | null
+}
+
 interface RecipeItem {
   id: number
   title: string
-  instructions: string
+  description: string | null
   image_url: string | null
   source_url: string | null
   source_domain: string | null
   servings: number
+  prep_time_minutes: number | null
+  cook_time_minutes: number | null
+  total_time_minutes: number | null
+  perform_time_minutes: number | null
+  nutrition: Record<string, unknown> | null
+  aggregate_rating: Record<string, unknown> | null
+  keywords: string | null
+  author: string | null
+  date_published: string | null
   household_id: number
   tags: TagItem[]
   is_favorited: boolean
   created_at: string | null
   ingredients: RecipeIngredient[]
+  steps: RecipeStep[]
 }
 
 interface TagItem {

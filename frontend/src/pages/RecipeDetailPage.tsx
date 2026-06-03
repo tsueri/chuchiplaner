@@ -14,11 +14,20 @@ import { PageHeader } from "@/components/PageHeader"
 interface RecipeDetail {
   id: number
   title: string
-  instructions: string
+  description: string | null
   image_url: string | null
   source_url: string | null
   source_domain: string | null
   servings: number
+  prep_time_minutes: number | null
+  cook_time_minutes: number | null
+  total_time_minutes: number | null
+  perform_time_minutes: number | null
+  nutrition: Record<string, unknown> | null
+  aggregate_rating: Record<string, unknown> | null
+  keywords: string | null
+  author: string | null
+  date_published: string | null
   household_id: number
   ingredients: {
     id: number
@@ -27,6 +36,12 @@ interface RecipeDetail {
     quantity: number
     unit: string
     order_index: number
+  }[]
+  steps: {
+    id: number
+    position: number
+    text: string
+    name: string | null
   }[]
   tags: { id: number; name: string; group: string; household_id: number | null }[]
   is_favorited: boolean
@@ -53,7 +68,7 @@ interface TagItem {
 
 interface EditState {
   title: string
-  instructions: string
+  stepsText: string
   servings: number
   image_url: string
   source_url: string
@@ -63,9 +78,13 @@ interface EditState {
 }
 
 function buildEditState(recipe: RecipeDetail): EditState {
+  const stepsText = recipe.steps
+    .sort((a, b) => a.position - b.position)
+    .map((s) => s.text)
+    .join("\n")
   return {
     title: recipe.title,
-    instructions: recipe.instructions,
+    stepsText,
     servings: recipe.servings,
     image_url: recipe.image_url ?? "",
     source_url: recipe.source_url ?? "",
@@ -292,7 +311,7 @@ export default function RecipeDetailPage() {
     if (!editState) return false
     if (saving) return false
     if (editState.title.trim() === "") return false
-    if (editState.instructions.trim() === "") return false
+    if (editState.stepsText.trim() === "") return false
     return true
   }, [editState, saving])
 
@@ -308,12 +327,17 @@ export default function RecipeDetailPage() {
         unit: r.unit,
         order_index: idx,
       }))
+    const steps = editState.stepsText
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line !== "")
+      .map((text, position) => ({ position, text, name: null }))
     try {
       const updated = (await api(`/recipes/${id}`, {
         method: "PUT",
         body: JSON.stringify({
           title: editState.title.trim(),
-          instructions: editState.instructions.trim(),
+          steps,
           servings: editState.servings,
           image_url: emptyToNull(editState.image_url),
           source_url: emptyToNull(editState.source_url),
@@ -379,15 +403,15 @@ export default function RecipeDetailPage() {
 
           <div className="space-y-2">
             <label
-              htmlFor="edit-recipe-instructions"
+              htmlFor="edit-recipe-steps"
               className="text-sm font-medium"
             >
               Zubereitung
             </label>
             <textarea
-              id="edit-recipe-instructions"
-              value={editState.instructions}
-              onChange={(e) => updateEditField("instructions", e.target.value)}
+              id="edit-recipe-steps"
+              value={editState.stepsText}
+              onChange={(e) => updateEditField("stepsText", e.target.value)}
               rows={6}
               required
               className="w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
@@ -604,12 +628,23 @@ export default function RecipeDetailPage() {
         </div>
       )}
 
-      <div className="mt-6">
-        <h2 className="text-lg font-semibold">Zubereitung</h2>
-        <div className="mt-2 whitespace-pre-wrap rounded bg-muted/30 p-3 text-sm leading-relaxed">
-          {recipe.instructions}
+      {recipe.steps.length > 0 && (
+        <div className="mt-6">
+          <h2 className="text-lg font-semibold">Zubereitung</h2>
+          <ol className="mt-2 list-inside list-decimal space-y-3">
+            {recipe.steps
+              .sort((a, b) => a.position - b.position)
+              .map((step) => (
+                <li key={step.id} className="text-sm leading-relaxed">
+                  {step.name && (
+                    <h3 className="mb-1 text-base font-medium">{step.name}</h3>
+                  )}
+                  <p className="whitespace-pre-wrap">{step.text}</p>
+                </li>
+              ))}
+          </ol>
         </div>
-      </div>
+      )}
 
       <div className="mt-8">
         <h2 className="text-lg font-semibold">Notizen</h2>

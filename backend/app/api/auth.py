@@ -169,9 +169,19 @@ async def list_user_favorites(
 
     return [
         RecipeListResponse(
-            id=r.id, title=r.title, instructions=r.instructions,
+            id=r.id, title=r.title,
+            description=r.description,
             image_url=r.image_url, source_url=r.source_url,
             source_domain=r.source_domain, servings=r.servings,
+            prep_time_minutes=r.prep_time_minutes,
+            cook_time_minutes=r.cook_time_minutes,
+            total_time_minutes=r.total_time_minutes,
+            perform_time_minutes=r.perform_time_minutes,
+            nutrition=r.nutrition,
+            aggregate_rating=r.aggregate_rating,
+            keywords=r.keywords,
+            author=r.author,
+            date_published=r.date_published,
             household_id=r.household_id,
             tags=[
                 TagResponse(id=t.id, name=t.name, group=t.group,

@@ -10,7 +10,14 @@ from app.models.grocery_list import GroceryList, GroceryListItem
 from app.models.household import MealSlotTemplate
 from app.models.ingredient import IngredientAlias
 from app.models.inventory import InventoryItem
-from app.models.recipe import Recipe, RecipeIngredient, RecipeNote, RecipeTag, Tag
+from app.models.recipe import (
+    Recipe,
+    RecipeIngredient,
+    RecipeNote,
+    RecipeStep,
+    RecipeTag,
+    Tag,
+)
 from app.models.user import User
 from app.models.week_plan import MealSlot, WeekPlan
 from app.schemas.household import (
@@ -310,6 +317,7 @@ async def export_household_data(
     recipe_ids = [r.id for r in recipes]
 
     ingredients_by_recipe: dict[int, list[dict[str, object]]] = {}
+    steps_by_recipe: dict[int, list[dict[str, object]]] = {}
     tags_by_recipe: dict[int, list[dict[str, object]]] = {}
     notes_by_recipe: dict[int, list[dict[str, object]]] = {}
     if recipe_ids:
@@ -323,6 +331,15 @@ async def export_household_data(
                 "id": ri.id, "ingredient_id": ri.ingredient_id,
                 "quantity": ri.quantity, "unit": ri.unit,
                 "order_index": ri.order_index,
+            })
+
+        rs_result = await db.execute(
+            select(RecipeStep).where(RecipeStep.recipe_id.in_(recipe_ids))
+        )
+        for rs in rs_result.scalars():
+            steps_by_recipe.setdefault(rs.recipe_id, []).append({
+                "id": rs.id, "position": rs.position,
+                "text": rs.text, "name": rs.name,
             })
 
         rt_result = await db.execute(
@@ -421,11 +438,22 @@ async def export_household_data(
         ],
         "recipes": [
             {
-                "id": r.id, "title": r.title, "instructions": r.instructions,
+                "id": r.id, "title": r.title, "description": r.description,
                 "image_url": r.image_url, "source_url": r.source_url,
                 "source_domain": r.source_domain, "servings": r.servings,
+                "prep_time_minutes": r.prep_time_minutes,
+                "cook_time_minutes": r.cook_time_minutes,
+                "total_time_minutes": r.total_time_minutes,
+                "perform_time_minutes": r.perform_time_minutes,
+                "nutrition": r.nutrition,
+                "aggregate_rating": r.aggregate_rating,
+                "keywords": r.keywords,
+                "author": r.author,
+                "date_published": r.date_published.isoformat()
+                    if r.date_published else None,
                 "created_at": r.created_at,
                 "ingredients": ingredients_by_recipe.get(r.id, []),
+                "steps": steps_by_recipe.get(r.id, []),
                 "tags": tags_by_recipe.get(r.id, []),
                 "notes": notes_by_recipe.get(r.id, []),
             }

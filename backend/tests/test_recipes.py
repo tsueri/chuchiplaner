@@ -45,7 +45,7 @@ async def _create_recipe(
 ) -> dict:
     body = {
         "title": title,
-        "instructions": "Cook it.",
+        "steps": [{"text": "Cook it."}],
         "servings": 3,
         **kwargs,
     }
@@ -215,7 +215,7 @@ async def test_create_and_list_recipes(client: AsyncClient) -> None:
         "/api/recipes",
         json={
             "title": "Pasta",
-            "instructions": "Cook pasta.\nAdd sauce.",
+            "steps": [{"text": "Cook pasta.\nAdd sauce."}],
             "servings": 3,
             "source_url": "https://example.com/pasta",
             "source_domain": "example.com",
@@ -226,7 +226,10 @@ async def test_create_and_list_recipes(client: AsyncClient) -> None:
     data = create_resp.json()
     assert data["title"] == "Pasta"
     assert data["servings"] == 3
-    assert data["instructions"] == "Cook pasta.\nAdd sauce."
+    assert data["steps"] == [
+        {"id": data["steps"][0]["id"], "position": 0,
+         "text": "Cook pasta.\nAdd sauce.", "name": None}
+    ]
     assert data["source_url"] == "https://example.com/pasta"
 
     list_resp = await client.get("/api/recipes", cookies=cookies)
@@ -348,7 +351,7 @@ async def test_get_recipe_detail(client: AsyncClient) -> None:
         client,
         cookies,
         title="Detail Recipe",
-        instructions="Step 1. Step 2.",
+        steps=[{"text": "Step 1. Step 2."}],
         source_url="https://example.com/detail",
     )
     recipe_id = recipe["id"]
@@ -357,7 +360,10 @@ async def test_get_recipe_detail(client: AsyncClient) -> None:
     assert resp.status_code == 200
     data = resp.json()
     assert data["title"] == "Detail Recipe"
-    assert data["instructions"] == "Step 1. Step 2."
+    assert data["steps"] == [
+        {"id": data["steps"][0]["id"], "position": 0,
+         "text": "Step 1. Step 2.", "name": None}
+    ]
     assert data["servings"] == 3
     assert data["source_url"] == "https://example.com/detail"
     assert "tags" in data
@@ -413,7 +419,7 @@ async def _create_recipe_with_ingredients(
 
     body = {
         "title": title,
-        "instructions": "Cook it.",
+        "steps": [{"text": "Cook it."}],
         "servings": 4,
         "ingredients": [
             {
@@ -576,7 +582,7 @@ async def test_update_recipe(client: AsyncClient) -> None:
     cookies = auth["cookies"]
 
     recipe = await _create_recipe(
-        client, cookies, title="Old Title", instructions="Old instr."
+        client, cookies, title="Old Title", steps=[{"text": "Old instr."}]
     )
     recipe_id = recipe["id"]
 
@@ -584,7 +590,7 @@ async def test_update_recipe(client: AsyncClient) -> None:
         f"/api/recipes/{recipe_id}",
         json={
             "title": "New Title",
-            "instructions": "New instr.",
+            "steps": [{"text": "New instr."}],
             "servings": 5,
         },
         cookies=cookies,
@@ -592,7 +598,10 @@ async def test_update_recipe(client: AsyncClient) -> None:
     assert resp.status_code == 200
     data = resp.json()
     assert data["title"] == "New Title"
-    assert data["instructions"] == "New instr."
+    assert data["steps"] == [
+        {"id": data["steps"][0]["id"], "position": 0,
+         "text": "New instr.", "name": None}
+    ]
     assert data["servings"] == 5
 
 
@@ -919,7 +928,7 @@ async def test_update_recipe_reindexes_fts_on_title_change(
     cookies = auth["cookies"]
 
     recipe = await _create_recipe(
-        client, cookies, title="Boring Recipe", instructions="Plain steps."
+        client, cookies, title="Boring Recipe", steps=[{"text": "Plain steps."}]
     )
     recipe_id = recipe["id"]
 
@@ -945,7 +954,7 @@ async def test_update_recipe_reindexes_fts_on_title_change(
 
 
 @pytest.mark.asyncio
-async def test_update_recipe_reindexes_fts_on_instructions_change(
+async def test_update_recipe_reindexes_fts_on_step_change(
     client: AsyncClient,
 ) -> None:
     auth = await _register(client, "ftsinstreindex")
@@ -955,7 +964,7 @@ async def test_update_recipe_reindexes_fts_on_instructions_change(
         client,
         cookies,
         title="Plain",
-        instructions="Just boil water.",
+        steps=[{"text": "Just boil water."}],
     )
     recipe_id = recipe["id"]
 
@@ -967,7 +976,7 @@ async def test_update_recipe_reindexes_fts_on_instructions_change(
 
     rename = await client.put(
         f"/api/recipes/{recipe_id}",
-        json={"instructions": "Make a Kartoffelstock with butter and milk."},
+        json={"steps": [{"text": "Make a Kartoffelstock with butter and milk."}]},
         cookies=cookies,
     )
     assert rename.status_code == 200
@@ -1140,7 +1149,7 @@ async def test_search_recipes_by_title(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_search_recipes_by_instructions(client: AsyncClient) -> None:
+async def test_search_recipes_by_steps(client: AsyncClient) -> None:
     auth = await _register(client, "searchinstuser")
     cookies = auth["cookies"]
 
@@ -1148,13 +1157,13 @@ async def test_search_recipes_by_instructions(client: AsyncClient) -> None:
         client,
         cookies,
         title="Risotto",
-        instructions="Use Arborio rice and Parmesan.",
+        steps=[{"text": "Use Arborio rice and Parmesan."}],
     )
     await _create_recipe(
         client,
         cookies,
         title="Pasta",
-        instructions="Boil water and cook.",
+        steps=[{"text": "Boil water and cook."}],
     )
 
     resp = await client.get(
@@ -1754,3 +1763,366 @@ async def test_import_existing_lookup_filters_by_household(
         )
     assert import2.status_code == 200
     assert import2.json()["existing_recipe_id"] is None
+
+
+# ----- RecipeStep CRUD / cascade-delete -----
+
+
+@pytest.mark.asyncio
+async def test_get_recipe_detail_returns_steps(
+    client: AsyncClient,
+) -> None:
+    auth = await _register(client, "stepdetail")
+    cookies = auth["cookies"]
+
+    create_resp = await client.post(
+        "/api/recipes",
+        json={
+            "title": "Mit Schritten",
+            "steps": [
+                {"position": 0, "text": "Erster Schritt", "name": "Vorbereiten"},
+                {"position": 1, "text": "Zweiter Schritt", "name": None},
+            ],
+        },
+        cookies=cookies,
+    )
+    assert create_resp.status_code == 201
+    recipe_id = create_resp.json()["id"]
+
+    detail = await client.get(f"/api/recipes/{recipe_id}", cookies=cookies)
+    assert detail.status_code == 200
+    data = detail.json()
+    assert len(data["steps"]) == 2
+    assert data["steps"][0]["position"] == 0
+    assert data["steps"][0]["text"] == "Erster Schritt"
+    assert data["steps"][0]["name"] == "Vorbereiten"
+    assert data["steps"][1]["position"] == 1
+    assert data["steps"][1]["text"] == "Zweiter Schritt"
+    assert data["steps"][1]["name"] is None
+
+
+@pytest.mark.asyncio
+async def test_update_recipe_replaces_steps(
+    client: AsyncClient,
+) -> None:
+    auth = await _register(client, "stepreplace")
+    cookies = auth["cookies"]
+
+    create = await client.post(
+        "/api/recipes",
+        json={
+            "title": "Replace Steps",
+            "steps": [
+                {"position": 0, "text": "Alt 1", "name": None},
+                {"position": 1, "text": "Alt 2", "name": None},
+            ],
+        },
+        cookies=cookies,
+    )
+    assert create.status_code == 201
+    recipe_id = create.json()["id"]
+
+    resp = await client.put(
+        f"/api/recipes/{recipe_id}",
+        json={
+            "steps": [
+                {"position": 0, "text": "Neu 1", "name": "Phase"},
+                {"position": 1, "text": "Neu 2", "name": None},
+                {"position": 2, "text": "Neu 3", "name": None},
+            ],
+        },
+        cookies=cookies,
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data["steps"]) == 3
+    positions = sorted(s["position"] for s in data["steps"])
+    assert positions == [0, 1, 2]
+    assert data["steps"][0]["text"] == "Neu 1"
+    assert data["steps"][0]["name"] == "Phase"
+
+
+@pytest.mark.asyncio
+async def test_update_recipe_null_steps_preserves_existing(
+    client: AsyncClient,
+) -> None:
+    auth = await _register(client, "steppreserve")
+    cookies = auth["cookies"]
+
+    create = await client.post(
+        "/api/recipes",
+        json={
+            "title": "Keep Steps",
+            "steps": [
+                {"position": 0, "text": "Bleibt 1", "name": None},
+                {"position": 1, "text": "Bleibt 2", "name": None},
+            ],
+        },
+        cookies=cookies,
+    )
+    assert create.status_code == 201
+    recipe_id = create.json()["id"]
+    original_step_texts = sorted(
+        s["text"] for s in create.json()["steps"]
+    )
+
+    resp = await client.put(
+        f"/api/recipes/{recipe_id}",
+        json={"title": "Renamed", "steps": None},
+        cookies=cookies,
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["title"] == "Renamed"
+    assert sorted(s["text"] for s in data["steps"]) == original_step_texts
+
+    resp_omitted = await client.put(
+        f"/api/recipes/{recipe_id}",
+        json={"title": "Renamed Again"},
+        cookies=cookies,
+    )
+    assert resp_omitted.status_code == 200
+    data2 = resp_omitted.json()
+    assert sorted(s["text"] for s in data2["steps"]) == original_step_texts
+
+
+@pytest.mark.asyncio
+async def test_recipe_step_cascade_delete(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    auth = await _register_and_set_role(
+        client, db_session, "stepcascade", role="admin"
+    )
+    cookies = auth["cookies"]
+
+    from sqlalchemy import select
+
+    from app.models.recipe import Recipe, RecipeStep
+
+    create = await client.post(
+        "/api/recipes",
+        json={
+            "title": "Will Delete",
+            "steps": [
+                {"position": 0, "text": "A", "name": None},
+                {"position": 1, "text": "B", "name": None},
+            ],
+        },
+        cookies=cookies,
+    )
+    assert create.status_code == 201
+    recipe_id = create.json()["id"]
+
+    pre_count = (
+        await db_session.execute(
+            select(RecipeStep).where(RecipeStep.recipe_id == recipe_id)
+        )
+    ).scalars().all()
+    assert len(pre_count) == 2
+
+    recipe_obj = (
+        await db_session.execute(
+            select(Recipe).where(Recipe.id == recipe_id)
+        )
+    ).scalar_one()
+    await db_session.delete(recipe_obj)
+    await db_session.commit()
+
+    post_count = (
+        await db_session.execute(
+            select(RecipeStep).where(RecipeStep.recipe_id == recipe_id)
+        )
+    ).scalars().all()
+    assert len(post_count) == 0
+
+
+@pytest.mark.asyncio
+async def test_recipe_step_unique_position(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    auth = await _register(client, "stepunique")
+    cookies = auth["cookies"]
+
+    create = await client.post(
+        "/api/recipes",
+        json={
+            "title": "Uniq",
+            "steps": [
+                {"position": 0, "text": "A", "name": None},
+            ],
+        },
+        cookies=cookies,
+    )
+    assert create.status_code == 201
+    recipe_id = create.json()["id"]
+
+    from sqlalchemy import text
+
+    with pytest.raises(Exception):
+        await db_session.execute(
+            text(
+                "INSERT INTO recipe_steps (recipe_id, position, text, name) "
+                f"VALUES ({recipe_id}, 0, 'B', NULL)"
+            )
+        )
+
+
+# ----- New field round-trips -----
+
+
+@pytest.mark.asyncio
+async def test_create_recipe_with_new_fields_round_trips(
+    client: AsyncClient,
+) -> None:
+    auth = await _register(client, "newfields")
+    cookies = auth["cookies"]
+
+    create = await client.post(
+        "/api/recipes",
+        json={
+            "title": "Mit allen Feldern",
+            "description": "Kurze Zusammenfassung",
+            "prep_time_minutes": 15,
+            "cook_time_minutes": 30,
+            "total_time_minutes": 45,
+            "perform_time_minutes": 20,
+            "nutrition": {
+                "calories": "420 kcal",
+                "proteinContent": "30 g",
+            },
+            "aggregate_rating": {
+                "ratingValue": "4.5",
+                "reviewCount": "12",
+            },
+            "keywords": "schnell, vegetarisch",
+            "author": "Anna",
+            "date_published": "2026-01-15",
+            "steps": [{"position": 0, "text": "Alles mischen."}],
+        },
+        cookies=cookies,
+    )
+    assert create.status_code == 201
+    data = create.json()
+    assert data["description"] == "Kurze Zusammenfassung"
+    assert data["prep_time_minutes"] == 15
+    assert data["cook_time_minutes"] == 30
+    assert data["total_time_minutes"] == 45
+    assert data["perform_time_minutes"] == 20
+    assert data["nutrition"] == {
+        "calories": "420 kcal",
+        "proteinContent": "30 g",
+    }
+    assert data["aggregate_rating"] == {
+        "ratingValue": "4.5",
+        "reviewCount": "12",
+    }
+    assert data["keywords"] == "schnell, vegetarisch"
+    assert data["author"] == "Anna"
+    assert data["date_published"] == "2026-01-15"
+
+    detail = await client.get(
+        f"/api/recipes/{data['id']}", cookies=cookies
+    )
+    assert detail.status_code == 200
+    d = detail.json()
+    assert d["description"] == "Kurze Zusammenfassung"
+    assert d["prep_time_minutes"] == 15
+    assert d["nutrition"] == {
+        "calories": "420 kcal",
+        "proteinContent": "30 g",
+    }
+    assert d["date_published"] == "2026-01-15"
+
+
+@pytest.mark.asyncio
+async def test_create_recipe_without_new_fields_returns_nulls(
+    client: AsyncClient,
+) -> None:
+    auth = await _register(client, "nonewfields")
+    cookies = auth["cookies"]
+
+    create = await client.post(
+        "/api/recipes",
+        json={
+            "title": "Schlicht",
+            "steps": [{"position": 0, "text": "Los."}],
+        },
+        cookies=cookies,
+    )
+    assert create.status_code == 201
+    data = create.json()
+    assert data["description"] is None
+    assert data["prep_time_minutes"] is None
+    assert data["cook_time_minutes"] is None
+    assert data["total_time_minutes"] is None
+    assert data["perform_time_minutes"] is None
+    assert data["nutrition"] is None
+    assert data["aggregate_rating"] is None
+    assert data["keywords"] is None
+    assert data["author"] is None
+    assert data["date_published"] is None
+
+
+@pytest.mark.asyncio
+async def test_update_recipe_sets_new_fields(
+    client: AsyncClient,
+) -> None:
+    auth = await _register(client, "setnewfields")
+    cookies = auth["cookies"]
+
+    create = await client.post(
+        "/api/recipes",
+        json={
+            "title": "Mutable",
+            "steps": [{"position": 0, "text": "Start."}],
+        },
+        cookies=cookies,
+    )
+    assert create.status_code == 201
+    recipe_id = create.json()["id"]
+
+    set_resp = await client.put(
+        f"/api/recipes/{recipe_id}",
+        json={
+            "description": "Neu",
+            "cook_time_minutes": 25,
+            "keywords": "schnell",
+        },
+        cookies=cookies,
+    )
+    assert set_resp.status_code == 200
+    data = set_resp.json()
+    assert data["description"] == "Neu"
+    assert data["cook_time_minutes"] == 25
+    assert data["keywords"] == "schnell"
+
+
+@pytest.mark.asyncio
+async def test_import_recipe_returns_steps(client: AsyncClient) -> None:
+    auth = await _register(client, "importsteps")
+    cookies = auth["cookies"]
+
+    mock_recipe = ScrapedRecipe(
+        title="Import Steps",
+        ingredients=["100g Mehl"],
+        instructions="Schritt A\nSchritt B",
+        servings=2,
+        source_url="https://www.example.com/import-steps",
+        source_domain="www.example.com",
+    )
+    with patch(
+        "app.api.recipes.RecipeScraper.scrape", return_value=mock_recipe
+    ):
+        resp = await client.post(
+            "/api/recipes/import",
+            json={"url": "https://www.example.com/import-steps"},
+            cookies=cookies,
+        )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "steps" in data
+    assert len(data["steps"]) == 1
+    assert data["steps"][0]["position"] == 0
+    assert data["steps"][0]["text"] == "Schritt A\nSchritt B"
+    assert data["steps"][0]["name"] is None
+    assert "instructions" not in data

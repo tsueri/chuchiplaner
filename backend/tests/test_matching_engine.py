@@ -373,8 +373,14 @@ async def _setup_match_data(
 
     await db_session.execute(
         text(
-            "INSERT INTO recipes (id, title, instructions, servings, household_id) "
-            f"VALUES (2001, 'Pasta Sauce', 'Cook.', 4, {household_id})"
+            "INSERT INTO recipes (id, title, servings, household_id) "
+            f"VALUES (2001, 'Pasta Sauce', 4, {household_id})"
+        )
+    )
+    await db_session.execute(
+        text(
+            "INSERT INTO recipe_steps (recipe_id, position, text, name) "
+            "VALUES (2001, 0, 'Cook.', NULL)"
         )
     )
     await db_session.execute(
@@ -393,15 +399,22 @@ async def _setup_match_data(
     )
     await db_session.execute(
         text(
-            "INSERT INTO recipes_fts (rowid, title, instructions) "
-            "VALUES (2001, 'Pasta Sauce', 'Cook.')"
+            "INSERT INTO recipes_fts (rowid, title, description, steps, "
+            "ingredients, keywords, author, tags) "
+            "VALUES (2001, 'Pasta Sauce', '', 'Cook.', '', '', '', '')"
         )
     )
 
     await db_session.execute(
         text(
-            "INSERT INTO recipes (id, title, instructions, servings, household_id) "
-            f"VALUES (2002, 'Salad', 'Mix.', 2, {household_id})"
+            "INSERT INTO recipes (id, title, servings, household_id) "
+            f"VALUES (2002, 'Salad', 2, {household_id})"
+        )
+    )
+    await db_session.execute(
+        text(
+            "INSERT INTO recipe_steps (recipe_id, position, text, name) "
+            "VALUES (2002, 0, 'Mix.', NULL)"
         )
     )
     await db_session.execute(
@@ -420,8 +433,9 @@ async def _setup_match_data(
     )
     await db_session.execute(
         text(
-            "INSERT INTO recipes_fts (rowid, title, instructions) "
-            "VALUES (2002, 'Salad', 'Mix.')"
+            "INSERT INTO recipes_fts (rowid, title, description, steps, "
+            "ingredients, keywords, author, tags) "
+            "VALUES (2002, 'Salad', '', 'Mix.', '', '', '', '')"
         )
     )
 

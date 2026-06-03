@@ -1,4 +1,5 @@
-from datetime import datetime
+from datetime import date, datetime
+from typing import Any
 
 from pydantic import BaseModel, Field, field_serializer
 
@@ -18,20 +19,45 @@ class RecipeIngredientResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class RecipeStepResponse(BaseModel):
+    id: int
+    position: int
+    text: str
+    name: str | None = None
+
+    model_config = {"from_attributes": True}
+
+
 class RecipeResponse(BaseModel):
     id: int
     title: str
-    instructions: str
+    description: str | None = None
     image_url: str | None = None
     source_url: str | None = None
     source_domain: str | None = None
     servings: int
+    prep_time_minutes: int | None = None
+    cook_time_minutes: int | None = None
+    total_time_minutes: int | None = None
+    perform_time_minutes: int | None = None
+    nutrition: dict[str, Any] | None = None
+    aggregate_rating: dict[str, Any] | None = None
+    keywords: str | None = None
+    author: str | None = None
+    date_published: date | None = None
     household_id: int
     ingredients: list[RecipeIngredientResponse] = []
+    steps: list[RecipeStepResponse] = []
     created_at: datetime | None = None
 
     @field_serializer("created_at")
     def serialize_created_at(self, value: datetime | None) -> str | None:
+        if value is None:
+            return None
+        return value.isoformat()
+
+    @field_serializer("date_published")
+    def serialize_date_published(self, value: date | None) -> str | None:
         if value is None:
             return None
         return value.isoformat()
@@ -48,16 +74,22 @@ class ScrapedIngredientItem(BaseModel):
     confidence: float = 0.0
 
 
+class ScrapedStepItem(BaseModel):
+    position: int = 0
+    text: str
+    name: str | None = None
+
+
 class ScrapedRecipeResponse(BaseModel):
     title: str
     ingredients: list[ScrapedIngredientItem]
-    instructions: str
     image_url: str | None = None
     servings: int
     source_url: str
     source_domain: str
     existing_recipe_id: int | None = None
     is_partial: bool = False
+    steps: list[ScrapedStepItem] = []
 
 
 class LearnedAliasItem(BaseModel):
@@ -65,14 +97,30 @@ class LearnedAliasItem(BaseModel):
     ingredient_id: int
 
 
+class RecipeStepItem(BaseModel):
+    position: int = 0
+    text: str = Field(min_length=1)
+    name: str | None = Field(default=None, max_length=255)
+
+
 class RecipeSaveRequest(BaseModel):
     title: str = Field(min_length=1, max_length=255)
-    instructions: str = Field(min_length=1)
+    description: str | None = Field(default=None, max_length=2048)
     image_url: str | None = Field(default=None, max_length=2048)
     source_url: str | None = Field(default=None, max_length=2048)
     source_domain: str | None = Field(default=None, max_length=255)
     servings: int = Field(default=4, ge=1)
+    prep_time_minutes: int | None = Field(default=None, ge=0)
+    cook_time_minutes: int | None = Field(default=None, ge=0)
+    total_time_minutes: int | None = Field(default=None, ge=0)
+    perform_time_minutes: int | None = Field(default=None, ge=0)
+    nutrition: dict[str, Any] | None = None
+    aggregate_rating: dict[str, Any] | None = None
+    keywords: str | None = None
+    author: str | None = Field(default=None, max_length=255)
+    date_published: date | None = None
     ingredients: list["RecipeIngredientItem"] = Field(default_factory=list)
+    steps: list["RecipeStepItem"] = Field(default_factory=list)
     learned_aliases: list["LearnedAliasItem"] = Field(default_factory=list)
 
 
@@ -150,19 +198,35 @@ class RecipeNoteUpdateRequest(BaseModel):
 class RecipeDetailResponse(BaseModel):
     id: int
     title: str
-    instructions: str
+    description: str | None = None
     image_url: str | None = None
     source_url: str | None = None
     source_domain: str | None = None
     servings: int
+    prep_time_minutes: int | None = None
+    cook_time_minutes: int | None = None
+    total_time_minutes: int | None = None
+    perform_time_minutes: int | None = None
+    nutrition: dict[str, Any] | None = None
+    aggregate_rating: dict[str, Any] | None = None
+    keywords: str | None = None
+    author: str | None = None
+    date_published: date | None = None
     household_id: int
     ingredients: list[RecipeIngredientResponse] = []
+    steps: list[RecipeStepResponse] = []
     tags: list[TagResponse] = []
     is_favorited: bool = False
     created_at: datetime | None = None
 
     @field_serializer("created_at")
     def serialize_created_at(self, value: datetime | None) -> str | None:
+        if value is None:
+            return None
+        return value.isoformat()
+
+    @field_serializer("date_published")
+    def serialize_date_published(self, value: date | None) -> str | None:
         if value is None:
             return None
         return value.isoformat()
@@ -173,19 +237,35 @@ class RecipeDetailResponse(BaseModel):
 class RecipeListResponse(BaseModel):
     id: int
     title: str
-    instructions: str
+    description: str | None = None
     image_url: str | None = None
     source_url: str | None = None
     source_domain: str | None = None
     servings: int
+    prep_time_minutes: int | None = None
+    cook_time_minutes: int | None = None
+    total_time_minutes: int | None = None
+    perform_time_minutes: int | None = None
+    nutrition: dict[str, Any] | None = None
+    aggregate_rating: dict[str, Any] | None = None
+    keywords: str | None = None
+    author: str | None = None
+    date_published: date | None = None
     household_id: int
     tags: list[TagResponse] = []
     is_favorited: bool = False
     ingredients: list[RecipeIngredientResponse] = []
+    steps: list[RecipeStepResponse] = []
     created_at: datetime | None = None
 
     @field_serializer("created_at")
     def serialize_created_at(self, value: datetime | None) -> str | None:
+        if value is None:
+            return None
+        return value.isoformat()
+
+    @field_serializer("date_published")
+    def serialize_date_published(self, value: date | None) -> str | None:
         if value is None:
             return None
         return value.isoformat()
@@ -195,9 +275,19 @@ class RecipeListResponse(BaseModel):
 
 class RecipeUpdateRequest(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=255)
-    instructions: str | None = Field(default=None, min_length=1)
+    description: str | None = Field(default=None, max_length=2048)
     image_url: str | None = Field(default=None, max_length=2048)
     source_url: str | None = Field(default=None, max_length=2048)
     servings: int | None = Field(default=None, ge=1)
+    prep_time_minutes: int | None = Field(default=None, ge=0)
+    cook_time_minutes: int | None = Field(default=None, ge=0)
+    total_time_minutes: int | None = Field(default=None, ge=0)
+    perform_time_minutes: int | None = Field(default=None, ge=0)
+    nutrition: dict[str, Any] | None = None
+    aggregate_rating: dict[str, Any] | None = None
+    keywords: str | None = None
+    author: str | None = Field(default=None, max_length=255)
+    date_published: date | None = None
     tag_ids: list[int] | None = None
     ingredients: list["RecipeIngredientItem"] | None = None
+    steps: list["RecipeStepItem"] | None = None

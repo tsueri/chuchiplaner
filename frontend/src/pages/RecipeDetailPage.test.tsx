@@ -88,13 +88,23 @@ function renderDetail(
 const baseRecipe = {
   id: 1,
   title: "Pouletgeschnetzeltes",
-  instructions: "Alles anbraten.",
+  description: null,
   image_url: null,
   source_url: null,
   source_domain: null,
   servings: 4,
+  prep_time_minutes: null,
+  cook_time_minutes: null,
+  total_time_minutes: null,
+  perform_time_minutes: null,
+  nutrition: null,
+  aggregate_rating: null,
+  keywords: null,
+  author: null,
+  date_published: null,
   household_id: 1,
   ingredients: [],
+  steps: [],
   tags: [],
   is_favorited: false,
   created_at: null,
@@ -148,6 +158,53 @@ describe("RecipeDetailPage ingredient rendering", () => {
   })
 })
 
+describe("RecipeDetailPage steps rendering", () => {
+  beforeEach(() => {
+    cleanup()
+    vi.restoreAllMocks()
+  })
+
+  it("renders steps as a numbered <ol> with one <li> per step in position order", async () => {
+    renderDetail({
+      ...baseRecipe,
+      steps: [
+        { id: 1, position: 0, text: "Erster Schritt.", name: "Vorbereiten" },
+        { id: 2, position: 1, text: "Zweiter Schritt.", name: null },
+      ],
+    })
+
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Pouletgeschnetzeltes" })
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole("heading", { level: 2, name: "Zubereitung" })
+    ).toBeInTheDocument()
+    const orderedList = screen.getByRole("list")
+    expect(orderedList.tagName).toBe("OL")
+    const items = screen.getAllByRole("listitem")
+    expect(items).toHaveLength(2)
+    expect(items[0]).toHaveTextContent("Erster Schritt.")
+    expect(items[1]).toHaveTextContent("Zweiter Schritt.")
+    expect(
+      screen.getByRole("heading", { level: 3, name: "Vorbereiten" })
+    ).toBeInTheDocument()
+  })
+
+  it("hides the Zubereitung section when the recipe has zero steps", async () => {
+    renderDetail({
+      ...baseRecipe,
+      steps: [],
+    })
+
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Pouletgeschnetzeltes" })
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole("heading", { name: /zubereitung/i })
+    ).toBeNull()
+  })
+})
+
 describe("RecipeDetailPage inline edit mode", () => {
   beforeEach(() => {
     cleanup()
@@ -167,7 +224,7 @@ describe("RecipeDetailPage inline edit mode", () => {
     const recipe = {
       ...baseRecipe,
       title: "Original",
-      instructions: "Anbraten.",
+      steps: [{ id: 1000, position: 0, text: "Anbraten.", name: null }],
       servings: 4,
       ingredients: [
         {
@@ -202,6 +259,9 @@ describe("RecipeDetailPage inline edit mode", () => {
       expect(put).toBeDefined()
       const body = JSON.parse(put!.body!) as Record<string, unknown>
       expect(body.title).toBe("Bearbeitet")
+      expect(body.steps).toEqual([
+        { position: 0, text: "Anbraten.", name: null },
+      ])
       expect(body.ingredients).toEqual([
         { ingredient_id: 100, quantity: 600, unit: "g", order_index: 0 },
       ])
@@ -241,7 +301,11 @@ describe("RecipeDetailPage inline edit mode", () => {
 
   it("renders a server error inline in edit mode and preserves local edits", async () => {
     const user = userEvent.setup()
-    const recipe = { ...baseRecipe, title: "Original" }
+    const recipe = {
+      ...baseRecipe,
+      title: "Original",
+      steps: [{ id: 1000, position: 0, text: "Anbraten.", name: null }],
+    }
     renderDetail(recipe, {
       putStatus: 400,
       putResponse: { detail: "Bad ingredient id" },

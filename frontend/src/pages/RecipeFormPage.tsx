@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils"
 
 interface FormState {
   title: string
-  instructions: string
+  stepsText: string
   servings: number
   image_url: string
   source_url: string
@@ -27,6 +27,12 @@ interface RecipeIngredientPayload {
   quantity: number
   unit: string
   order_index: number
+}
+
+interface RecipeStepPayload {
+  position: number
+  text: string
+  name: string | null
 }
 
 interface LearnedAliasPayload {
@@ -50,10 +56,16 @@ interface ScrapedIngredientItem {
   confidence: number
 }
 
+interface ScrapedStepItem {
+  position: number
+  text: string
+  name: string | null
+}
+
 interface ScrapedRecipe {
   title: string
   ingredients: ScrapedIngredientItem[]
-  instructions: string
+  steps: ScrapedStepItem[]
   image_url: string | null
   servings: number
   source_url: string
@@ -64,7 +76,7 @@ interface ScrapedRecipe {
 
 const INITIAL_STATE: FormState = {
   title: "",
-  instructions: "",
+  stepsText: "",
   servings: 4,
   image_url: "",
   source_url: "",
@@ -86,7 +98,7 @@ class DuplicateRecipeError extends Error {
 
 async function postRecipe(body: {
   title: string
-  instructions: string
+  steps: RecipeStepPayload[]
   servings: number
   image_url: string | null
   source_url: string | null
@@ -189,9 +201,13 @@ export default function RecipeFormPage() {
       try {
         const data = await postRecipeImport(url)
         if (cancelled) return
+        const stepsText = (data.steps ?? [])
+          .sort((a, b) => a.position - b.position)
+          .map((s) => s.text)
+          .join("\n")
         setForm({
           title: data.title,
-          instructions: data.instructions,
+          stepsText,
           servings: data.servings,
           image_url: data.image_url ?? "",
           source_url: data.source_url,
@@ -266,7 +282,7 @@ export default function RecipeFormPage() {
 
   const canSubmit =
     form.title.trim() !== "" &&
-    form.instructions.trim() !== "" &&
+    form.stepsText.trim() !== "" &&
     !submitting &&
     !duplicateBlocked
 
@@ -295,6 +311,11 @@ export default function RecipeFormPage() {
           unit: r.unit,
           order_index: idx,
         }))
+      const steps: RecipeStepPayload[] = form.stepsText
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line !== "")
+        .map((text, position) => ({ position, text, name: null }))
       const learnedAliases: LearnedAliasPayload[] = rows
         .filter(
           (r) =>
@@ -308,7 +329,7 @@ export default function RecipeFormPage() {
         }))
       const created = await postRecipe({
         title: form.title.trim(),
-        instructions: form.instructions.trim(),
+        steps,
         servings: form.servings,
         image_url: toNull(form.image_url),
         source_url: toNull(form.source_url),
@@ -439,13 +460,13 @@ export default function RecipeFormPage() {
         </div>
 
         <div className="space-y-2">
-          <label htmlFor="recipe-instructions" className="text-sm font-medium">
+          <label htmlFor="recipe-steps" className="text-sm font-medium">
             Zubereitung
           </label>
           <textarea
-            id="recipe-instructions"
-            value={form.instructions}
-            onChange={(e) => update("instructions", e.target.value)}
+            id="recipe-steps"
+            value={form.stepsText}
+            onChange={(e) => update("stepsText", e.target.value)}
             rows={6}
             required
             className="w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"

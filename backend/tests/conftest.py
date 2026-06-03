@@ -28,7 +28,8 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
             connection.execute(
                 text(
                     "CREATE VIRTUAL TABLE IF NOT EXISTS recipes_fts USING fts5("
-                    "title, instructions)"
+                    "title, description, steps, ingredients, "
+                    "keywords, author, tags)"
                 )
             )
             for name in ["Frühling", "Sommer", "Herbst", "Winter", "Ganzjährig"]:

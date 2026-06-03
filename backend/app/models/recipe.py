@@ -1,9 +1,20 @@
 from __future__ import annotations
 
-from datetime import datetime
-from typing import TYPE_CHECKING
+from datetime import date, datetime
+from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text, func
+from sqlalchemy import (
+    JSON,
+    Date,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -18,11 +29,20 @@ class Recipe(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
-    instructions: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
     image_url: Mapped[str | None] = mapped_column(String(2048))
     source_url: Mapped[str | None] = mapped_column(String(2048))
     source_domain: Mapped[str | None] = mapped_column(String(255))
     servings: Mapped[int] = mapped_column(Integer, default=4, server_default="4")
+    prep_time_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cook_time_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    total_time_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    perform_time_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    nutrition: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    aggregate_rating: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    keywords: Mapped[str | None] = mapped_column(Text, nullable=True)
+    author: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    date_published: Mapped[date | None] = mapped_column(Date, nullable=True)
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     household_id: Mapped[int] = mapped_column(nullable=False)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime)
@@ -30,6 +50,11 @@ class Recipe(Base):
 
     ingredients: Mapped[list["RecipeIngredient"]] = relationship(
         back_populates="recipe", cascade="all, delete-orphan"
+    )
+    steps: Mapped[list["RecipeStep"]] = relationship(
+        back_populates="recipe",
+        cascade="all, delete-orphan",
+        order_by="RecipeStep.position",
     )
     tags: Mapped[list["RecipeTag"]] = relationship(
         back_populates="recipe", cascade="all, delete-orphan"
@@ -40,6 +65,27 @@ class Recipe(Base):
     notes: Mapped[list["RecipeNote"]] = relationship(
         back_populates="recipe", cascade="all, delete-orphan"
     )
+
+
+class RecipeStep(Base):
+    __tablename__ = "recipe_steps"
+    __table_args__ = (
+        UniqueConstraint(
+            "recipe_id",
+            "position",
+            name="uq_recipe_steps_recipe_position",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    recipe_id: Mapped[int] = mapped_column(
+        ForeignKey("recipes.id"), nullable=False
+    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    recipe: Mapped["Recipe"] = relationship(back_populates="steps")
 
 
 class RecipeIngredient(Base):
