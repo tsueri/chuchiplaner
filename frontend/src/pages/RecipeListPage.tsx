@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from "react"
-import { Link } from "react-router-dom"
+import { useCallback, useEffect, useState, type FormEvent } from "react"
+import { Link, useNavigate } from "react-router-dom"
 import { Button, buttonVariants } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 import { PageHeader } from "@/components/PageHeader"
 
@@ -40,6 +41,7 @@ async function api(path: string, options?: RequestInit) {
 }
 
 export default function RecipeListPage() {
+  const navigate = useNavigate()
   const [recipes, setRecipes] = useState<RecipeItem[]>([])
   const [tags, setTags] = useState<TagItem[]>([])
   const [search, setSearch] = useState("")
@@ -47,6 +49,14 @@ export default function RecipeListPage() {
   const [favoritesOnly, setFavoritesOnly] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [importUrl, setImportUrl] = useState("")
+
+  const handleImportSubmit = (e: FormEvent) => {
+    e.preventDefault()
+    const trimmed = importUrl.trim()
+    if (trimmed === "") return
+    navigate(`/recipes/new?url=${encodeURIComponent(trimmed)}`)
+  }
 
   const doFetchRecipes = useCallback(
     async (q: string, tag: number | null, favs: boolean) => {
@@ -99,12 +109,35 @@ export default function RecipeListPage() {
       <PageHeader
         title="Rezepte"
         actions={
-          <Link
-            to="/recipes/new"
-            className={buttonVariants({ variant: "default" })}
-          >
-            Neues Rezept
-          </Link>
+          <>
+            <form
+              onSubmit={handleImportSubmit}
+              className="flex items-center gap-2"
+            >
+              <Input
+                type="url"
+                value={importUrl}
+                onChange={(e) => setImportUrl(e.target.value)}
+                placeholder="Aus URL importieren…"
+                aria-label="Aus URL importieren"
+                className="h-8 w-56"
+              />
+              <Button
+                type="submit"
+                variant="outline"
+                size="sm"
+                disabled={importUrl.trim() === ""}
+              >
+                Importieren
+              </Button>
+            </form>
+            <Link
+              to="/recipes/new"
+              className={buttonVariants({ variant: "default" })}
+            >
+              Neues Rezept
+            </Link>
+          </>
         }
       />
 

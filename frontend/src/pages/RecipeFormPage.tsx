@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react"
-import { Link, useNavigate } from "react-router-dom"
+import { Link, useNavigate, useSearchParams } from "react-router-dom"
 import { X } from "lucide-react"
 
 import { Button, buttonVariants } from "@/components/ui/button"
@@ -42,6 +42,17 @@ interface Tag {
   name: string
   group: string
   household_id: number | null
+}
+
+interface ScrapedRecipe {
+  title: string
+  ingredients: string[]
+  instructions: string
+  image_url: string | null
+  servings: number
+  source_url: string
+  source_domain: string
+  existing_recipe_id: number | null
 }
 
 const INITIAL_STATE: FormState = {
@@ -215,6 +226,20 @@ async function putRecipeTags(
   }
 }
 
+async function postRecipeImport(url: string): Promise<ScrapedRecipe> {
+  const res = await fetch("/api/recipes/import", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url }),
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ detail: "Request failed" }))
+    throw new Error(data.detail || "Request failed")
+  }
+  return res.json() as Promise<ScrapedRecipe>
+}
+
 function toNull(value: string): string | null {
   return value.trim() === "" ? null : value
 }
@@ -226,12 +251,15 @@ function parseQuantity(value: string): number {
 
 export default function RecipeFormPage() {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const importUrl = searchParams.get("url")
   const [form, setForm] = useState<FormState>(INITIAL_STATE)
   const [rows, setRows] = useState<IngredientRow[]>([])
   const [tags, setTags] = useState<Tag[]>([])
   const [selectedTagIds, setSelectedTagIds] = useState<number[]>([])
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [importedFrom, setImportedFrom] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -246,6 +274,50 @@ export default function RecipeFormPage() {
       cancelled = true
     }
   }, [])
+
+  useEffect(() => {
+    if (!importUrl) return
+    const url = importUrl
+    let cancelled = false
+    async function runImport() {
+      try {
+        const data = await postRecipeImport(url)
+        if (cancelled) return
+        setForm({
+          title: data.title,
+          instructions: data.instructions,
+          servings: data.servings,
+          image_url: data.image_url ?? "",
+          source_url: data.source_url,
+          source_domain: data.source_domain,
+        })
+        setImportedFrom(data.source_domain)
+        setError(null)
+      } catch (err) {
+        if (cancelled) return
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Import fehlgeschlagen"
+        )
+      }
+    }
+    runImport()
+    return () => {
+      cancelled = true
+    }
+  }, [importUrl])
+
+  const handleDiscardImport = () => {
+    setForm(INITIAL_STATE)
+    setImportedFrom(null)
+    setError(null)
+    setRows([])
+    setSelectedTagIds([])
+    const next = new URLSearchParams(searchParams)
+    next.delete("url")
+    setSearchParams(next, { replace: true })
+  }
 
   const update = <K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }))
@@ -328,6 +400,22 @@ export default function RecipeFormPage() {
             className="rounded-md bg-destructive/10 p-3 text-sm text-destructive"
           >
             {error}
+          </div>
+        )}
+
+        {importedFrom && (
+          <div
+            role="status"
+            className="flex items-center justify-between rounded-md bg-muted p-3 text-sm"
+          >
+            <span>Importiert von {importedFrom}</span>
+            <button
+              type="button"
+              onClick={handleDiscardImport}
+              className="rounded-md px-2 py-1 text-sm underline-offset-2 hover:underline"
+            >
+              Verwerfen
+            </button>
           </div>
         )}
 

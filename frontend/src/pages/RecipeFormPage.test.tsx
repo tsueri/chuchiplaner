@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest"
 import { render, screen, cleanup, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { MemoryRouter, Route, Routes } from "react-router-dom"
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom"
 
 import { AppLayout } from "@/components/AppLayout"
 import { PageHeaderProvider } from "@/components/PageHeaderContext"
@@ -26,6 +26,15 @@ function renderForm(initialPath = "/recipes/new") {
   )
 }
 
+function RecipeFormRouteStub() {
+  const loc = useLocation()
+  return (
+    <div data-testid="recipe-form-stub" data-search={loc.search}>
+      recipe-form-stub
+    </div>
+  )
+}
+
 function renderListInShell() {
   const authValue: AuthContextType = {
     user: { id: 1, username: "alice", role: "admin", household_id: 1 },
@@ -40,6 +49,7 @@ function renderListInShell() {
         <Routes>
           <Route element={<AppLayout />}>
             <Route path="/recipes" element={<RecipeListPage />} />
+            <Route path="/recipes/new" element={<RecipeFormRouteStub />} />
           </Route>
         </Routes>
       </MemoryRouter>
@@ -673,5 +683,215 @@ describe("RecipeFormPage tag picker", () => {
     expect(
       screen.getByRole("button", { name: /speichern/i })
     ).toBeEnabled()
+  })
+})
+
+describe("RecipeFormPage URL import", () => {
+  beforeEach(() => {
+    cleanup()
+    vi.restoreAllMocks()
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url =
+        typeof input === "string" ? input : (input as Request).url
+      if (url === "/api/tags") {
+        return Promise.resolve(mockFetchResponse([]))
+      }
+      return Promise.reject(new Error(`Unhandled fetch in test: ${url}`))
+    })
+  })
+
+  it("does NOT call /api/recipes/import when no url query param is present", () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation((input) => {
+        const url =
+          typeof input === "string" ? input : (input as Request).url
+        if (url === "/api/tags") {
+          return Promise.resolve(mockFetchResponse([]))
+        }
+        return Promise.reject(new Error(`Unhandled fetch in test: ${url}`))
+      })
+
+    renderForm("/recipes/new")
+
+    const urls = fetchSpy.mock.calls.map(([u]) => u as string)
+    expect(urls).not.toContain("/api/recipes/import")
+  })
+
+  it("prefills the form and shows the 'Importiert von' banner on a successful import", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation((input, init) => {
+        const url =
+          typeof input === "string" ? input : (input as Request).url
+        if (url === "/api/tags") {
+          return Promise.resolve(mockFetchResponse([]))
+        }
+        if (url === "/api/recipes/import") {
+          const body = JSON.parse(init?.body as string)
+          expect(body).toEqual({ url: "https://www.fooby.ch/recipe" })
+          return Promise.resolve(
+            mockFetchResponse({
+              title: "Fooby Pasta",
+              ingredients: ["Tomaten", "Zwiebeln"],
+              instructions: "Alles mischen.",
+              image_url: "https://example.com/img.jpg",
+              servings: 2,
+              source_url: "https://www.fooby.ch/recipe",
+              source_domain: "www.fooby.ch",
+            })
+          )
+        }
+        return Promise.resolve(mockFetchResponse([]))
+      })
+
+    renderForm("/recipes/new?url=" + encodeURIComponent("https://www.fooby.ch/recipe"))
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/importiert von www\.fooby\.ch/i)
+      ).toBeInTheDocument()
+    })
+
+    expect(
+      (screen.getByLabelText(/titel/i) as HTMLInputElement).value
+    ).toBe("Fooby Pasta")
+    expect(
+      (screen.getByLabelText(/zubereitung/i) as HTMLTextAreaElement).value
+    ).toBe("Alles mischen.")
+    expect(
+      (screen.getByLabelText(/portionen/i) as HTMLInputElement).value
+    ).toBe("2")
+    expect(
+      (screen.getByLabelText(/^quelle$/i) as HTMLInputElement).value
+    ).toBe("https://www.fooby.ch/recipe")
+    expect(
+      (screen.getByLabelText(/quell-domain|domain/i) as HTMLInputElement).value
+    ).toBe("www.fooby.ch")
+
+    const importCall = fetchSpy.mock.calls.find(
+      ([u]) => u === "/api/recipes/import"
+    )
+    expect(importCall).toBeDefined()
+  })
+
+  it("'Verwerfen' link clears the prefilled state and removes the url query param", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url =
+        typeof input === "string" ? input : (input as Request).url
+      if (url === "/api/tags") {
+        return Promise.resolve(mockFetchResponse([]))
+      }
+      if (url === "/api/recipes/import") {
+        return Promise.resolve(
+          mockFetchResponse({
+            title: "Fooby Pasta",
+            ingredients: [],
+            instructions: "Alles mischen.",
+            image_url: null,
+            servings: 4,
+            source_url: "https://www.fooby.ch/recipe",
+            source_domain: "www.fooby.ch",
+          })
+        )
+      }
+      return Promise.resolve(mockFetchResponse([]))
+    })
+
+    renderForm("/recipes/new?url=" + encodeURIComponent("https://www.fooby.ch/recipe"))
+
+    await screen.findByText(/importiert von www\.fooby\.ch/i)
+
+    const verwerfenLink = screen.getByRole("button", { name: /verwerfen/i })
+    expect(verwerfenLink).toBeInTheDocument()
+
+    await userEvent.setup().click(verwerfenLink)
+
+    expect(
+      screen.queryByText(/importiert von www\.fooby\.ch/i)
+    ).not.toBeInTheDocument()
+    expect(
+      (screen.getByLabelText(/titel/i) as HTMLInputElement).value
+    ).toBe("")
+    expect(
+      (screen.getByLabelText(/zubereitung/i) as HTMLTextAreaElement).value
+    ).toBe("")
+  })
+
+  it("renders the import error inline and leaves the form blank on a 422", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url =
+        typeof input === "string" ? input : (input as Request).url
+      if (url === "/api/tags") {
+        return Promise.resolve(mockFetchResponse([]))
+      }
+      if (url === "/api/recipes/import") {
+        return Promise.resolve(
+          mockFetchResponse(
+            { detail: "Could not extract recipe from this URL" },
+            { status: 422 }
+          )
+        )
+      }
+      return Promise.resolve(mockFetchResponse([]))
+    })
+
+    renderForm(
+      "/recipes/new?url=" + encodeURIComponent("https://unsupported.example/x")
+    )
+
+    expect(
+      await screen.findByText("Could not extract recipe from this URL")
+    ).toBeInTheDocument()
+
+    expect(
+      screen.queryByText(/importiert von/i)
+    ).not.toBeInTheDocument()
+    expect(
+      (screen.getByLabelText(/titel/i) as HTMLInputElement).value
+    ).toBe("")
+    expect(
+      (screen.getByLabelText(/zubereitung/i) as HTMLTextAreaElement).value
+    ).toBe("")
+  })
+})
+
+describe("RecipeListPage URL import", () => {
+  beforeEach(() => {
+    cleanup()
+    vi.restoreAllMocks()
+  })
+
+  it("shows a URL import form next to 'Neues Rezept' and navigates with ?url=… on submit", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url = typeof input === "string" ? input : (input as Request).url
+      if (url.includes("/api/tags")) {
+        return Promise.resolve(mockFetchResponse([]))
+      }
+      if (url.includes("/api/recipes")) {
+        return Promise.resolve(mockFetchResponse([]))
+      }
+      return Promise.resolve(mockFetchResponse([]))
+    })
+
+    const user = userEvent.setup()
+    renderListInShell()
+
+    const newButton = await screen.findByRole("link", {
+      name: /neues rezept/i,
+    })
+    expect(newButton).toHaveAttribute("href", "/recipes/new")
+
+    const urlInput = screen.getByPlaceholderText(/aus url importieren|url importieren/i)
+    await user.type(urlInput, "https://www.fooby.ch/recipe")
+    await user.click(screen.getByRole("button", { name: /importieren/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText("recipe-form-stub")).toBeInTheDocument()
+    })
+    expect(screen.getByText("recipe-form-stub")).toHaveAttribute(
+      "data-search",
+      expect.stringContaining("url=")
+    )
   })
 })
