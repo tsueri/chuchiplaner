@@ -5,6 +5,7 @@ import { X } from "lucide-react"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { PageHeader } from "@/components/PageHeader"
+import { cn } from "@/lib/utils"
 
 interface FormState {
   title: string
@@ -34,6 +35,13 @@ interface RecipeIngredientPayload {
   quantity: number
   unit: string
   order_index: number
+}
+
+interface Tag {
+  id: number
+  name: string
+  group: string
+  household_id: number | null
 }
 
 const INITIAL_STATE: FormState = {
@@ -191,6 +199,22 @@ async function postRecipe(body: {
   return res.json() as Promise<{ id: number }>
 }
 
+async function putRecipeTags(
+  recipeId: number,
+  tagIds: number[]
+): Promise<void> {
+  const res = await fetch(`/api/recipes/${recipeId}`, {
+    method: "PUT",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tag_ids: tagIds }),
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ detail: "Request failed" }))
+    throw new Error(data.detail || "Request failed")
+  }
+}
+
 function toNull(value: string): string | null {
   return value.trim() === "" ? null : value
 }
@@ -204,8 +228,24 @@ export default function RecipeFormPage() {
   const navigate = useNavigate()
   const [form, setForm] = useState<FormState>(INITIAL_STATE)
   const [rows, setRows] = useState<IngredientRow[]>([])
+  const [tags, setTags] = useState<Tag[]>([])
+  const [selectedTagIds, setSelectedTagIds] = useState<number[]>([])
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    async function loadTags() {
+      const res = await fetch("/api/tags", { credentials: "same-origin" })
+      if (!res.ok) return
+      const data = (await res.json()) as Tag[]
+      if (!cancelled) setTags(data)
+    }
+    loadTags()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const update = <K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }))
@@ -254,6 +294,19 @@ export default function RecipeFormPage() {
         source_domain: toNull(form.source_domain),
         ingredients,
       })
+      if (selectedTagIds.length > 0) {
+        try {
+          await putRecipeTags(created.id, selectedTagIds)
+        } catch (putErr) {
+          setError(
+            putErr instanceof Error
+              ? putErr.message
+              : "Tags konnten nicht gespeichert werden"
+          )
+          setSubmitting(false)
+          return
+        }
+      }
       navigate(`/recipes/${created.id}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Speichern fehlgeschlagen")
@@ -356,6 +409,37 @@ export default function RecipeFormPage() {
             value={form.source_domain}
             onChange={(e) => update("source_domain", e.target.value)}
           />
+        </div>
+
+        <div className="space-y-2">
+          <h2 className="text-sm font-medium">Tags</h2>
+          <div className="flex flex-wrap gap-2">
+            {tags.map((tag) => {
+              const isActive = selectedTagIds.includes(tag.id)
+              return (
+                <button
+                  key={tag.id}
+                  type="button"
+                  aria-pressed={isActive}
+                  onClick={() =>
+                    setSelectedTagIds((prev) =>
+                      prev.includes(tag.id)
+                        ? prev.filter((id) => id !== tag.id)
+                        : [...prev, tag.id]
+                    )
+                  }
+                  className={cn(
+                    "cursor-pointer rounded-full px-3 py-1 text-sm transition",
+                    isActive
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted hover:bg-muted-foreground/20"
+                  )}
+                >
+                  {tag.name}
+                </button>
+              )
+            })}
+          </div>
         </div>
 
         <div className="space-y-2">

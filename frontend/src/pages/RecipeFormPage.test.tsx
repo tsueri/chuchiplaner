@@ -59,6 +59,14 @@ describe("RecipeFormPage", () => {
   beforeEach(() => {
     cleanup()
     vi.restoreAllMocks()
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url =
+        typeof input === "string" ? input : (input as Request).url
+      if (url === "/api/tags") {
+        return Promise.resolve(mockFetchResponse([]))
+      }
+      return Promise.reject(new Error(`Unhandled fetch in test: ${url}`))
+    })
   })
 
   it("renders all six fields with Speichern disabled on a blank form", () => {
@@ -93,9 +101,19 @@ describe("RecipeFormPage", () => {
     const user = userEvent.setup()
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(
-        mockFetchResponse({ id: 42, title: "Pasta" }, { status: 201 })
-      )
+      .mockImplementation((input) => {
+        const url =
+          typeof input === "string" ? input : (input as Request).url
+        if (url === "/api/tags") {
+          return Promise.resolve(mockFetchResponse([]))
+        }
+        if (url === "/api/recipes") {
+          return Promise.resolve(
+            mockFetchResponse({ id: 42, title: "Pasta" }, { status: 201 })
+          )
+        }
+        return Promise.resolve(mockFetchResponse([]))
+      })
 
     renderForm()
 
@@ -107,9 +125,11 @@ describe("RecipeFormPage", () => {
       expect(screen.getByText("recipe-detail-stub")).toBeInTheDocument()
     })
 
-    expect(fetchSpy).toHaveBeenCalledTimes(1)
-    const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit]
-    expect(url).toBe("/api/recipes")
+    const recipeCall = fetchSpy.mock.calls.find(
+      ([u]) => u === "/api/recipes"
+    ) as [string, RequestInit]
+    expect(recipeCall).toBeDefined()
+    const [, init] = recipeCall
     expect(init.method).toBe("POST")
     expect(JSON.parse(init.body as string)).toEqual({
       title: "Pasta",
@@ -124,12 +144,22 @@ describe("RecipeFormPage", () => {
 
   it("renders the API error detail inline and does not navigate", async () => {
     const user = userEvent.setup()
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
-      mockFetchResponse(
-        { detail: "Title ist zu lang." },
-        { status: 422 }
-      )
-    )
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url =
+        typeof input === "string" ? input : (input as Request).url
+      if (url === "/api/tags") {
+        return Promise.resolve(mockFetchResponse([]))
+      }
+      if (url === "/api/recipes") {
+        return Promise.resolve(
+          mockFetchResponse(
+            { detail: "Title ist zu lang." },
+            { status: 422 }
+          )
+        )
+      }
+      return Promise.resolve(mockFetchResponse([]))
+    })
 
     renderForm()
 
@@ -178,6 +208,14 @@ describe("RecipeFormPage ingredient rows", () => {
   beforeEach(() => {
     cleanup()
     vi.restoreAllMocks()
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url =
+        typeof input === "string" ? input : (input as Request).url
+      if (url === "/api/tags") {
+        return Promise.resolve(mockFetchResponse([]))
+      }
+      return Promise.reject(new Error(`Unhandled fetch in test: ${url}`))
+    })
   })
 
   it("'Zutat hinzufügen' appends an empty row; each row has a remove button", async () => {
@@ -324,5 +362,316 @@ describe("RecipeFormPage ingredient rows", () => {
       { ingredient_id: 1, quantity: 500, unit: "g", order_index: 0 },
       { ingredient_id: 2, quantity: 1, unit: "Stück", order_index: 1 },
     ])
+  })
+})
+
+describe("RecipeFormPage tag picker", () => {
+  beforeEach(() => {
+    cleanup()
+    vi.restoreAllMocks()
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url =
+        typeof input === "string" ? input : (input as Request).url
+      if (url === "/api/tags") {
+        return Promise.resolve(mockFetchResponse([]))
+      }
+      return Promise.reject(new Error(`Unhandled fetch in test: ${url}`))
+    })
+  })
+
+  it("fetches /api/tags on mount and renders the tags as toggle pills", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation((input) => {
+        const url =
+          typeof input === "string" ? input : (input as Request).url
+        if (url === "/api/tags") {
+          return Promise.resolve(
+            mockFetchResponse([
+              {
+                id: 1,
+                name: "Frühling",
+                group: "season",
+                household_id: null,
+              },
+              {
+                id: 2,
+                name: "Poulet",
+                group: "ingredient",
+                household_id: 1,
+              },
+            ])
+          )
+        }
+        return Promise.resolve(mockFetchResponse([]))
+      })
+
+    renderForm()
+
+    const pill1 = await screen.findByRole("button", { name: /frühling/i })
+    const pill2 = await screen.findByRole("button", { name: /poulet/i })
+    expect(pill1).toBeInTheDocument()
+    expect(pill2).toBeInTheDocument()
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/tags",
+      expect.objectContaining({ credentials: "same-origin" })
+    )
+  })
+
+  it("clicking a tag pill marks it as selected (aria-pressed=true)", async () => {
+    const user = userEvent.setup()
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url =
+        typeof input === "string" ? input : (input as Request).url
+      if (url === "/api/tags") {
+        return Promise.resolve(
+          mockFetchResponse([
+            {
+              id: 1,
+              name: "Frühling",
+              group: "season",
+              household_id: null,
+            },
+          ])
+        )
+      }
+      return Promise.resolve(mockFetchResponse([]))
+    })
+
+    renderForm()
+
+    const pill = await screen.findByRole("button", { name: /frühling/i })
+    expect(pill).toHaveAttribute("aria-pressed", "false")
+
+    await user.click(pill)
+
+    expect(pill).toHaveAttribute("aria-pressed", "true")
+  })
+
+  it("clicking an already-selected tag pill deselects it (aria-pressed=false)", async () => {
+    const user = userEvent.setup()
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url =
+        typeof input === "string" ? input : (input as Request).url
+      if (url === "/api/tags") {
+        return Promise.resolve(
+          mockFetchResponse([
+            {
+              id: 1,
+              name: "Frühling",
+              group: "season",
+              household_id: null,
+            },
+          ])
+        )
+      }
+      return Promise.resolve(mockFetchResponse([]))
+    })
+
+    renderForm()
+
+    const pill = await screen.findByRole("button", { name: /frühling/i })
+    await user.click(pill)
+    expect(pill).toHaveAttribute("aria-pressed", "true")
+
+    await user.click(pill)
+    expect(pill).toHaveAttribute("aria-pressed", "false")
+  })
+
+  it("submit with no tags selected fires only the POST (no PUT)", async () => {
+    const user = userEvent.setup()
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation((input) => {
+        const url =
+          typeof input === "string" ? input : (input as Request).url
+        if (url === "/api/tags") {
+          return Promise.resolve(
+            mockFetchResponse([
+              {
+                id: 1,
+                name: "Frühling",
+                group: "season",
+                household_id: null,
+              },
+            ])
+          )
+        }
+        if (url === "/api/recipes") {
+          return Promise.resolve(
+            mockFetchResponse(
+              { id: 42, title: "Pasta" },
+              { status: 201 }
+            )
+          )
+        }
+        return Promise.reject(
+          new Error(`Unexpected fetch in test: ${url}`)
+        )
+      })
+
+    renderForm()
+
+    // Wait for tags to load (and assert no toggle happened)
+    await screen.findByRole("button", { name: /frühling/i })
+
+    await user.type(screen.getByLabelText(/titel/i), "Pasta")
+    await user.type(screen.getByLabelText(/zubereitung/i), "Wasser kochen.")
+    await user.click(screen.getByRole("button", { name: /speichern/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText("recipe-detail-stub")).toBeInTheDocument()
+    })
+
+    const calls = fetchSpy.mock.calls.map(([u]) => u as string)
+    expect(calls).toEqual(["/api/tags", "/api/recipes"])
+    expect(calls).not.toContain("/api/recipes/42")
+  })
+
+  it("submit with tags selected fires POST then PUT { tag_ids } in that order", async () => {
+    const user = userEvent.setup()
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation((input) => {
+        const url =
+          typeof input === "string" ? input : (input as Request).url
+        if (url === "/api/tags") {
+          return Promise.resolve(
+            mockFetchResponse([
+              {
+                id: 1,
+                name: "Frühling",
+                group: "season",
+                household_id: null,
+              },
+              {
+                id: 2,
+                name: "Poulet",
+                group: "ingredient",
+                household_id: 1,
+              },
+            ])
+          )
+        }
+        if (url === "/api/recipes") {
+          return Promise.resolve(
+            mockFetchResponse(
+              { id: 42, title: "Pasta" },
+              { status: 201 }
+            )
+          )
+        }
+        if (url === "/api/recipes/42") {
+          return Promise.resolve(
+            mockFetchResponse({ id: 42, title: "Pasta" })
+          )
+        }
+        return Promise.reject(
+          new Error(`Unexpected fetch in test: ${url}`)
+        )
+      })
+
+    renderForm()
+
+    const frühlingPill = await screen.findByRole("button", {
+      name: /frühling/i,
+    })
+    const pouletPill = await screen.findByRole("button", { name: /poulet/i })
+    await user.click(frühlingPill)
+    await user.click(pouletPill)
+
+    await user.type(screen.getByLabelText(/titel/i), "Pasta")
+    await user.type(screen.getByLabelText(/zubereitung/i), "Wasser kochen.")
+    await user.click(screen.getByRole("button", { name: /speichern/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText("recipe-detail-stub")).toBeInTheDocument()
+    })
+
+    const recipePutCallIdx = fetchSpy.mock.calls.findIndex(
+      ([u]) => u === "/api/recipes/42"
+    )
+    expect(recipePutCallIdx).toBeGreaterThan(-1)
+
+    const [, putInit] = fetchSpy.mock.calls[recipePutCallIdx] as [
+      string,
+      RequestInit
+    ]
+    expect(putInit.method).toBe("PUT")
+    expect(JSON.parse(putInit.body as string)).toEqual({
+      tag_ids: [1, 2],
+    })
+
+    // Sequence check: tags → POST → PUT
+    const urls = fetchSpy.mock.calls.map(([u]) => u as string)
+    const postIdx = urls.indexOf("/api/recipes")
+    const putIdx = urls.indexOf("/api/recipes/42")
+    expect(postIdx).toBeLessThan(putIdx)
+  })
+
+  it("PUT failure renders the error inline and does not navigate (recipe was created)", async () => {
+    const user = userEvent.setup()
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation((input) => {
+        const url =
+          typeof input === "string" ? input : (input as Request).url
+        if (url === "/api/tags") {
+          return Promise.resolve(
+            mockFetchResponse([
+              {
+                id: 1,
+                name: "Frühling",
+                group: "season",
+                household_id: null,
+              },
+            ])
+          )
+        }
+        if (url === "/api/recipes") {
+          return Promise.resolve(
+            mockFetchResponse(
+              { id: 42, title: "Pasta" },
+              { status: 201 }
+            )
+          )
+        }
+        if (url === "/api/recipes/42") {
+          return Promise.resolve(
+            mockFetchResponse(
+              { detail: "Tag konnte nicht zugewiesen werden." },
+              { status: 422 }
+            )
+          )
+        }
+        return Promise.reject(
+          new Error(`Unexpected fetch in test: ${url}`)
+        )
+      })
+
+    renderForm()
+
+    const pill = await screen.findByRole("button", { name: /frühling/i })
+    await user.click(pill)
+
+    await user.type(screen.getByLabelText(/titel/i), "Pasta")
+    await user.type(screen.getByLabelText(/zubereitung/i), "Wasser kochen.")
+    await user.click(screen.getByRole("button", { name: /speichern/i }))
+
+    expect(
+      await screen.findByText("Tag konnte nicht zugewiesen werden.")
+    ).toBeInTheDocument()
+    expect(screen.queryByText("recipe-detail-stub")).not.toBeInTheDocument()
+
+    // POST was called, so the recipe exists server-side
+    const urls = fetchSpy.mock.calls.map(([u]) => u as string)
+    expect(urls).toContain("/api/recipes")
+    expect(urls).toContain("/api/recipes/42")
+
+    // Submit button is re-enabled so the user could try to fix tags and re-submit
+    expect(
+      screen.getByRole("button", { name: /speichern/i })
+    ).toBeEnabled()
   })
 })
