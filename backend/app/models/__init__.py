@@ -1,4 +1,4 @@
-from app.models.household import Household
+from app.models.household import Household, MealSlotTemplate
 from app.models.ingredient import Ingredient, IngredientAlias
 from app.models.inventory import InventoryItem
 from app.models.recipe import (
@@ -23,4 +23,5 @@ __all__ = [
     "RecipeNote",
     "RecipeTag",
     "Tag",
+    "MealSlotTemplate",
 ]

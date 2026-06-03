@@ -3,15 +3,19 @@ from __future__ import annotations
 import re
 import secrets
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.household import Household as HouseholdModel
+from app.models.household import MealSlotTemplate
 
 if TYPE_CHECKING:
     from app.models.user import User
+
+
+MEAL_TYPES = ["breakfast", "lunch", "dinner", "dessert"]
 
 
 def generate_slug(name: str) -> str:
@@ -34,6 +38,19 @@ async def create_household(
     )
     db.add(household)
     await db.flush()
+
+    for day in range(7):
+        for meal_type in MEAL_TYPES:
+            slot = MealSlotTemplate(
+                household_id=household.id,
+                day_of_week=day,
+                meal_type=meal_type,
+                active=True,
+                default_portions=household.default_size,
+            )
+            db.add(slot)
+    await db.flush()
+
     return household
 
 
@@ -52,6 +69,7 @@ class HouseholdWithMembers:
     name: str
     slug: str
     invite_code: str
+    default_size: int
     members: list["User"]
 
 
@@ -85,6 +103,7 @@ async def get_household_with_members(
         name=household.name,
         slug=household.slug,
         invite_code=household.invite_code,
+        default_size=household.default_size,
         members=list(members_result.scalars().all()),
     )
 
@@ -113,3 +132,47 @@ async def remove_member(
     user.household_id = None
     user.role = "member"
     await db.flush()
+
+
+async def get_meal_template(
+    db: AsyncSession, household_id: int
+) -> list[MealSlotTemplate]:
+    result = await db.execute(
+        select(MealSlotTemplate)
+        .where(MealSlotTemplate.household_id == household_id)
+        .order_by(MealSlotTemplate.day_of_week, MealSlotTemplate.meal_type)
+    )
+    return list(result.scalars().all())
+
+
+async def update_meal_template(
+    db: AsyncSession,
+    household_id: int,
+    slots_data: list[dict[str, Any]],
+) -> list[MealSlotTemplate]:
+    result = await db.execute(
+        select(MealSlotTemplate).where(
+            MealSlotTemplate.household_id == household_id
+        )
+    )
+    existing = {
+        (s.day_of_week, s.meal_type): s
+        for s in result.scalars().all()
+    }
+
+    updated: list[MealSlotTemplate] = []
+    for slot_data in slots_data:
+        day = slot_data["day_of_week"]
+        meal = slot_data["meal_type"]
+        slot = existing.get((int(day), str(meal)))
+        if slot is None:
+            continue
+        if "active" in slot_data and slot_data["active"] is not None:
+            slot.active = bool(slot_data["active"])
+        if ("default_portions" in slot_data
+                and slot_data["default_portions"] is not None):
+            slot.default_portions = int(slot_data["default_portions"])
+        updated.append(slot)
+
+    await db.flush()
+    return sorted(updated, key=lambda s: (s.day_of_week, s.meal_type))

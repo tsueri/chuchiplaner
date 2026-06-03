@@ -224,3 +224,198 @@ async def test_slug_generated_from_household_name(
     ).json()
     assert household["name"] == "sluguser's Household"
     assert household["slug"] == "sluguser-s-household"
+
+
+@pytest.mark.asyncio
+async def test_household_has_default_size(client: AsyncClient) -> None:
+    admin_resp = await _register(client, "sizetest")
+    cookies = admin_resp.cookies
+
+    household = (await client.get("/api/household", cookies=cookies)).json()
+    assert household["default_size"] == 1
+
+
+@pytest.mark.asyncio
+async def test_admin_can_update_household(client: AsyncClient) -> None:
+    admin_resp = await _register(client, "updateadmin")
+    cookies = admin_resp.cookies
+
+    resp = await client.put(
+        "/api/household",
+        json={"name": "New Name", "default_size": 4},
+        cookies=cookies,
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["name"] == "New Name"
+    assert data["slug"] == "new-name"
+    assert data["default_size"] == 4
+
+
+@pytest.mark.asyncio
+async def test_member_cannot_update_household(client: AsyncClient) -> None:
+    admin_resp = await _register(client, "updateadmin2")
+    admin_cookies = admin_resp.cookies
+    invite_code = await _get_invite_code(client, admin_cookies)
+
+    member_resp = await _register(client, "updatemember", invite_code)
+    member_cookies = member_resp.cookies
+
+    resp = await client.put(
+        "/api/household",
+        json={"default_size": 5},
+        cookies=member_cookies,
+    )
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_household_creation_seeds_28_meal_slots(
+    client: AsyncClient,
+) -> None:
+    admin_resp = await _register(client, "slottest")
+    cookies = admin_resp.cookies
+
+    resp = await client.get("/api/household/meal-template", cookies=cookies)
+    assert resp.status_code == 200
+    slots = resp.json()
+    assert len(slots) == 28
+
+    days = {s["day_of_week"] for s in slots}
+    assert days == set(range(7))
+
+    meal_types = {s["meal_type"] for s in slots}
+    assert meal_types == {"breakfast", "lunch", "dinner", "dessert"}
+
+    for s in slots:
+        assert s["active"] is True
+        assert s["household_id"] is not None
+
+
+@pytest.mark.asyncio
+async def test_deactivate_saturday_breakfast(client: AsyncClient) -> None:
+    admin_resp = await _register(client, "deactivetest")
+    cookies = admin_resp.cookies
+
+    slots = (await client.get("/api/household/meal-template", cookies=cookies)).json()
+    sat_breakfast = next(
+        s for s in slots if s["day_of_week"] == 5 and s["meal_type"] == "breakfast"
+    )
+    assert sat_breakfast["active"] is True
+
+    resp = await client.put(
+        "/api/household/meal-template",
+        json={
+            "slots": [{
+                "day_of_week": 5,
+                "meal_type": "breakfast",
+                "active": False,
+            }]
+        },
+        cookies=cookies,
+    )
+    assert resp.status_code == 200
+
+    slots2 = (await client.get("/api/household/meal-template", cookies=cookies)).json()
+    sat_breakfast2 = next(
+        s for s in slots2 if s["day_of_week"] == 5 and s["meal_type"] == "breakfast"
+    )
+    assert sat_breakfast2["active"] is False
+
+
+@pytest.mark.asyncio
+async def test_change_default_portions_for_dinner(client: AsyncClient) -> None:
+    admin_resp = await _register(client, "portiontest")
+    cookies = admin_resp.cookies
+
+    resp = await client.put(
+        "/api/household/meal-template",
+        json={
+            "slots": [{
+                "day_of_week": day,
+                "meal_type": "dinner",
+                "default_portions": 6,
+            } for day in range(7)]
+        },
+        cookies=cookies,
+    )
+    assert resp.status_code == 200
+
+    slots = (await client.get("/api/household/meal-template", cookies=cookies)).json()
+    for s in slots:
+        if s["meal_type"] == "dinner":
+            assert s["default_portions"] == 6
+
+
+@pytest.mark.asyncio
+async def test_cannot_deactivate_all_slots(client: AsyncClient) -> None:
+    admin_resp = await _register(client, "nodeactest")
+    cookies = admin_resp.cookies
+
+    slots = (await client.get("/api/household/meal-template", cookies=cookies)).json()
+    resp = await client.put(
+        "/api/household/meal-template",
+        json={
+            "slots": [{
+                "day_of_week": s["day_of_week"],
+                "meal_type": s["meal_type"],
+                "active": False,
+            } for s in slots]
+        },
+        cookies=cookies,
+    )
+    assert resp.status_code == 400
+    assert "at least one" in resp.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_member_cannot_update_meal_template(
+    client: AsyncClient,
+) -> None:
+    admin_resp = await _register(client, "tpltadmin")
+    admin_cookies = admin_resp.cookies
+    invite_code = await _get_invite_code(client, admin_cookies)
+
+    member_resp = await _register(client, "tpltmember", invite_code)
+    member_cookies = member_resp.cookies
+
+    resp = await client.put(
+        "/api/household/meal-template",
+        json={
+            "slots": [{
+                "day_of_week": 0,
+                "meal_type": "breakfast",
+                "active": False,
+            }]
+        },
+        cookies=member_cookies,
+    )
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_meal_template_requires_auth(client: AsyncClient) -> None:
+    resp = await client.get("/api/household/meal-template")
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_default_size_flows_into_new_slots(
+    client: AsyncClient,
+) -> None:
+    admin_resp = await _register(client, "sizeinittst")
+    cookies = admin_resp.cookies
+
+    slots = (await client.get("/api/household/meal-template", cookies=cookies)).json()
+    for s in slots:
+        assert s["default_portions"] == 1
+
+    await client.put(
+        "/api/household",
+        json={"default_size": 3},
+        cookies=cookies,
+    )
+
+    slots2 = (await client.get("/api/household/meal-template", cookies=cookies)).json()
+    for s in slots2:
+        assert s["default_portions"] == 3
