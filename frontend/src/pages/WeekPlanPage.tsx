@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
+import { PageHeader } from "@/components/PageHeader"
 
 interface Recipe {
   recipe_id: number
@@ -391,14 +392,13 @@ export default function WeekPlanPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <p className="text-muted-foreground">Laden...</p>
-      </div>
+      <p className="p-4 text-muted-foreground">Laden...</p>
     )
   }
 
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="flex flex-col">
+      <PageHeader title="Wochenplan" />
       <div className="flex items-center gap-3 p-3 border-b bg-muted/30">
         <Button
           variant="outline"

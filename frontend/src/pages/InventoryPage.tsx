@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react"
 import type { FormEvent } from "react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import { PageHeader } from "@/components/PageHeader"
 
 interface InventoryItem {
   id: number
@@ -245,20 +246,20 @@ export default function InventoryPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <div className="text-muted-foreground">Laden...</div>
-      </div>
+      <div className="p-4 text-muted-foreground">Laden...</div>
     )
   }
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-8">
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-3xl font-bold">Vorrat</h1>
-        <Button onClick={() => setShowAddForm(!showAddForm)}>
-          {showAddForm ? "Abbrechen" : "+ Hinzuf\u00fcgen"}
-        </Button>
-      </div>
+    <div>
+      <PageHeader
+        title="Vorrat"
+        actions={
+          <Button onClick={() => setShowAddForm(!showAddForm)}>
+            {showAddForm ? "Abbrechen" : "+ Hinzuf\u00fcgen"}
+          </Button>
+        }
+      />
 
       {/* Add form */}
       {showAddForm && (

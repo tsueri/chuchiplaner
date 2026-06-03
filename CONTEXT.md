@@ -104,7 +104,7 @@ backend/
 ```
 frontend/src/
 ├── main.tsx                  # React entry: BrowserRouter, AuthProvider, App
-├── App.tsx                   # Routes + HomePage (dashboard with nav buttons)
+├── App.tsx                   # Routes: public branch (no shell) + protected branch (AppLayout + ProtectedRoute + Outlet). `/` redirects to `/plan`.
 ├── index.css                 # Tailwind 4 + shadcn + Geist font + theme (OKLCH vars, light/dark)
 ├── contexts/
 │   └── AuthContext.tsx        # Auth state: user, loading, login(), register(), logout(). Calls /api/auth/me on mount.
@@ -137,7 +137,7 @@ frontend/src/
 
 | Path | Page | Protected |
 |---|---|---|
-| `/` | HomePage (inline in App.tsx) | Yes |
+| `/` | `<Navigate to="/plan" replace />` (no HomePage) | Yes |
 | `/login` | LoginPage | No |
 | `/register` | RegisterPage | No |
 | `/recipes` | RecipeListPage | Yes |
@@ -244,8 +244,11 @@ When a recipe is planned but not yet cooked, its ingredients are reserved (scale
 | Test file | Scope |
 |---|---|
 | `src/hooks/useDarkMode.test.ts` | `useDarkMode`: `localStorage` round-trip, `matchMedia` fallback, `.dark` class application, `toggle()` writes back to storage. |
+| `src/components/AppLayout.test.tsx` | `AppLayout`: topbar shows the title from `PageHeaderContext`; subtitle + actions render; authenticated username surfaces in the sidebar footer. |
+| `src/components/ProtectedRoute.test.tsx` | `ProtectedRoute`: renders children when authenticated, redirects to `/login` when not, loading state is inline (no full-screen stretch). |
+| `src/App.test.tsx` | `App` routing: `/` redirects to `/plan`; public routes (`/login`, `/register`, shared grocery list, shared week plan) render without the shell; unauthenticated users are bounced from protected routes; `/__shell-preview` is gone. |
 
-**What's NOT tested**: Frontend components (`AppLayout`, `PageHeader`, `SidebarNav`), drag-and-drop, E2E workflows, visual behavior, the no-flash inline `<script>` in `index.html`. Hook-layer tests are in; component tests are out until a frontend test story is established.
+**What's NOT tested**: `PageHeader` (trivial context-setter), `SidebarNav` (visual + NavLink integration), drag-and-drop, E2E workflows, visual behavior, the no-flash inline `<script>` in `index.html`. Hook- and route-level tests are in; granular component tests for `PageHeader`/`SidebarNav` are out until the frontend test story expands.
 
 **Run tests**:
 ```bash

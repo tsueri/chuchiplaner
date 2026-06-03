@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/contexts/useAuth"
+import { PageHeader } from "@/components/PageHeader"
 
 interface RecipeDetail {
   id: number
@@ -182,7 +183,8 @@ export default function RecipeDetailPage() {
     return <div className="p-4 text-red-600">{error || "Rezept nicht gefunden"}</div>
 
   return (
-    <div className="mx-auto max-w-3xl p-4">
+    <div>
+      <PageHeader title="Rezept" />
       <button
         onClick={() => navigate("/recipes")}
         className="mb-4 text-sm text-primary hover:underline"

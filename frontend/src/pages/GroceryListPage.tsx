@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Link } from "react-router-dom"
 import { cn } from "@/lib/utils"
+import { PageHeader } from "@/components/PageHeader"
 
 interface RecipeBreakdownEntry {
   recipe_id: number
@@ -225,47 +226,47 @@ export default function GroceryListPage() {
 
   if (loading && !listData) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <p className="text-muted-foreground">Laden...</p>
-      </div>
+      <div className="p-4 text-muted-foreground">Laden...</div>
     )
   }
 
   return (
-    <div className="flex min-h-screen flex-col max-w-3xl mx-auto w-full p-4">
-      <div className="flex items-center gap-3 mb-4">
-        <h1 className="text-2xl font-bold">Einkaufsliste</h1>
-        <div className="ml-auto flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={regenerate}
-            disabled={saving}
-          >
-            Neu laden
-          </Button>
-          {listData && (
+    <div>
+      <PageHeader
+        title="Einkaufsliste"
+        actions={
+          <>
             <Button
               variant="outline"
               size="sm"
-              onClick={copyShareLink}
+              onClick={regenerate}
               disabled={saving}
             >
-              {copied ? "Kopiert!" : "Teilen"}
+              Neu laden
             </Button>
-          )}
-          {!listData?.completed_at && listData && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowCompleteDialog(true)}
-              disabled={saving}
-            >
-              Erledigt
-            </Button>
-          )}
-        </div>
-      </div>
+            {listData && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={copyShareLink}
+                disabled={saving}
+              >
+                {copied ? "Kopiert!" : "Teilen"}
+              </Button>
+            )}
+            {!listData?.completed_at && listData && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowCompleteDialog(true)}
+                disabled={saving}
+              >
+                Erledigt
+              </Button>
+            )}
+          </>
+        }
+      />
 
       {weekPlans.length > 0 && (
         <div className="mb-4">

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { useAuth } from "@/contexts/useAuth"
 import { Button } from "@/components/ui/button"
+import { PageHeader } from "@/components/PageHeader"
 
 interface Member {
   id: number
@@ -310,17 +311,13 @@ export default function SettingsPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <p className="text-muted-foreground">Laden...</p>
-      </div>
+      <div className="p-4 text-muted-foreground">Laden...</div>
     )
   }
 
   if (!household) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <p className="text-destructive">{error || "Kein Haushalt gefunden"}</p>
-      </div>
+      <div className="p-4 text-destructive">{error || "Kein Haushalt gefunden"}</div>
     )
   }
 
@@ -328,8 +325,8 @@ export default function SettingsPage() {
   const isAdmin = user?.role === "admin"
 
   return (
-    <div className="mx-auto max-w-2xl space-y-8 p-6">
-      <h1 className="text-2xl font-bold">Einstellungen</h1>
+    <div className="space-y-8">
+      <PageHeader title="Einstellungen" />
 
       {error && (
         <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">

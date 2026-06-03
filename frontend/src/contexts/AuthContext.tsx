@@ -16,6 +16,7 @@ interface AuthContextType {
 }
 
 export const AuthContext = createContext<AuthContextType | null>(null)
+export type { AuthContextType }
 
 async function api(path: string, options?: RequestInit) {
   const res = await fetch(`/api${path}`, {

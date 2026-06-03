@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react"
 import { Link } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import { PageHeader } from "@/components/PageHeader"
 
 interface RecipeItem {
   id: number
@@ -94,8 +95,8 @@ export default function RecipeListPage() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl p-4">
-      <h1 className="mb-4 text-2xl font-bold">Rezepte</h1>
+    <div>
+      <PageHeader title="Rezepte" />
 
       <div className="mb-4 flex flex-wrap gap-2">
         <input
