@@ -109,9 +109,9 @@ frontend/src/
 ├── contexts/
 │   └── AuthContext.tsx        # Auth state: user, loading, login(), register(), logout(). Calls /api/auth/me on mount.
 ├── components/
-│   ├── AppLayout.tsx            # App-level shell: SidebarProvider, persistent Sidebar on md+, mobile Sheet on <md, topbar with page title + hamburger, sidebar footer (username, dark-mode toggle, sign-out). Subscribes to useLocation to close the mobile sheet on route change.
+│   ├── AppLayout.tsx            # App-level shell: SidebarProvider, persistent Sidebar on md+, mobile Sheet on <md, topbar (page title + mobile hamburger), sidebar footer (username + sign-out + dark-mode toggle), renders active route via <Outlet />. Subscribes to useLocation to close the mobile sheet on route change.
 │   ├── PageHeader.tsx           # Per-page topbar title + optional right-aligned actions + optional subtitle. Used by every protected page.
-│   ├── SidebarNav.tsx           # The five NavLink items with lucide icons (CalendarDays, ShoppingCart, UtensilsCrossed, Refrigerator, Settings). Encapsulates the item list.
+│   ├── SidebarNav.tsx           # The five NavLink items with lucide icons (CalendarDays, ShoppingCart, UtensilsCrossed, Refrigerator, Settings). Encapsulates the item list so AppLayout does not know the labels or icons.
 │   ├── ProtectedRoute.tsx       # Loading spinner → redirect to /login if no user
 │   └── ui/
 │       └── button.tsx           # shadcn Button (on @base-ui/react/button), CVA variants
