@@ -9,7 +9,7 @@ dependencies = [
     "sqlalchemy[asyncio]>=2.0.36",
     "aiosqlite>=0.20.0",
     "alembic>=1.14.0",
-    "bcrypt<5",
+    "bcrypt>=4.0,<4.1",
     "passlib>=1.7.4",
     "recipe-scrapers>=15.0.0",
     "httpx>=0.28.0",

@@ -24,7 +24,7 @@ class SessionMiddleware(BaseHTTPMiddleware):
             bool(token),
         )
         response = await call_next(request)
-        set_cookies = response.headers.get_list("set-cookie")
+        set_cookies = response.headers.getlist("set-cookie")
         logger.info(
             "RES %s %s set-cookie=%s",
             request.method,

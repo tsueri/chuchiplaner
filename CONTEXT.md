@@ -42,7 +42,7 @@ browser ──▶ Vite dev proxy (5173) ──▶ FastAPI (8000) ──▶ SQLit
 
 **Backend** (`backend/`): FastAPI app factory (`create_app()` in `app/main.py`). Middleware: CORS + custom SessionMiddleware (extracts `session_token` cookie → `request.state.session_token`). Routers mounted under `/api/`. Serves React static build from `static/` in production.
 
-**Frontend** (`frontend/`): React SPA with react-router-dom v7. Cookie-based auth via AuthContext (React Context). No centralized API client — each page defines its own `async function api()`. No shared state between pages. Protected routes wrapped in `ProtectedRoute` (redirects to `/login`).
+**Frontend** (`frontend/`): React SPA with react-router-dom v7. Cookie-based auth via AuthContext (React Context). No centralized API client — each page defines its own `async function api()`. No shared state between pages. Protected routes wrapped in `ProtectedRoute` (redirects to `/login`). Every protected page renders inside `AppLayout` (persistent sidebar on `md+`, mobile `Sheet` on `<md`, topbar with page title + mobile hamburger) and declares its topbar title via `<PageHeader>`.
 
 **Auth flow**: bcrypt-hashed passwords, server-side sessions in `sessions` table, httponly `session_token` cookie. `get_current_user` dependency looks up session, validates token + expiry, eager-loads user + household.
 
@@ -109,9 +109,14 @@ frontend/src/
 ├── contexts/
 │   └── AuthContext.tsx        # Auth state: user, loading, login(), register(), logout(). Calls /api/auth/me on mount.
 ├── components/
-│   ├── ProtectedRoute.tsx     # Loading spinner → redirect to /login if no user
+│   ├── AppLayout.tsx            # App-level shell: SidebarProvider, persistent Sidebar on md+, mobile Sheet on <md, topbar with page title + hamburger, sidebar footer (username, dark-mode toggle, sign-out). Subscribes to useLocation to close the mobile sheet on route change.
+│   ├── PageHeader.tsx           # Per-page topbar title + optional right-aligned actions + optional subtitle. Used by every protected page.
+│   ├── SidebarNav.tsx           # The five NavLink items with lucide icons (CalendarDays, ShoppingCart, UtensilsCrossed, Refrigerator, Settings). Encapsulates the item list.
+│   ├── ProtectedRoute.tsx       # Loading spinner → redirect to /login if no user
 │   └── ui/
-│       └── button.tsx         # shadcn Button (on @base-ui/react/button), CVA variants
+│       └── button.tsx           # shadcn Button (on @base-ui/react/button), CVA variants
+├── hooks/
+│   └── useDarkMode.ts           # { isDark, toggle }. Reads/writes localStorage["theme"], falls back to matchMedia('(prefers-color-scheme: dark)'), toggles .dark on <html>. The same localStorage key is read by the no-flash inline <script> in index.html — see ADR 0001.
 ├── pages/
 │   ├── LoginPage.tsx          # Username + password form
 │   ├── RegisterPage.tsx       # Username + password + optional invite code (from ?invite_code= query param)
@@ -166,6 +171,15 @@ useEffect(() => {
 
 ### State management
 No external state library. Auth state lives in React Context (`AuthContext`). All other state (data, loading, form inputs) is local `useState` + `useEffect` per page. Pages fetch independently — no shared data stores.
+
+### App shell
+Every protected route renders inside `AppLayout` (`components/AppLayout.tsx`). The shell owns the persistent `Sidebar` on `md+` and a mobile `Sheet` on `<md`, the topbar (page title + mobile hamburger), the dark-mode toggle, and the sidebar footer (username + sign-out). The active page's content is mounted via `<Outlet />` from react-router.
+
+The route tree in `App.tsx` has two branches: public routes (`/login`, `/register`, `/grocery-list/share/:token`, `/plan/:slug/:year/kw:week`) render without the shell; protected routes are nested under `<AppLayout>` + `<ProtectedRoute>`. The `/` route is a `<Navigate to="/plan" replace />` redirect — there is no dashboard at `/`.
+
+Each page declares its topbar title with `<PageHeader title="..." actions?={...} />`. The `actions` slot is the right place for page-level buttons (e.g. "Regenerate" on the grocery list). Page content sits inside `<main className="flex-1 p-6 md:p-8">` — no max-width container; the week plan grid fills the canvas.
+
+The sidebar is always expanded; collapse is intentionally not exposed (see ADR 0001). Dark mode is plumbed through `useDarkMode` plus a no-flash inline `<script>` in `index.html`; the `localStorage` key (`"theme"`) is duplicated in both places and must stay in lockstep.
 
 ### ISO weeks
 All week planning uses ISO 8601 week dates (Monday start), timezone Europe/Zurich. Helper functions in `app/services/week_plan.py`:
@@ -225,11 +239,19 @@ When a recipe is planned but not yet cooked, its ingredients are reserved (scale
 | `test_health.py` | Health check endpoint |
 | `test_user.py` | User favorites and notes listing |
 
-**What's NOT tested**: Frontend components, drag-and-drop, E2E workflows, visual behavior.
+**Frontend tests**: Vitest + jsdom + `@testing-library/react` + `@testing-library/jest-dom` + `@testing-library/user-event`. Vitest config lives at the frontend root; global setup at `frontend/src/test/setup.ts` (imports jest-dom matchers and stubs `matchMedia`). Path alias `@/` works in tests as it does in source.
+
+| Test file | Scope |
+|---|---|
+| `src/hooks/useDarkMode.test.ts` | `useDarkMode`: `localStorage` round-trip, `matchMedia` fallback, `.dark` class application, `toggle()` writes back to storage. |
+
+**What's NOT tested**: Frontend components (`AppLayout`, `PageHeader`, `SidebarNav`), drag-and-drop, E2E workflows, visual behavior, the no-flash inline `<script>` in `index.html`. Hook-layer tests are in; component tests are out until a frontend test story is established.
 
 **Run tests**:
 ```bash
 cd backend && uv run pytest
+cd frontend && npm test            # vitest run
+cd frontend && npm run test:watch   # vitest watch mode
 ```
 
 **Lint and typecheck**:
