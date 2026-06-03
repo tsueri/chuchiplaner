@@ -59,6 +59,11 @@ class ScrapedRecipeResponse(BaseModel):
     is_partial: bool = False
 
 
+class LearnedAliasItem(BaseModel):
+    alias_name: str = Field(min_length=1, max_length=255)
+    ingredient_id: int
+
+
 class RecipeSaveRequest(BaseModel):
     title: str = Field(min_length=1, max_length=255)
     instructions: str = Field(min_length=1)
@@ -67,6 +72,7 @@ class RecipeSaveRequest(BaseModel):
     source_domain: str | None = Field(default=None, max_length=255)
     servings: int = Field(default=4, ge=1)
     ingredients: list["RecipeIngredientItem"] = Field(default_factory=list)
+    learned_aliases: list["LearnedAliasItem"] = Field(default_factory=list)
 
 
 class RecipeIngredientItem(BaseModel):

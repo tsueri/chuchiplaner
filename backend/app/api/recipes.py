@@ -5,6 +5,7 @@ from urllib.parse import urlparse
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import JSONResponse
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -244,7 +245,35 @@ async def create_recipe(
         )
         db.add(recipe_ingredient)
 
-    await db.flush()
+    try:
+        for alias_item in body.learned_aliases:
+            ing_result = await db.execute(
+                select(Ingredient).where(Ingredient.id == alias_item.ingredient_id)
+            )
+            if ing_result.scalar_one_or_none() is None:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=(
+                        f"Ungültiger ingredient_id: "
+                        f"Zutat mit ID {alias_item.ingredient_id} existiert nicht."
+                    ),
+                )
+            alias = IngredientAlias(
+                household_id=current_user.household_id,
+                alias_name=alias_item.alias_name,
+                ingredient_id=alias_item.ingredient_id,
+            )
+            db.add(alias)
+
+        await db.flush()
+    except IntegrityError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Ein Alias mit diesem Namen existiert bereits "
+                "in diesem Haushalt."
+            ),
+        )
 
     from sqlalchemy import text as sqla_text
     await db.execute(

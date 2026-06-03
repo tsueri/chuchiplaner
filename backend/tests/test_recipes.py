@@ -873,6 +873,153 @@ async def test_recipe_list_pagination(client: AsyncClient) -> None:
     assert len(data) == 2
 
 
+# ----- Learned aliases -----
+
+
+@pytest.mark.asyncio
+async def test_create_recipe_alias_conflict_409(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    auth = await _register(client, "aliasconflict")
+    cookies = auth["cookies"]
+
+    ing = await client.post(
+        "/api/ingredients", json={"name": "Rahm"}, cookies=cookies
+    )
+    ingredient_id = ing.json()["id"]
+
+    await client.post(
+        "/api/household/aliases",
+        json={"ingredient_id": ingredient_id, "alias_name": "Sahne"},
+        cookies=cookies,
+    )
+    await db_session.commit()
+
+    resp = await client.post(
+        "/api/recipes",
+        json={
+            "title": "Rahmsosse",
+            "instructions": "Kochen.",
+            "servings": 2,
+            "learned_aliases": [
+                {"alias_name": "Sahne", "ingredient_id": ingredient_id},
+            ],
+        },
+        cookies=cookies,
+    )
+    assert resp.status_code == 409
+    assert "detail" in resp.json()
+
+    await db_session.rollback()
+    list_resp = await client.get("/api/recipes", cookies=cookies)
+    recipes = list_resp.json()
+    titles = [r["title"] for r in recipes]
+    assert "Rahmsosse" not in titles
+
+
+@pytest.mark.asyncio
+async def test_create_recipe_empty_learned_aliases_noop(
+    client: AsyncClient,
+) -> None:
+    auth = await _register(client, "aliasempty")
+    cookies = auth["cookies"]
+
+    resp = await client.post(
+        "/api/recipes",
+        json={
+            "title": "Pasta",
+            "instructions": "Cook.",
+            "servings": 2,
+            "learned_aliases": [],
+        },
+        cookies=cookies,
+    )
+    assert resp.status_code == 201
+
+    alias_resp = await client.get(
+        "/api/household/aliases", cookies=cookies
+    )
+    assert alias_resp.status_code == 200
+    assert len(alias_resp.json()) == 0
+
+
+@pytest.mark.asyncio
+async def test_create_recipe_learned_aliases_missing_noop(
+    client: AsyncClient,
+) -> None:
+    auth = await _register(client, "aliasmissing")
+    cookies = auth["cookies"]
+
+    resp = await client.post(
+        "/api/recipes",
+        json={
+            "title": "Pasta",
+            "instructions": "Cook.",
+            "servings": 2,
+        },
+        cookies=cookies,
+    )
+    assert resp.status_code == 201
+
+
+@pytest.mark.asyncio
+async def test_create_recipe_invalid_ingredient_alias_400(
+    client: AsyncClient,
+) -> None:
+    auth = await _register(client, "aliasinvalid")
+    cookies = auth["cookies"]
+
+    resp = await client.post(
+        "/api/recipes",
+        json={
+            "title": "Pasta",
+            "instructions": "Cook.",
+            "servings": 2,
+            "learned_aliases": [
+                {"alias_name": "Foo", "ingredient_id": 99999},
+            ],
+        },
+        cookies=cookies,
+    )
+    assert resp.status_code == 400
+    assert "detail" in resp.json()
+    assert "99999" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_create_recipe_persists_learned_aliases(client: AsyncClient) -> None:
+    auth = await _register(client, "aliaslearn")
+    cookies = auth["cookies"]
+
+    ing = await client.post(
+        "/api/ingredients", json={"name": "Tomaten"}, cookies=cookies
+    )
+    ingredient_id = ing.json()["id"]
+
+    resp = await client.post(
+        "/api/recipes",
+        json={
+            "title": "Pasta",
+            "instructions": "Cook.",
+            "servings": 2,
+            "learned_aliases": [
+                {"alias_name": "Tomäntli", "ingredient_id": ingredient_id},
+            ],
+        },
+        cookies=cookies,
+    )
+    assert resp.status_code == 201
+
+    alias_resp = await client.get(
+        "/api/household/aliases", cookies=cookies
+    )
+    assert alias_resp.status_code == 200
+    aliases = alias_resp.json()
+    assert len(aliases) == 1
+    assert aliases[0]["alias_name"] == "Tomäntli"
+    assert aliases[0]["ingredient_id"] == ingredient_id
+
+
 # ----- Source URL duplicate checks -----
 
 
