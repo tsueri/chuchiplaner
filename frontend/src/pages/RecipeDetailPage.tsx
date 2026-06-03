@@ -1,6 +1,12 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useNavigate, useParams } from "react-router-dom"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { EditableIngredientRow } from "@/components/EditableIngredientRow"
+import {
+  defaultEditableIngredientValue,
+  type EditableIngredientValue,
+} from "@/components/EditableIngredientRow.types"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/contexts/useAuth"
 import { PageHeader } from "@/components/PageHeader"
@@ -45,6 +51,40 @@ interface TagItem {
   household_id: number | null
 }
 
+interface EditState {
+  title: string
+  instructions: string
+  servings: number
+  image_url: string
+  source_url: string
+  source_domain: string
+  rows: EditableIngredientValue[]
+  selectedTagIds: number[]
+}
+
+function buildEditState(recipe: RecipeDetail): EditState {
+  return {
+    title: recipe.title,
+    instructions: recipe.instructions,
+    servings: recipe.servings,
+    image_url: recipe.image_url ?? "",
+    source_url: recipe.source_url ?? "",
+    source_domain: recipe.source_domain ?? "",
+    rows: recipe.ingredients.map((ing, idx) => ({
+      key: `existing-${ing.id}-${idx}`,
+      ingredientId: ing.ingredient_id,
+      ingredientName: ing.ingredient_name,
+      query: "",
+      quantity: String(ing.quantity),
+      unit: ing.unit,
+      suggestedIngredientId: null,
+      confidence: 1.0,
+      raw: "",
+    })),
+    selectedTagIds: recipe.tags.map((t) => t.id),
+  }
+}
+
 async function api(path: string, options?: RequestInit) {
   const res = await fetch(`/api${path}`, {
     credentials: "same-origin",
@@ -59,6 +99,15 @@ async function api(path: string, options?: RequestInit) {
   return res.json()
 }
 
+function parseQuantity(value: string): number {
+  const n = parseFloat(value)
+  return Number.isFinite(n) ? n : 0
+}
+
+function emptyToNull(value: string): string | null {
+  return value.trim() === "" ? null : value
+}
+
 export default function RecipeDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
@@ -69,12 +118,17 @@ export default function RecipeDetailPage() {
   const [tags, setTags] = useState<TagItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [isEditing, setIsEditing] = useState(false)
 
   const [newNote, setNewNote] = useState("")
   const [noteVisibility, setNoteVisibility] = useState("private")
   const [editingNoteId, setEditingNoteId] = useState<number | null>(null)
   const [editNoteText, setEditNoteText] = useState("")
   const [editNoteVisibility, setEditNoteVisibility] = useState("private")
+
+  const [editState, setEditState] = useState<EditState | null>(null)
+  const [editError, setEditError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
 
   const doFetchRecipe = useCallback(async () => {
     if (!id) throw new Error("No recipe id")
@@ -178,10 +232,290 @@ export default function RecipeDetailPage() {
     navigate("/recipes")
   }
 
+  const enterEditMode = () => {
+    if (!recipe) return
+    setEditState(buildEditState(recipe))
+    setEditError(null)
+    setIsEditing(true)
+  }
+
+  const cancelEdit = () => {
+    setIsEditing(false)
+    setEditState(null)
+    setEditError(null)
+  }
+
+  const updateEditField = <K extends keyof EditState>(
+    key: K,
+    value: EditState[K]
+  ) => {
+    setEditState((prev) => (prev ? { ...prev, [key]: value } : prev))
+  }
+
+  const addRow = () => {
+    setEditState((prev) =>
+      prev ? { ...prev, rows: [...prev.rows, defaultEditableIngredientValue()] } : prev
+    )
+  }
+
+  const updateRow = (idx: number, row: EditableIngredientValue) => {
+    setEditState((prev) =>
+      prev
+        ? {
+            ...prev,
+            rows: prev.rows.map((r, i) => (i === idx ? row : r)),
+          }
+        : prev
+    )
+  }
+
+  const removeRow = (idx: number) => {
+    setEditState((prev) =>
+      prev ? { ...prev, rows: prev.rows.filter((_, i) => i !== idx) } : prev
+    )
+  }
+
+  const toggleEditTag = (tagId: number) => {
+    setEditState((prev) => {
+      if (!prev) return prev
+      const isActive = prev.selectedTagIds.includes(tagId)
+      return {
+        ...prev,
+        selectedTagIds: isActive
+          ? prev.selectedTagIds.filter((id) => id !== tagId)
+          : [...prev.selectedTagIds, tagId],
+      }
+    })
+  }
+
+  const canSave = useMemo(() => {
+    if (!editState) return false
+    if (saving) return false
+    if (editState.title.trim() === "") return false
+    if (editState.instructions.trim() === "") return false
+    return true
+  }, [editState, saving])
+
+  const saveEdit = async () => {
+    if (!editState || !id) return
+    setSaving(true)
+    setEditError(null)
+    const ingredients = editState.rows
+      .filter((r) => r.ingredientId !== null)
+      .map((r, idx) => ({
+        ingredient_id: r.ingredientId as number,
+        quantity: parseQuantity(r.quantity),
+        unit: r.unit,
+        order_index: idx,
+      }))
+    try {
+      const updated = (await api(`/recipes/${id}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          title: editState.title.trim(),
+          instructions: editState.instructions.trim(),
+          servings: editState.servings,
+          image_url: emptyToNull(editState.image_url),
+          source_url: emptyToNull(editState.source_url),
+          source_domain: emptyToNull(editState.source_domain),
+          tag_ids: editState.selectedTagIds,
+          ingredients,
+        }),
+      })) as RecipeDetail
+      setRecipe(updated)
+      setIsEditing(false)
+      setEditState(null)
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : "Speichern fehlgeschlagen")
+    } finally {
+      setSaving(false)
+    }
+  }
+
   if (loading)
     return <div className="p-4">Lade Rezept...</div>
   if (error || !recipe)
     return <div className="p-4 text-red-600">{error || "Rezept nicht gefunden"}</div>
+
+  if (isEditing && editState) {
+    return (
+      <div>
+        <PageHeader title="Rezept bearbeiten" />
+        <button
+          onClick={cancelEdit}
+          className="mb-4 text-sm text-primary hover:underline"
+        >
+          &larr; Abbrechen
+        </button>
+
+        {editError && (
+          <div
+            role="alert"
+            className="mb-4 rounded-md bg-destructive/10 p-3 text-sm text-destructive"
+          >
+            {editError}
+          </div>
+        )}
+
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+            if (canSave) saveEdit()
+          }}
+          className="mx-auto max-w-2xl space-y-4 rounded-lg border bg-card p-6"
+        >
+          <div className="space-y-2">
+            <label htmlFor="edit-recipe-title" className="text-sm font-medium">
+              Titel
+            </label>
+            <Input
+              id="edit-recipe-title"
+              type="text"
+              value={editState.title}
+              onChange={(e) => updateEditField("title", e.target.value)}
+              required
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label
+              htmlFor="edit-recipe-instructions"
+              className="text-sm font-medium"
+            >
+              Zubereitung
+            </label>
+            <textarea
+              id="edit-recipe-instructions"
+              value={editState.instructions}
+              onChange={(e) => updateEditField("instructions", e.target.value)}
+              rows={6}
+              required
+              className="w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label htmlFor="edit-recipe-servings" className="text-sm font-medium">
+              Portionen
+            </label>
+            <Input
+              id="edit-recipe-servings"
+              type="number"
+              min={1}
+              value={editState.servings}
+              onChange={(e) =>
+                updateEditField(
+                  "servings",
+                  Math.max(1, Number(e.target.value) || 1)
+                )
+              }
+              required
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label htmlFor="edit-recipe-image-url" className="text-sm font-medium">
+              Bild-URL
+            </label>
+            <Input
+              id="edit-recipe-image-url"
+              type="url"
+              value={editState.image_url}
+              onChange={(e) => updateEditField("image_url", e.target.value)}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label htmlFor="edit-recipe-source-url" className="text-sm font-medium">
+              Quelle
+            </label>
+            <Input
+              id="edit-recipe-source-url"
+              type="url"
+              value={editState.source_url}
+              onChange={(e) => updateEditField("source_url", e.target.value)}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label
+              htmlFor="edit-recipe-source-domain"
+              className="text-sm font-medium"
+            >
+              Quell-Domain
+            </label>
+            <Input
+              id="edit-recipe-source-domain"
+              type="text"
+              value={editState.source_domain}
+              onChange={(e) => updateEditField("source_domain", e.target.value)}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <h2 className="text-sm font-medium">Tags</h2>
+            <div className="flex flex-wrap gap-2">
+              {tags.map((tag) => {
+                const isActive = editState.selectedTagIds.includes(tag.id)
+                return (
+                  <button
+                    key={tag.id}
+                    type="button"
+                    aria-pressed={isActive}
+                    onClick={() => toggleEditTag(tag.id)}
+                    className={cn(
+                      "cursor-pointer rounded-full px-3 py-1 text-sm transition",
+                      isActive
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-muted hover:bg-muted-foreground/20"
+                    )}
+                  >
+                    {tag.name}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <h2 className="text-sm font-medium">Zutaten</h2>
+            <div className="space-y-2">
+              {editState.rows.map((row, idx) => (
+                <EditableIngredientRow
+                  key={row.key}
+                  value={row}
+                  onChange={(r) => updateRow(idx, r)}
+                  onRemove={() => removeRow(idx)}
+                />
+              ))}
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={addRow}
+            >
+              + Zutat hinzufügen
+            </Button>
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-2">
+            <Button
+              type="button"
+              onClick={cancelEdit}
+              variant="outline"
+              size="sm"
+            >
+              Abbrechen
+            </Button>
+            <Button type="submit" disabled={!canSave}>
+              {saving ? "Wird gespeichert..." : "Speichern"}
+            </Button>
+          </div>
+        </form>
+      </div>
+    )
+  }
 
   return (
     <div>
@@ -192,6 +526,12 @@ export default function RecipeDetailPage() {
       >
         &larr; Zurück zur Liste
       </button>
+
+      <div className="mb-4 flex justify-end">
+        <Button onClick={enterEditMode} variant="outline" size="sm">
+          Bearbeiten
+        </Button>
+      </div>
 
       {recipe.image_url && (
         <img
