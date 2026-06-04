@@ -89,9 +89,12 @@ async def update_household(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
 
     if body.name is not None:
-        from app.services.household import generate_slug
         household.name = body.name
-        household.slug = generate_slug(body.name)
+        if body.slug is None:
+            from app.services.household import generate_slug
+            household.slug = generate_slug(body.name)
+    if body.slug is not None:
+        household.slug = body.slug
 
     if body.default_size is not None:
         household.default_size = body.default_size

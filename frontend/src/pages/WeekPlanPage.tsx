@@ -390,7 +390,7 @@ export default function WeekPlanPage() {
   }
 
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col h-full">
       <PageHeader title="Wochenplan" />
       <div className="flex items-center gap-3 p-3 border-b bg-muted/30">
         <Button
@@ -495,7 +495,11 @@ export default function WeekPlanPage() {
                   {day}
                 </div>
               ))}
-              {MEAL_TYPES.map((meal) =>
+              {MEAL_TYPES.filter((meal) =>
+                weekData.slots.some(
+                  (s) => s.meal_type === meal && s.recipe_id !== null
+                )
+              ).map((meal) =>
                 DAY_LABELS.map((_, dayIdx) => {
                   const slot = getSlot(dayIdx, meal)
                   const isActive = slot?.active !== false

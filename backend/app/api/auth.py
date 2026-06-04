@@ -3,6 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
+from app.core.config import settings
 from app.models.recipe import Recipe, RecipeFavorite, RecipeNote
 from app.models.user import User
 from app.schemas.auth import (
@@ -65,6 +66,24 @@ async def register(
     response: Response,
     db: AsyncSession = Depends(get_db),
 ) -> User:
+    if not settings.signup_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Signup is disabled",
+        )
+    if settings.admin_signup_code:
+        if not body.invite_code:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Invite code is required",
+            )
+        from app.services.household import get_household_by_invite_code
+        household = await get_household_by_invite_code(db, body.invite_code)
+        if household is None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Invalid invite code",
+            )
     existing = await get_user_by_username(db, body.username)
     if existing:
         raise HTTPException(

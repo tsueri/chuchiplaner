@@ -31,7 +31,7 @@ interface PublicPlan {
 
 const DAY_LABELS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
 const MEAL_LABELS: Record<string, string> = {
-  breakfast: "Fruehstueck",
+  breakfast: "Frühstück",
   lunch: "Mittag",
   dinner: "Abend",
   dessert: "Dessert",
@@ -159,7 +159,11 @@ export default function PublicPlanPage() {
           </div>
         ))}
 
-        {MEAL_TYPES.map((meal) =>
+        {MEAL_TYPES.filter((meal) =>
+          data.slots.some(
+            (s) => s.meal_type === meal && s.recipe !== null
+          )
+        ).map((meal) =>
           DAY_LABELS.map((_, dayIdx) => {
             const slot = getSlot(dayIdx, meal)
             const isActive = slot?.active !== false

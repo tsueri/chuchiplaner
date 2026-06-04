@@ -82,6 +82,7 @@ export default function InventoryPage() {
   const [error, setError] = useState("")
   const [sortMode, setSortMode] = useState<SortMode>("expiry")
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all")
+  const [search, setSearch] = useState("")
 
   // Add form state
   const [showAddForm, setShowAddForm] = useState(false)
@@ -159,6 +160,12 @@ export default function InventoryPage() {
       }
     }
   })
+
+  const filteredItems = search
+    ? sortedItems.filter((item) =>
+        item.ingredient_name.toLowerCase().includes(search.toLowerCase())
+      )
+    : sortedItems
 
   const filteredIngredients = ingredients.filter((ing) =>
     ing.name.toLowerCase().includes(addIngredientSearch.toLowerCase())
@@ -433,17 +440,25 @@ export default function InventoryPage() {
             </button>
           ))}
         </div>
+
+        <input
+          type="text"
+          placeholder="Suchen..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="rounded-md border px-3 py-1 text-sm ml-auto w-48"
+        />
       </div>
 
       {/* Item list */}
-      {sortedItems.length === 0 ? (
+      {filteredItems.length === 0 ? (
         <div className="rounded-lg border border-dashed p-12 text-center text-muted-foreground">
           Keine Vorräte vorhanden. Füge Zutaten hinzu, um deinen Vorrat zu
           verfolgen.
         </div>
       ) : (
         <div className="space-y-2">
-          {sortedItems.map((item) => (
+          {filteredItems.map((item) => (
             <div
               key={item.id}
               className="rounded-lg border p-4 transition-colors hover:bg-muted/50"
@@ -544,7 +559,7 @@ export default function InventoryPage() {
                     </div>
                     <div className="mt-1 text-sm text-muted-foreground">
                       {item.quantity} {item.unit}
-                      <span className="mx-2">\u00b7</span>
+                      <span className="mx-2">{"\u00b7"}</span>
                       <span className={getExpiryClass(item.expiry_date)}>
                         {item.expiry_date
                           ? `bis ${formatDate(item.expiry_date)}`
@@ -565,7 +580,7 @@ export default function InventoryPage() {
                       variant="destructive"
                       onClick={() => handleDelete(item.id)}
                     >
-                      L\u00f6schen
+                      {"L\u00f6schen"}
                     </Button>
                   </div>
                 </div>

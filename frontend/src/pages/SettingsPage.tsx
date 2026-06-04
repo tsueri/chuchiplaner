@@ -86,6 +86,9 @@ export default function SettingsPage() {
   const [slotChanges, setSlotChanges] = useState<Map<string, SlotUpdate>>(new Map())
   const [slotSaving, setSlotSaving] = useState(false)
   const [sizeSaving, setSizeSaving] = useState(false)
+  const [householdName, setHouseholdName] = useState("")
+  const [householdSlug, setHouseholdSlug] = useState("")
+  const [nameSaving, setNameSaving] = useState(false)
   const [pwCurrent, setPwCurrent] = useState("")
   const [pwNew, setPwNew] = useState("")
   const [pwConfirm, setPwConfirm] = useState("")
@@ -105,6 +108,8 @@ export default function SettingsPage() {
         if (!cancelled) {
           setHousehold(hData as Household)
           setHouseholdSize((hData as Household).default_size)
+          setHouseholdName((hData as Household).name)
+          setHouseholdSlug((hData as Household).slug)
           setSlots(sData as MealSlot[])
           setSlotChanges(new Map())
           setError("")
@@ -241,6 +246,27 @@ export default function SettingsPage() {
       setError(err instanceof Error ? err.message : "Failed to save household size")
     } finally {
       setSizeSaving(false)
+    }
+  }
+
+  const saveHouseholdName = async () => {
+    setNameSaving(true)
+    try {
+      const body: Record<string, string> = {}
+      if (householdName !== household?.name) body.name = householdName
+      if (householdSlug !== household?.slug) body.slug = householdSlug
+      if (Object.keys(body).length > 0) {
+        await api("/household", {
+          method: "PUT",
+          body: JSON.stringify(body),
+        })
+      }
+      await refreshAll()
+      setError("")
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save household name")
+    } finally {
+      setNameSaving(false)
     }
   }
 
@@ -417,6 +443,48 @@ export default function SettingsPage() {
           <p className="text-xs text-muted-foreground">
             Ändert die Standardportionen aller Mahlzeiten auf diesen Wert.
           </p>
+        </div>
+      )}
+
+      {isAdmin && (
+        <div className="space-y-4 rounded-lg border p-4">
+          <h2 className="text-lg font-semibold">Name & Slug</h2>
+          <div className="space-y-3 max-w-sm">
+            <div>
+              <label className="text-sm text-muted-foreground block mb-1">
+                Name
+              </label>
+              <input
+                type="text"
+                value={householdName}
+                onChange={(e) => setHouseholdName(e.target.value)}
+                className="w-full rounded border px-3 py-2 text-sm"
+              />
+            </div>
+            <div>
+              <label className="text-sm text-muted-foreground block mb-1">
+                Slug
+              </label>
+              <input
+                type="text"
+                value={householdSlug}
+                onChange={(e) => setHouseholdSlug(e.target.value)}
+                className="w-full rounded border px-3 py-2 text-sm font-mono"
+              />
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={saveHouseholdName}
+              disabled={
+                nameSaving ||
+                (householdName === household?.name &&
+                  householdSlug === household?.slug)
+              }
+            >
+              {nameSaving ? "..." : "Speichern"}
+            </Button>
+          </div>
         </div>
       )}
 

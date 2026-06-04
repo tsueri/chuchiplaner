@@ -25,6 +25,7 @@ class HouseholdResponse(BaseModel):
 
 class HouseholdUpdateRequest(BaseModel):
     name: str | None = None
+    slug: str | None = None
     default_size: int | None = Field(default=None, ge=1)
     default_public: bool | None = None
 

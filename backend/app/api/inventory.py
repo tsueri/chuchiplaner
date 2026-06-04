@@ -73,6 +73,26 @@ async def create_inventory_item(
             detail="Ingredient not found",
         )
 
+    # Merge with existing no-expiry item if applicable
+    if body.expiry_date is None:
+        existing_result = await db.execute(
+            select(InventoryItem).where(
+                InventoryItem.household_id == current_user.household_id,
+                InventoryItem.ingredient_id == body.ingredient_id,
+                InventoryItem.unit == body.unit,
+                InventoryItem.category == body.category,
+                InventoryItem.expiry_date.is_(None),
+            )
+        )
+        existing = existing_result.scalar_one_or_none()
+        if existing is not None:
+            existing.quantity += body.quantity
+            await db.flush()
+            await db.refresh(existing)
+            resp = InventoryItemResponse.model_validate(existing)
+            resp.ingredient_name = ingredient.name
+            return resp
+
     item = InventoryItem(
         household_id=current_user.household_id,
         ingredient_id=body.ingredient_id,
