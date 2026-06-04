@@ -25,7 +25,7 @@ function App() {
         element={<GroceryListSharePage />}
       />
       <Route
-        path="/plan/:slug/:year/kw:week"
+        path="/plan/:slug/:year/:weekParam"
         element={<PublicPlanPage />}
       />
 

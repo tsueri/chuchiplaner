@@ -55,10 +55,10 @@ function getDomainColor(domain: string | null): string {
 }
 
 export default function PublicPlanPage() {
-  const { slug, year: yearParam, week: weekParam } = useParams<{
+  const { slug, year: yearParam, weekParam } = useParams<{
     slug: string
     year: string
-    week: string
+    weekParam: string
   }>()
   const [data, setData] = useState<PublicPlan | null>(null)
   const [loading, setLoading] = useState(true)
