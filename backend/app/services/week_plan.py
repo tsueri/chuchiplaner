@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import joinedload, selectinload
 
 from app.models.household import MealSlotTemplate
 from app.models.recipe import Recipe, RecipeIngredient
@@ -309,9 +309,8 @@ async def compute_reservations(
     for slot in slots:
         recipe_result = await db.execute(
             select(Recipe).where(Recipe.id == slot.recipe_id).options(
-                selectinload(Recipe.ingredients).selectinload(
-                    RecipeIngredient.ingredient
-                )
+<<<<<<< HEAD
+                selectinload(Recipe.ingredients).joinedload(RecipeIngredient.ingredient)
             )
         )
         recipe = recipe_result.scalar_one_or_none()
@@ -323,7 +322,8 @@ async def compute_reservations(
 
         for ri in recipe.ingredients:
             grams, milliliters, pieces = UnitConverter.normalize(
-                ri.quantity, ri.unit, ri.ingredient
+<<<<<<< HEAD
+                ri.quantity, ri.unit, ingredient=ri.ingredient
             )
             if ri.ingredient_id not in reservations:
                 reservations[ri.ingredient_id] = {

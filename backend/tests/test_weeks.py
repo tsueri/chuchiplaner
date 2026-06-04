@@ -1192,3 +1192,321 @@ async def test_plan_creation_falls_back_to_household_default_size(
             f"slot ({slot.day_of_week}, {slot.meal_type}) "
             f"should fall back to default_size=5, got {slot.portions}"
         )
+
+
+# ----- Cross-dimension cooking (Slice 6) -----
+
+
+@pytest.mark.asyncio
+async def test_cook_el_to_g_cross_dimension(
+    client: AsyncClient,
+) -> None:
+    """2 EL Mehl (grams_per_el=10) should deduct 20g from 200g inventory."""
+    reg = await _register(client, "cookcross1")
+    cookies = reg["cookies"]
+    year, week = await _get_current_iso()
+
+    ing = await _create_ingredient(client, cookies, "Mehl")
+    ingredient_id = ing["id"]
+
+    await client.patch(
+        f"/api/ingredients/{ingredient_id}",
+        json={"grams_per_el": 10},
+        cookies=cookies,
+    )
+
+    inv_resp = await client.post(
+        "/api/inventory",
+        json={
+            "ingredient_id": ingredient_id,
+            "quantity": 200,
+            "unit": "g",
+            "category": "raw",
+        },
+        cookies=cookies,
+    )
+    assert inv_resp.status_code == 201
+
+    recipe_resp = await client.post(
+        "/api/recipes",
+        json={
+            "title": "Pfannkuchen",
+            "instructions": "Backen.",
+            "servings": 1,
+            "ingredients": [{
+                "ingredient_id": ingredient_id,
+                "quantity": 2,
+                "unit": "EL",
+            }],
+        },
+        cookies=cookies,
+    )
+    assert recipe_resp.status_code == 201
+    recipe_id = recipe_resp.json()["id"]
+
+    create_resp = await client.post(
+        "/api/weeks",
+        json={"year": year, "iso_week": week},
+        cookies=cookies,
+    )
+    plan_data = create_resp.json()
+    slot = next(
+        s for s in plan_data["slots"]
+        if s["day_of_week"] == 0 and s["meal_type"] == "dinner"
+    )
+
+    await client.put(
+        f"/api/weeks/{year}/{week}/slots",
+        json={
+            "slots": [{
+                "day_of_week": 0,
+                "meal_type": "dinner",
+                "recipe_id": recipe_id,
+                "portions": 1,
+            }]
+        },
+        cookies=cookies,
+    )
+
+    cook_resp = await client.post(
+        f"/api/weeks/{year}/{week}/slots/{slot['id']}/cook",
+        cookies=cookies,
+    )
+    assert cook_resp.status_code == 200
+    cook_data = cook_resp.json()
+    assert cook_data["cooked"] is True
+    ded = cook_data["deductions"][0]
+    assert ded["ingredient_name"] == "Mehl"
+    assert ded["deducted"] == 20.0
+    assert ded["unit"] == "g"
+
+    inv_get = await client.get("/api/inventory", cookies=cookies)
+    items = inv_get.json()
+    assert len(items) == 1
+    assert items[0]["quantity"] == 180.0
+
+
+@pytest.mark.asyncio
+async def test_cook_tl_to_g_cross_dimension(
+    client: AsyncClient,
+) -> None:
+    """1 TL Salz (grams_per_tl=5) should deduct 5g from 100g inventory."""
+    reg = await _register(client, "cookcross2")
+    cookies = reg["cookies"]
+    year, week = await _get_current_iso()
+
+    ing = await _create_ingredient(client, cookies, "Salz")
+    ingredient_id = ing["id"]
+
+    await client.patch(
+        f"/api/ingredients/{ingredient_id}",
+        json={"grams_per_tl": 5},
+        cookies=cookies,
+    )
+
+    await client.post(
+        "/api/inventory",
+        json={
+            "ingredient_id": ingredient_id,
+            "quantity": 100,
+            "unit": "g",
+            "category": "raw",
+        },
+        cookies=cookies,
+    )
+
+    recipe_resp = await client.post(
+        "/api/recipes",
+        json={
+            "title": "Salziges Brot",
+            "instructions": "Backen.",
+            "servings": 1,
+            "ingredients": [{
+                "ingredient_id": ingredient_id,
+                "quantity": 1,
+                "unit": "TL",
+            }],
+        },
+        cookies=cookies,
+    )
+    recipe_id = recipe_resp.json()["id"]
+
+    create_resp = await client.post(
+        "/api/weeks",
+        json={"year": year, "iso_week": week},
+        cookies=cookies,
+    )
+    plan_data = create_resp.json()
+    slot = next(
+        s for s in plan_data["slots"]
+        if s["day_of_week"] == 0 and s["meal_type"] == "dinner"
+    )
+
+    await client.put(
+        f"/api/weeks/{year}/{week}/slots",
+        json={
+            "slots": [{
+                "day_of_week": 0,
+                "meal_type": "dinner",
+                "recipe_id": recipe_id,
+                "portions": 1,
+            }]
+        },
+        cookies=cookies,
+    )
+
+    cook_resp = await client.post(
+        f"/api/weeks/{year}/{week}/slots/{slot['id']}/cook",
+        cookies=cookies,
+    )
+    assert cook_resp.status_code == 200
+    ded = cook_resp.json()["deductions"][0]
+    assert ded["deducted"] == 5.0
+    assert ded["unit"] == "g"
+
+    inv_get = await client.get("/api/inventory", cookies=cookies)
+    assert inv_get.json()[0]["quantity"] == 95.0
+
+
+@pytest.mark.asyncio
+async def test_cook_no_spoon_conversion_falls_back_to_ml(
+    client: AsyncClient,
+) -> None:
+    """Without conversion data, EL still normalizes to 15ml and deducts."""
+    reg = await _register(client, "cookcross3")
+    cookies = reg["cookies"]
+    year, week = await _get_current_iso()
+
+    ing = await _create_ingredient(client, cookies, "Wasser2")
+    ingredient_id = ing["id"]
+
+    await client.post(
+        "/api/inventory",
+        json={
+            "ingredient_id": ingredient_id,
+            "quantity": 100,
+            "unit": "g",
+            "category": "raw",
+        },
+        cookies=cookies,
+    )
+
+    recipe_resp = await client.post(
+        "/api/recipes",
+        json={
+            "title": "Wassersuppe",
+            "instructions": "Kochen.",
+            "servings": 1,
+            "ingredients": [{
+                "ingredient_id": ingredient_id,
+                "quantity": 2,
+                "unit": "EL",
+            }],
+        },
+        cookies=cookies,
+    )
+    recipe_id = recipe_resp.json()["id"]
+
+    create_resp = await client.post(
+        "/api/weeks",
+        json={"year": year, "iso_week": week},
+        cookies=cookies,
+    )
+    plan_data = create_resp.json()
+    slot = next(
+        s for s in plan_data["slots"]
+        if s["day_of_week"] == 0 and s["meal_type"] == "dinner"
+    )
+
+    await client.put(
+        f"/api/weeks/{year}/{week}/slots",
+        json={
+            "slots": [{
+                "day_of_week": 0,
+                "meal_type": "dinner",
+                "recipe_id": recipe_id,
+                "portions": 1,
+            }]
+        },
+        cookies=cookies,
+    )
+
+    cook_resp = await client.post(
+        f"/api/weeks/{year}/{week}/slots/{slot['id']}/cook",
+        cookies=cookies,
+    )
+    assert cook_resp.status_code == 200
+    assert cook_resp.json()["cooked"] is True
+    ded = cook_resp.json()["deductions"][0]
+    assert ded["deducted"] == 30.0
+    assert ded["unit"] == "ml"
+
+    inv_get = await client.get("/api/inventory", cookies=cookies)
+    items = inv_get.json()
+    assert len(items) == 1
+    assert items[0]["quantity"] == 70.0
+
+
+@pytest.mark.asyncio
+async def test_compute_reservations_with_spoon_conversions(
+    db_session: AsyncSession,
+) -> None:
+    from app.models.household import Household
+    from app.models.ingredient import Ingredient
+    from app.models.recipe import Recipe, RecipeIngredient
+    from app.models.week_plan import MealSlot, WeekPlan
+    from app.services.week_plan import compute_reservations
+
+    household = Household(
+        name="res-test",
+        slug="res-test",
+        invite_code="res12345",
+    )
+    db_session.add(household)
+    await db_session.flush()
+
+    ingredient = Ingredient(name="ResMehl", grams_per_el=10.0)
+    db_session.add(ingredient)
+    await db_session.flush()
+
+    recipe = Recipe(
+        title="ResTest",
+        household_id=household.id,
+        servings=4,
+    )
+    db_session.add(recipe)
+    await db_session.flush()
+
+    ri = RecipeIngredient(
+        recipe_id=recipe.id,
+        ingredient_id=ingredient.id,
+        quantity=2,
+        unit="EL",
+        order_index=0,
+    )
+    db_session.add(ri)
+    await db_session.flush()
+
+    plan = WeekPlan(
+        household_id=household.id,
+        year=2030,
+        iso_week=1,
+    )
+    db_session.add(plan)
+    await db_session.flush()
+
+    slot = MealSlot(
+        week_plan_id=plan.id,
+        day_of_week=0,
+        meal_type="dinner",
+        recipe_id=recipe.id,
+        portions=4,
+    )
+    db_session.add(slot)
+    await db_session.flush()
+
+    reservations = await compute_reservations(db_session, plan.id)
+    assert ingredient.id in reservations
+    assert pytest.approx(reservations[ingredient.id]["grams"]) == 20.0
+    assert reservations[ingredient.id]["milliliters"] == 0.0
+    assert reservations[ingredient.id]["pieces"] == 0.0

@@ -1,13 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import joinedload, selectinload
 
 from app.api.auth import get_current_user
 from app.db.session import get_db
 from app.models.ingredient import Ingredient
 from app.models.inventory import InventoryItem
-from app.models.recipe import Recipe
+from app.models.recipe import Recipe, RecipeIngredient
 from app.models.user import User
 from app.models.week_plan import MealSlot
 from app.schemas.week_plan import (
@@ -293,7 +293,9 @@ async def cook_slot(
     recipe_result = await db.execute(
         select(Recipe)
         .where(Recipe.id == slot.recipe_id)
-        .options(selectinload(Recipe.ingredients))
+        .options(
+            selectinload(Recipe.ingredients).joinedload(RecipeIngredient.ingredient)
+        )
     )
     recipe = recipe_result.scalar_one()
 
@@ -303,7 +305,9 @@ async def cook_slot(
 
     deductions: list[dict[str, object]] = []
     for ri in recipe.ingredients:
-        grams, ml, pieces = UnitConverter.normalize(ri.quantity, ri.unit)
+        grams, ml, pieces = UnitConverter.normalize(
+            ri.quantity, ri.unit, ingredient=ri.ingredient
+        )
         needed = grams or ml or pieces
         if needed is None or needed == 0:
             continue
@@ -318,18 +322,21 @@ async def cook_slot(
                 InventoryItem.ingredient_id == ri.ingredient_id,
                 InventoryItem.category == "raw",
             )
+            .options(joinedload(InventoryItem.ingredient))
             .order_by(
                 InventoryItem.expiry_date.is_(None),
                 InventoryItem.expiry_date.asc(),
             )
         )
-        items = list(inv_result.scalars().all())
+        items = list(inv_result.unique().scalars().all())
 
         remaining = needed
         for item in items:
             if remaining <= 0:
                 break
-            norm = UnitConverter.normalize(item.quantity, item.unit)
+            norm = UnitConverter.normalize(
+                item.quantity, item.unit, ingredient=item.ingredient
+            )
             available = norm[0] or norm[1] or norm[2] or 0
             deduct = min(available, remaining)
             if deduct <= 0:
