@@ -33,8 +33,9 @@ class UnitConverter:
         if unit_clean in UnitConverter.GRAM_UNITS:
             return (amount * UnitConverter.GRAM_UNITS[unit_clean], None, None)
 
-        if ingredient is not None and unit_clean in UnitConverter._SPOON_UNIT_ATTR_SUFFIX:
-            attr = UnitConverter._SPOON_UNIT_ATTR_SUFFIX[unit_clean]
+        spoon_units = UnitConverter._SPOON_UNIT_ATTR_SUFFIX
+        if ingredient is not None and unit_clean in spoon_units:
+            attr = spoon_units[unit_clean]
             grams_per = getattr(ingredient, f"grams_per_{attr}", None)
             if grams_per is not None:
                 return (amount * float(grams_per), None, None)

@@ -8,7 +8,6 @@ from sqlalchemy.orm import selectinload
 from app.api.auth import get_current_user
 from app.db.session import get_db
 from app.models.grocery_list import GroceryList, GroceryListItem
-from app.models.household import MealSlotTemplate
 from app.models.ingredient import IngredientAlias
 from app.models.inventory import InventoryItem
 from app.models.recipe import (
@@ -38,8 +37,8 @@ from app.services.household import (
     remove_member,
     update_meal_template,
 )
-from app.services.week_plan import is_editable, sync_templates_to_plan
 from app.services.recipe_jsonld_exporter import RecipeJSONLDExporter
+from app.services.week_plan import is_editable, sync_templates_to_plan
 
 router = APIRouter(prefix="/household", tags=["household"])
 

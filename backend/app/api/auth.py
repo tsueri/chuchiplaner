@@ -2,8 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.session import get_db
 from app.core.config import settings
+from app.db.session import get_db
 from app.models.recipe import Recipe, RecipeFavorite, RecipeNote
 from app.models.user import User
 from app.schemas.auth import (

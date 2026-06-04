@@ -1,17 +1,17 @@
 """Reimport all recipes to populate ingredients."""
 import asyncio
 
-import app.models  # noqa: F401 — ensures all models are registered
-import app.models.user  # noqa: F401 — ensure User is registered for relationships
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
+import app.models  # noqa: F401 — ensures all models are registered
+import app.models.user  # noqa: F401 — ensure User is registered for relationships
 from app.db.session import async_session
-from app.models.recipe import Recipe, RecipeIngredient, RecipeTag
 from app.models.ingredient import Ingredient, IngredientAlias
-from app.services.scraper import RecipeScraper
+from app.models.recipe import Recipe, RecipeIngredient, RecipeTag
 from app.services.ingredient_line_parser import IngredientLineParser
 from app.services.normalizer import IngredientNormalizer
+from app.services.scraper import RecipeScraper
 
 
 async def reimport_all() -> None:
@@ -47,11 +47,11 @@ async def reimport_all() -> None:
 
             scraped = RecipeScraper.scrape(recipe.source_url)
             if scraped is None:
-                print(f"  SKIP: could not scrape")
+                print("  SKIP: could not scrape")
                 continue
 
             if not scraped.ingredients:
-                print(f"  SKIP: no ingredients found")
+                print("  SKIP: no ingredients found")
                 continue
 
             for existing in list(recipe.ingredients):
