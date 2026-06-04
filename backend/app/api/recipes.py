@@ -1,3 +1,5 @@
+import ipaddress
+import socket
 from datetime import UTC
 from datetime import datetime as dt
 from urllib.parse import urlparse
@@ -126,6 +128,54 @@ def _build_recipe_list_item(
     )
 
 
+def _is_public_ip(ip_text: str) -> bool:
+    try:
+        ip = ipaddress.ip_address(ip_text)
+    except ValueError:
+        return False
+    return not (
+        ip.is_private
+        or ip.is_loopback
+        or ip.is_link_local
+        or ip.is_multicast
+        or ip.is_reserved
+        or ip.is_unspecified
+    )
+
+
+def _validate_public_http_url(raw_url: str) -> str:
+    parsed = urlparse(raw_url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid URL",
+        )
+
+    hostname = parsed.hostname.strip().lower()
+    if hostname == "localhost":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="URL host is not allowed",
+        )
+
+    try:
+        addrinfos = socket.getaddrinfo(hostname, parsed.port or 80, type=socket.SOCK_STREAM)
+    except socket.gaierror:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid URL host",
+        )
+
+    resolved_ips = {info[4][0] for info in addrinfos}
+    if not resolved_ips or not all(_is_public_ip(ip) for ip in resolved_ips):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="URL host is not allowed",
+        )
+
+    return parsed.geturl()
+
+
 def _build_recipe_detail(recipe: Recipe, user_id: int) -> RecipeDetailResponse:
     tag_responses = [
         _build_tag_response(rt.tag) for rt in recipe.tags if rt.tag is not None
@@ -168,23 +218,18 @@ async def import_recipe(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> ScrapedRecipeResponse:
-    parsed = urlparse(body.url)
-    if not parsed.scheme or not parsed.netloc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid URL",
-        )
+    safe_url = _validate_public_http_url(body.url)
 
     result = await db.execute(
         select(Recipe).where(
-            Recipe.source_url == body.url,
+            Recipe.source_url == safe_url,
             Recipe.household_id == current_user.household_id,
             Recipe.deleted_at.is_(None),
         )
     )
     existing = result.scalar_one_or_none()
 
-    scraped = RecipeScraper.scrape(body.url)
+    scraped = RecipeScraper.scrape(safe_url)
     if scraped is None:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
