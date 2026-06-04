@@ -1,8 +1,14 @@
 import json
+import socket
 from typing import Any
 from unittest.mock import MagicMock, patch
 
-from app.services.scraper import RecipeScraper
+from app.services.scraper import (
+    RecipeScraper,
+    SSRFBlockedError,
+    resolve_and_validate_host,
+    validate_url_syntax,
+)
 
 
 def make_mock_scraper(**kwargs: Any) -> MagicMock:
@@ -593,3 +599,223 @@ def test_jsonld_author_string_passed_through() -> None:
 
     assert result is not None
     assert result.author == "Betty Bossi"
+
+
+# ----- SSRF validation primitives -----
+
+
+class TestSSRFBlockedError:
+    def test_inherits_from_exception(self) -> None:
+        assert issubclass(SSRFBlockedError, Exception)
+
+    def test_can_be_raised_and_caught(self) -> None:
+        try:
+            raise SSRFBlockedError("blocked")
+        except SSRFBlockedError as e:
+            assert str(e) == "blocked"
+
+
+class TestValidateUrlSyntax:
+    def test_valid_https_url_returns_unchanged(self) -> None:
+        result = validate_url_syntax("https://www.swissmilk.ch/recipe")
+        assert result == "https://www.swissmilk.ch/recipe"
+
+    def test_valid_http_url_returns_unchanged(self) -> None:
+        result = validate_url_syntax("http://example.com/path?q=1")
+        assert result == "http://example.com/path?q=1"
+
+    def test_rejects_ftp_scheme(self) -> None:
+        try:
+            validate_url_syntax("ftp://example.com/file")
+            assert False, "should have raised"
+        except SSRFBlockedError:
+            pass
+
+    def test_rejects_missing_hostname(self) -> None:
+        try:
+            validate_url_syntax("https:///path")
+            assert False, "should have raised"
+        except SSRFBlockedError:
+            pass
+
+    def test_rejects_localhost(self) -> None:
+        try:
+            validate_url_syntax("http://localhost")
+            assert False, "should have raised"
+        except SSRFBlockedError:
+            pass
+
+    def test_rejects_localhost_with_port(self) -> None:
+        try:
+            validate_url_syntax("http://localhost:8000")
+            assert False, "should have raised"
+        except SSRFBlockedError:
+            pass
+
+    def test_rejects_loopback_ipv4_127_0_0_1(self) -> None:
+        try:
+            validate_url_syntax("http://127.0.0.1")
+            assert False, "should have raised"
+        except SSRFBlockedError:
+            pass
+
+    def test_rejects_loopback_ipv4_127_255_255_255(self) -> None:
+        try:
+            validate_url_syntax("http://127.255.255.255")
+            assert False, "should have raised"
+        except SSRFBlockedError:
+            pass
+
+    def test_rejects_private_10_0_0_0_8(self) -> None:
+        try:
+            validate_url_syntax("http://10.0.0.1")
+            assert False, "should have raised"
+        except SSRFBlockedError:
+            pass
+
+    def test_rejects_private_172_16_0_0_12(self) -> None:
+        try:
+            validate_url_syntax("http://172.16.0.1")
+            assert False, "should have raised"
+        except SSRFBlockedError:
+            pass
+
+    def test_rejects_private_172_31_255_255(self) -> None:
+        try:
+            validate_url_syntax("http://172.31.255.255")
+            assert False, "should have raised"
+        except SSRFBlockedError:
+            pass
+
+    def test_rejects_private_192_168_0_0_16(self) -> None:
+        try:
+            validate_url_syntax("http://192.168.1.1")
+            assert False, "should have raised"
+        except SSRFBlockedError:
+            pass
+
+    def test_rejects_ipv6_loopback(self) -> None:
+        try:
+            validate_url_syntax("http://[::1]")
+            assert False, "should have raised"
+        except SSRFBlockedError:
+            pass
+
+    def test_rejects_link_local_169_254(self) -> None:
+        try:
+            validate_url_syntax("http://169.254.1.1")
+            assert False, "should have raised"
+        except SSRFBlockedError:
+            pass
+
+    def test_rejects_multicast_224(self) -> None:
+        try:
+            validate_url_syntax("http://224.0.0.1")
+            assert False, "should have raised"
+        except SSRFBlockedError:
+            pass
+
+    def test_rejects_reserved_240(self) -> None:
+        try:
+            validate_url_syntax("http://240.0.0.1")
+            assert False, "should have raised"
+        except SSRFBlockedError:
+            pass
+
+    def test_rejects_unspecified_0_0_0_0(self) -> None:
+        try:
+            validate_url_syntax("http://0.0.0.0")
+            assert False, "should have raised"
+        except SSRFBlockedError:
+            pass
+
+    def test_rejects_bare_hostname_not_a_url(self) -> None:
+        try:
+            validate_url_syntax("not-a-url")
+            assert False, "should have raised"
+        except SSRFBlockedError:
+            pass
+
+    def test_accepts_public_ipv4(self) -> None:
+        result = validate_url_syntax("https://8.8.8.8/page")
+        assert result == "https://8.8.8.8/page"
+
+    def test_canonicalizes_url(self) -> None:
+        result = validate_url_syntax("https://example.com/../path")
+        assert result == "https://example.com/../path"
+
+    def test_rejects_gopher_scheme(self) -> None:
+        try:
+            validate_url_syntax("gopher://example.com")
+            assert False, "should have raised"
+        except SSRFBlockedError:
+            pass
+
+
+def _make_getaddrinfo_result(ip: str) -> list:
+    return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (ip, 0))]
+
+
+class TestResolveAndValidateHost:
+    def test_public_ip_succeeds(self) -> None:
+        with patch(
+            "socket.getaddrinfo",
+            return_value=_make_getaddrinfo_result("1.2.3.4"),
+        ):
+            resolve_and_validate_host("1.2.3.4")
+
+    def test_public_hostname_succeeds(self) -> None:
+        with patch(
+            "socket.getaddrinfo",
+            return_value=_make_getaddrinfo_result("93.184.216.34"),
+        ):
+            resolve_and_validate_host("example.com")
+
+    def test_private_ip_10_0_0_1_raises(self) -> None:
+        with patch(
+            "socket.getaddrinfo",
+            return_value=_make_getaddrinfo_result("10.0.0.1"),
+        ):
+            try:
+                resolve_and_validate_host("10.0.0.1")
+                assert False, "should have raised"
+            except SSRFBlockedError:
+                pass
+
+    def test_mixed_public_private_ips_raises(self) -> None:
+        with patch(
+            "socket.getaddrinfo",
+            return_value=[
+                (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("1.2.3.4", 0)),
+                (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.0.0.1", 0)),
+            ],
+        ):
+            try:
+                resolve_and_validate_host("mixed.example.com")
+                assert False, "should have raised"
+            except SSRFBlockedError:
+                pass
+
+    def test_dns_failure_propagates(self) -> None:
+        with patch(
+            "socket.getaddrinfo",
+            side_effect=socket.gaierror("Name or service not known"),
+        ):
+            try:
+                resolve_and_validate_host("nonexistent.invalid")
+                assert False, "should have raised"
+            except socket.gaierror:
+                pass
+
+    def test_ipv6_loopback_raises(self) -> None:
+        with patch(
+            "socket.getaddrinfo",
+            return_value=[
+                (socket.AF_INET6, socket.SOCK_STREAM, 6, "", ("::1", 0, 0, 0)),
+            ],
+        ):
+            try:
+                resolve_and_validate_host("localhost6")
+                assert False, "should have raised"
+            except SSRFBlockedError:
+                pass

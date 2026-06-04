@@ -1,5 +1,7 @@
+import ipaddress
 import json
 import re
+import socket
 import threading
 import time
 from dataclasses import dataclass, field
@@ -10,6 +12,58 @@ from urllib.parse import urlparse
 
 import httpx
 from recipe_scrapers import scrape_me
+
+
+class SSRFBlockedError(Exception):
+    pass
+
+
+def validate_url_syntax(raw_url: str) -> str:
+    parsed = urlparse(raw_url)
+
+    if parsed.scheme not in ("http", "https"):
+        raise SSRFBlockedError(f"Invalid scheme: {parsed.scheme}")
+
+    hostname = parsed.hostname
+    if not hostname:
+        raise SSRFBlockedError("Missing hostname")
+
+    if hostname == "localhost":
+        raise SSRFBlockedError("localhost is not allowed")
+
+    try:
+        ip = ipaddress.ip_address(hostname)
+    except ValueError:
+        return parsed.geturl()
+
+    if not _is_public_ip(ip):
+        raise SSRFBlockedError(f"Non-public IP: {hostname}")
+
+    return parsed.geturl()
+
+
+def resolve_and_validate_host(hostname: str) -> None:
+    addrinfo = socket.getaddrinfo(hostname, None)
+
+    for family, _socktype, _proto, _canonname, sockaddr in addrinfo:
+        ip_str = sockaddr[0]
+        try:
+            ip = ipaddress.ip_address(ip_str)
+        except ValueError:
+            continue
+        if not _is_public_ip(ip):
+            raise SSRFBlockedError(f"Non-public IP: {ip_str}")
+
+
+def _is_public_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    return not (
+        ip.is_private
+        or ip.is_loopback
+        or ip.is_link_local
+        or ip.is_multicast
+        or ip.is_reserved
+        or ip.is_unspecified
+    )
 
 
 @dataclass
