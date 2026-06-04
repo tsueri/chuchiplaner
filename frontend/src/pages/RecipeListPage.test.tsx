@@ -116,6 +116,114 @@ const recipeB = {
   ],
 }
 
+describe("RecipeListPage description snippet", () => {
+  beforeEach(() => {
+    cleanup()
+    vi.restoreAllMocks()
+  })
+
+  it("renders the recipe's description as a snippet when present", async () => {
+    const recipeWithDescription = {
+      ...recipeA,
+      description: "Ein schnelles Gericht für den Familienabend.",
+    }
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url =
+        typeof input === "string" ? input : (input as Request).url
+      if (url.includes("/api/tags")) {
+        return Promise.resolve(mockFetchResponse([]))
+      }
+      if (url.includes("/api/recipes")) {
+        return Promise.resolve(mockFetchResponse([recipeWithDescription]))
+      }
+      return Promise.resolve(mockFetchResponse([]))
+    })
+
+    renderList()
+
+    expect(
+      await screen.findByText("Ein schnelles Gericht für den Familienabend.")
+    ).toBeInTheDocument()
+  })
+
+  it("falls back to the joined step text when description is null", async () => {
+    const recipeWithSteps = {
+      ...recipeA,
+      description: null,
+      steps: [
+        { id: 1, position: 0, text: "Erster Schritt des Rezepts.", name: null },
+        { id: 2, position: 1, text: "Zweiter Schritt.", name: null },
+      ],
+    }
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url =
+        typeof input === "string" ? input : (input as Request).url
+      if (url.includes("/api/tags")) {
+        return Promise.resolve(mockFetchResponse([]))
+      }
+      if (url.includes("/api/recipes")) {
+        return Promise.resolve(mockFetchResponse([recipeWithSteps]))
+      }
+      return Promise.resolve(mockFetchResponse([]))
+    })
+
+    renderList()
+
+    expect(
+      await screen.findByText(
+        "Erster Schritt des Rezepts. Zweiter Schritt."
+      )
+    ).toBeInTheDocument()
+  })
+
+  it("truncates the step-text fallback to 140 chars with an ellipsis when longer", async () => {
+    const longStepText =
+      "Poulet anbraten und würzen. " + "x".repeat(200) + " Ende."
+    const recipeWithLongStep = {
+      ...recipeA,
+      description: null,
+      steps: [{ id: 1, position: 0, text: longStepText, name: null }],
+    }
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url =
+        typeof input === "string" ? input : (input as Request).url
+      if (url.includes("/api/tags")) {
+        return Promise.resolve(mockFetchResponse([]))
+      }
+      if (url.includes("/api/recipes")) {
+        return Promise.resolve(mockFetchResponse([recipeWithLongStep]))
+      }
+      return Promise.resolve(mockFetchResponse([]))
+    })
+
+    renderList()
+
+    const snippet = await screen.findByTestId("recipe-snippet")
+    const text = snippet.textContent ?? ""
+    expect(text.length).toBeLessThanOrEqual(141)
+    expect(text.endsWith("…")).toBe(true)
+  })
+
+  it("renders no snippet when both description and steps are empty", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url =
+        typeof input === "string" ? input : (input as Request).url
+      if (url.includes("/api/tags")) {
+        return Promise.resolve(mockFetchResponse([]))
+      }
+      if (url.includes("/api/recipes")) {
+        return Promise.resolve(mockFetchResponse([recipeA]))
+      }
+      return Promise.resolve(mockFetchResponse([]))
+    })
+
+    renderList()
+
+    await screen.findByText("Pouletgeschnetzeltes")
+    expect(screen.queryByTestId("recipe-snippet")).toBeNull()
+  })
+})
+
 describe("RecipeListPage card expand", () => {
   beforeEach(() => {
     cleanup()

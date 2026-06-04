@@ -10,6 +10,7 @@ import {
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/contexts/useAuth"
 import { PageHeader } from "@/components/PageHeader"
+import { DurationSerializer } from "@/lib/duration-serializer"
 
 interface RecipeDetail {
   id: number
@@ -68,8 +69,11 @@ interface TagItem {
 
 interface EditState {
   title: string
+  description: string
   stepsText: string
   servings: number
+  prepTimeText: string
+  totalTimeText: string
   image_url: string
   source_url: string
   source_domain: string
@@ -84,8 +88,17 @@ function buildEditState(recipe: RecipeDetail): EditState {
     .join("\n")
   return {
     title: recipe.title,
+    description: recipe.description ?? "",
     stepsText,
     servings: recipe.servings,
+    prepTimeText:
+      recipe.prep_time_minutes !== null
+        ? DurationSerializer.formatHuman(recipe.prep_time_minutes) ?? ""
+        : "",
+    totalTimeText:
+      recipe.total_time_minutes !== null
+        ? DurationSerializer.formatHuman(recipe.total_time_minutes) ?? ""
+        : "",
     image_url: recipe.image_url ?? "",
     source_url: recipe.source_url ?? "",
     source_domain: recipe.source_domain ?? "",
@@ -332,13 +345,18 @@ export default function RecipeDetailPage() {
       .map((line) => line.trim())
       .filter((line) => line !== "")
       .map((text, position) => ({ position, text, name: null }))
+    const prepMinutes = DurationSerializer.parseHuman(editState.prepTimeText)
+    const totalMinutes = DurationSerializer.parseHuman(editState.totalTimeText)
     try {
       const updated = (await api(`/recipes/${id}`, {
         method: "PUT",
         body: JSON.stringify({
           title: editState.title.trim(),
+          description: emptyToNull(editState.description),
           steps,
           servings: editState.servings,
+          prep_time_minutes: prepMinutes,
+          total_time_minutes: totalMinutes,
           image_url: emptyToNull(editState.image_url),
           source_url: emptyToNull(editState.source_url),
           source_domain: emptyToNull(editState.source_domain),
@@ -403,6 +421,22 @@ export default function RecipeDetailPage() {
 
           <div className="space-y-2">
             <label
+              htmlFor="edit-recipe-description"
+              className="text-sm font-medium"
+            >
+              Beschreibung
+            </label>
+            <textarea
+              id="edit-recipe-description"
+              value={editState.description}
+              onChange={(e) => updateEditField("description", e.target.value)}
+              rows={2}
+              className="w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label
               htmlFor="edit-recipe-steps"
               className="text-sm font-medium"
             >
@@ -435,6 +469,59 @@ export default function RecipeDetailPage() {
               }
               required
             />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <label
+                htmlFor="edit-recipe-prep-time"
+                className="text-sm font-medium"
+              >
+                Vorbereitungszeit
+              </label>
+              <Input
+                id="edit-recipe-prep-time"
+                type="text"
+                value={editState.prepTimeText}
+                onChange={(e) =>
+                  updateEditField("prepTimeText", e.target.value)
+                }
+                onBlur={() => {
+                  const parsed = DurationSerializer.parseHuman(
+                    editState.prepTimeText
+                  )
+                  if (parsed === null) return
+                  const formatted = DurationSerializer.formatHuman(parsed)
+                  updateEditField("prepTimeText", formatted ?? "")
+                }}
+                placeholder="z.B. 30 min"
+              />
+            </div>
+            <div className="space-y-2">
+              <label
+                htmlFor="edit-recipe-total-time"
+                className="text-sm font-medium"
+              >
+                Gesamtzeit
+              </label>
+              <Input
+                id="edit-recipe-total-time"
+                type="text"
+                value={editState.totalTimeText}
+                onChange={(e) =>
+                  updateEditField("totalTimeText", e.target.value)
+                }
+                onBlur={() => {
+                  const parsed = DurationSerializer.parseHuman(
+                    editState.totalTimeText
+                  )
+                  if (parsed === null) return
+                  const formatted = DurationSerializer.formatHuman(parsed)
+                  updateEditField("totalTimeText", formatted ?? "")
+                }}
+                placeholder="z.B. 1h 30m"
+              />
+            </div>
           </div>
 
           <div className="space-y-2">
@@ -579,6 +666,10 @@ export default function RecipeDetailPage() {
         </button>
       </div>
 
+      {recipe.description && (
+        <p className="mt-2 text-sm">{recipe.description}</p>
+      )}
+
       {recipe.source_url && (
         <a
           href={recipe.source_url}
@@ -592,6 +683,9 @@ export default function RecipeDetailPage() {
 
       <p className="mt-2 text-sm text-muted-foreground">
         {recipe.servings} Portionen
+        {recipe.total_time_minutes !== null
+          ? ` · ${DurationSerializer.formatHuman(recipe.total_time_minutes) ?? ""}`
+          : ""}
       </p>
 
       <div className="mt-4 flex flex-wrap gap-2">

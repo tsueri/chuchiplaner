@@ -10,11 +10,15 @@ import {
 } from "@/components/EditableIngredientRow.types"
 import { PageHeader } from "@/components/PageHeader"
 import { cn } from "@/lib/utils"
+import { DurationSerializer } from "@/lib/duration-serializer"
 
 interface FormState {
   title: string
+  description: string
   stepsText: string
   servings: number
+  prepTimeText: string
+  totalTimeText: string
   image_url: string
   source_url: string
   source_domain: string
@@ -76,8 +80,11 @@ interface ScrapedRecipe {
 
 const INITIAL_STATE: FormState = {
   title: "",
+  description: "",
   stepsText: "",
   servings: 4,
+  prepTimeText: "",
+  totalTimeText: "",
   image_url: "",
   source_url: "",
   source_domain: "",
@@ -98,8 +105,11 @@ class DuplicateRecipeError extends Error {
 
 async function postRecipe(body: {
   title: string
+  description: string | null
   steps: RecipeStepPayload[]
   servings: number
+  prep_time_minutes: number | null
+  total_time_minutes: number | null
   image_url: string | null
   source_url: string | null
   source_domain: string | null
@@ -207,8 +217,11 @@ export default function RecipeFormPage() {
           .join("\n")
         setForm({
           title: data.title,
+          description: "",
           stepsText,
           servings: data.servings,
+          prepTimeText: "",
+          totalTimeText: "",
           image_url: data.image_url ?? "",
           source_url: data.source_url,
           source_domain: data.source_domain,
@@ -329,8 +342,11 @@ export default function RecipeFormPage() {
         }))
       const created = await postRecipe({
         title: form.title.trim(),
+        description: toNull(form.description),
         steps,
         servings: form.servings,
+        prep_time_minutes: DurationSerializer.parseHuman(form.prepTimeText),
+        total_time_minutes: DurationSerializer.parseHuman(form.totalTimeText),
         image_url: toNull(form.image_url),
         source_url: toNull(form.source_url),
         source_domain: toNull(form.source_domain),
@@ -460,6 +476,22 @@ export default function RecipeFormPage() {
         </div>
 
         <div className="space-y-2">
+          <label
+            htmlFor="recipe-description"
+            className="text-sm font-medium"
+          >
+            Beschreibung
+          </label>
+          <textarea
+            id="recipe-description"
+            value={form.description}
+            onChange={(e) => update("description", e.target.value)}
+            rows={2}
+            className="w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+          />
+        </div>
+
+        <div className="space-y-2">
           <label htmlFor="recipe-steps" className="text-sm font-medium">
             Zubereitung
           </label>
@@ -487,6 +519,55 @@ export default function RecipeFormPage() {
             }
             required
           />
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <label
+              htmlFor="recipe-prep-time"
+              className="text-sm font-medium"
+            >
+              Vorbereitungszeit
+            </label>
+            <Input
+              id="recipe-prep-time"
+              type="text"
+              value={form.prepTimeText}
+              onChange={(e) => update("prepTimeText", e.target.value)}
+              onBlur={() => {
+                const parsed = DurationSerializer.parseHuman(
+                  form.prepTimeText
+                )
+                if (parsed === null) return
+                const formatted = DurationSerializer.formatHuman(parsed)
+                update("prepTimeText", formatted ?? "")
+              }}
+              placeholder="z.B. 30 min"
+            />
+          </div>
+          <div className="space-y-2">
+            <label
+              htmlFor="recipe-total-time"
+              className="text-sm font-medium"
+            >
+              Gesamtzeit
+            </label>
+            <Input
+              id="recipe-total-time"
+              type="text"
+              value={form.totalTimeText}
+              onChange={(e) => update("totalTimeText", e.target.value)}
+              onBlur={() => {
+                const parsed = DurationSerializer.parseHuman(
+                  form.totalTimeText
+                )
+                if (parsed === null) return
+                const formatted = DurationSerializer.formatHuman(parsed)
+                update("totalTimeText", formatted ?? "")
+              }}
+              placeholder="z.B. 1h 30m"
+            />
+          </div>
         </div>
 
         <div className="space-y-2">

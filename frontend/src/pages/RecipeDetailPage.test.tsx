@@ -385,3 +385,64 @@ describe("RecipeDetailPage inline edit mode", () => {
     ).toBeNull()
   })
 })
+
+describe("RecipeDetailPage description and time display", () => {
+  beforeEach(() => {
+    cleanup()
+    vi.restoreAllMocks()
+  })
+
+  it("renders the description between the title and the metadata when present", async () => {
+    renderDetail({
+      ...baseRecipe,
+      description: "Ein schnelles Gericht für den Familienabend.",
+      total_time_minutes: 45,
+    })
+
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Pouletgeschnetzeltes" })
+    ).toBeInTheDocument()
+    const desc = screen.getByText(
+      "Ein schnelles Gericht für den Familienabend."
+    )
+    expect(desc).toBeInTheDocument()
+  })
+
+  it("does not render a description paragraph when description is null", async () => {
+    renderDetail({
+      ...baseRecipe,
+      description: null,
+      total_time_minutes: 30,
+    })
+
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Pouletgeschnetzeltes" })
+    ).toBeInTheDocument()
+    // The metadata text "X Portionen" exists but no separate description paragraph
+    expect(screen.queryByText(/familienabend/i)).toBeNull()
+  })
+
+  it("renders the total time human-formatted in the metadata when set", async () => {
+    renderDetail({
+      ...baseRecipe,
+      total_time_minutes: 90,
+    })
+
+    expect(
+      await screen.findByText(/1 std\. 30 min/i)
+    ).toBeInTheDocument()
+  })
+
+  it("does not render a total time when total_time_minutes is null", async () => {
+    renderDetail({
+      ...baseRecipe,
+      total_time_minutes: null,
+    })
+
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Pouletgeschnetzeltes" })
+    ).toBeInTheDocument()
+    // No "min" or "Std." in the metadata line
+    expect(screen.queryByText(/\d+ std\.|\d+ min/i)).toBeNull()
+  })
+})

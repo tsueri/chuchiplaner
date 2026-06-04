@@ -67,6 +67,21 @@ async function api(path: string, options?: RequestInit) {
   return res.json()
 }
 
+function buildSnippet(recipe: RecipeItem): string | null {
+  if (recipe.description && recipe.description.trim() !== "") {
+    return recipe.description
+  }
+  const stepsText = [...recipe.steps]
+    .sort((a, b) => a.position - b.position)
+    .map((s) => s.text)
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim()
+  if (stepsText === "") return null
+  if (stepsText.length <= 140) return stepsText
+  return stepsText.slice(0, 140).trimEnd() + "…"
+}
+
 export default function RecipeListPage() {
   const navigate = useNavigate()
   const [recipes, setRecipes] = useState<RecipeItem[]>([])
@@ -230,6 +245,7 @@ export default function RecipeListPage() {
             const sortedIngredients = [...r.ingredients].sort(
               (a, b) => a.order_index - b.order_index
             )
+            const snippet = buildSnippet(r)
             return (
               <div
                 key={r.id}
@@ -262,6 +278,14 @@ export default function RecipeListPage() {
                       (e.target as HTMLImageElement).style.display = "none"
                     }}
                   />
+                )}
+                {snippet && (
+                  <p
+                    className="mt-2 text-sm text-muted-foreground"
+                    data-testid="recipe-snippet"
+                  >
+                    {snippet}
+                  </p>
                 )}
                 <div className="mt-2 flex flex-wrap gap-1">
                   {r.tags.map((tag) => (

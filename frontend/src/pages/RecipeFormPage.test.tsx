@@ -79,12 +79,15 @@ describe("RecipeFormPage", () => {
     })
   })
 
-  it("renders all six fields with Speichern disabled on a blank form", () => {
+  it("renders all basic fields with Speichern disabled on a blank form", () => {
     renderForm()
 
     expect(screen.getByLabelText(/titel/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/beschreibung/i)).toBeInTheDocument()
     expect(screen.getByLabelText(/zubereitung/i)).toBeInTheDocument()
     expect(screen.getByLabelText(/portionen/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/vorbereitungszeit/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/gesamtzeit/i)).toBeInTheDocument()
     expect(screen.getByLabelText(/bild-?url|bild/i)).toBeInTheDocument()
     expect(screen.getByLabelText(/^quelle$/i)).toBeInTheDocument()
     expect(screen.getByLabelText(/quell-domain|domain/i)).toBeInTheDocument()
@@ -143,8 +146,11 @@ describe("RecipeFormPage", () => {
     expect(init.method).toBe("POST")
     expect(JSON.parse(init.body as string)).toEqual({
       title: "Pasta",
+      description: null,
       steps: [{ position: 0, text: "Wasser kochen.", name: null }],
       servings: 4,
+      prep_time_minutes: null,
+      total_time_minutes: null,
       image_url: null,
       source_url: null,
       source_domain: null,
@@ -262,6 +268,137 @@ describe("RecipeFormPage", () => {
       name: /neues rezept/i,
     })
     expect(newButton).toHaveAttribute("href", "/recipes/new")
+  })
+})
+
+describe("RecipeFormPage description and time inputs", () => {
+  beforeEach(() => {
+    cleanup()
+    vi.restoreAllMocks()
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url =
+        typeof input === "string" ? input : (input as Request).url
+      if (url === "/api/tags") {
+        return Promise.resolve(mockFetchResponse([]))
+      }
+      return Promise.reject(new Error(`Unhandled fetch in test: ${url}`))
+    })
+  })
+
+  it("sends description in the POST body when set", async () => {
+    const user = userEvent.setup()
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation((input) => {
+        const url =
+          typeof input === "string" ? input : (input as Request).url
+        if (url === "/api/tags") {
+          return Promise.resolve(mockFetchResponse([]))
+        }
+        if (url === "/api/recipes") {
+          return Promise.resolve(
+            mockFetchResponse({ id: 42, title: "Pasta" }, { status: 201 })
+          )
+        }
+        return Promise.resolve(mockFetchResponse([]))
+      })
+
+    renderForm()
+
+    await user.type(screen.getByLabelText(/titel/i), "Pasta")
+    await user.type(
+      screen.getByLabelText(/beschreibung/i),
+      "Schnelles Feierabend-Rezept"
+    )
+    await user.type(screen.getByLabelText(/zubereitung/i), "Wasser kochen.")
+    await user.click(screen.getByRole("button", { name: /speichern/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText("recipe-detail-stub")).toBeInTheDocument()
+    })
+
+    const recipeCall = fetchSpy.mock.calls.find(
+      ([u]) => u === "/api/recipes"
+    ) as [string, RequestInit]
+    const body = JSON.parse(recipeCall[1].body as string)
+    expect(body.description).toBe("Schnelles Feierabend-Rezept")
+  })
+
+  it("sends prep_time_minutes and total_time_minutes parsed on blur", async () => {
+    const user = userEvent.setup()
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation((input) => {
+        const url =
+          typeof input === "string" ? input : (input as Request).url
+        if (url === "/api/tags") {
+          return Promise.resolve(mockFetchResponse([]))
+        }
+        if (url === "/api/recipes") {
+          return Promise.resolve(
+            mockFetchResponse({ id: 42, title: "Pasta" }, { status: 201 })
+          )
+        }
+        return Promise.resolve(mockFetchResponse([]))
+      })
+
+    renderForm()
+
+    await user.type(screen.getByLabelText(/titel/i), "Pasta")
+    await user.type(screen.getByLabelText(/zubereitung/i), "Wasser kochen.")
+    const prepInput = screen.getByLabelText(/vorbereitungszeit/i)
+    await user.type(prepInput, "15 min")
+    const totalInput = screen.getByLabelText(/gesamtzeit/i)
+    await user.type(totalInput, "1h 30m")
+    await user.click(screen.getByRole("button", { name: /speichern/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText("recipe-detail-stub")).toBeInTheDocument()
+    })
+
+    const recipeCall = fetchSpy.mock.calls.find(
+      ([u]) => u === "/api/recipes"
+    ) as [string, RequestInit]
+    const body = JSON.parse(recipeCall[1].body as string)
+    expect(body.prep_time_minutes).toBe(15)
+    expect(body.total_time_minutes).toBe(90)
+  })
+
+  it("sends null for empty prep and total time fields", async () => {
+    const user = userEvent.setup()
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation((input) => {
+        const url =
+          typeof input === "string" ? input : (input as Request).url
+        if (url === "/api/tags") {
+          return Promise.resolve(mockFetchResponse([]))
+        }
+        if (url === "/api/recipes") {
+          return Promise.resolve(
+            mockFetchResponse({ id: 42, title: "Pasta" }, { status: 201 })
+          )
+        }
+        return Promise.resolve(mockFetchResponse([]))
+      })
+
+    renderForm()
+
+    await user.type(screen.getByLabelText(/titel/i), "Pasta")
+    await user.type(screen.getByLabelText(/zubereitung/i), "Wasser kochen.")
+    await user.click(screen.getByRole("button", { name: /speichern/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText("recipe-detail-stub")).toBeInTheDocument()
+    })
+
+    const recipeCall = fetchSpy.mock.calls.find(
+      ([u]) => u === "/api/recipes"
+    ) as [string, RequestInit]
+    const body = JSON.parse(recipeCall[1].body as string)
+    expect(body.prep_time_minutes).toBeNull()
+    expect(body.total_time_minutes).toBeNull()
+    expect(body.description).toBeNull()
   })
 })
 
