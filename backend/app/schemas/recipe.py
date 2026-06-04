@@ -142,6 +142,10 @@ class TagResponse(BaseModel):
 
 class TagCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=255)
+    group: str = Field(
+        default="ingredient",
+        pattern=r"^(season|ingredient|category|cuisine|diet)$",
+    )
 
 
 class RecipeFavoriteResponse(BaseModel):

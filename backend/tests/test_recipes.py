@@ -339,6 +339,327 @@ async def test_create_tag_requires_auth(client: AsyncClient) -> None:
     assert resp.status_code == 401
 
 
+# ----- Tag taxonomy extension (#48) -----
+
+
+@pytest.mark.asyncio
+async def test_list_tags_includes_seeded_global_groups(
+    client: AsyncClient,
+) -> None:
+    auth = await _register(client, "globallistuser")
+    cookies = auth["cookies"]
+
+    resp = await client.get("/api/tags", cookies=cookies)
+    assert resp.status_code == 200
+    tags = resp.json()
+
+    by_group: dict[str, list[dict[str, object]]] = {}
+    for t in tags:
+        by_group.setdefault(t["group"], []).append(t)
+
+    season_names = {t["name"] for t in by_group.get("season", [])}
+    assert {"Frühling", "Sommer", "Herbst", "Winter", "Ganzjährig"} <= season_names
+
+    category_names = {t["name"] for t in by_group.get("category", [])}
+    expected_category = {"Vorspeise", "Hauptgericht", "Dessert", "Snack", "Beilage"}
+    assert expected_category <= category_names
+
+    cuisine_names = {t["name"] for t in by_group.get("cuisine", [])}
+    assert {
+        "Italienisch",
+        "Asiatisch",
+        "Schweizerisch",
+        "Mexikanisch",
+        "Indisch",
+        "Französisch",
+    } <= cuisine_names
+
+    diet_names = {t["name"] for t in by_group.get("diet", [])}
+    assert {
+        "VegetarianDiet",
+        "VeganDiet",
+        "GlutenFreeDiet",
+        "LowFatDiet",
+        "LowLactoseDiet",
+        "DiabeticDiet",
+        "HalalDiet",
+        "KosherDiet",
+    } <= diet_names
+
+    for group in ("season", "category", "cuisine", "diet"):
+        for t in by_group.get(group, []):
+            assert t["household_id"] is None, (
+                f"global {group} tag {t['name']} must have household_id None"
+            )
+
+
+@pytest.mark.asyncio
+async def test_create_tag_with_category_group_creates_global_tag(
+    client: AsyncClient,
+) -> None:
+    auth = await _register(client, "newcategoryuser")
+    cookies = auth["cookies"]
+
+    resp = await client.post(
+        "/api/tags",
+        json={"name": "Frühstück", "group": "category"},
+        cookies=cookies,
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["name"] == "Frühstück"
+    assert data["group"] == "category"
+    assert data["household_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_create_tag_with_cuisine_group_creates_global_tag(
+    client: AsyncClient,
+) -> None:
+    auth = await _register(client, "newcuisineuser")
+    cookies = auth["cookies"]
+
+    resp = await client.post(
+        "/api/tags",
+        json={"name": "Japanisch", "group": "cuisine"},
+        cookies=cookies,
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["name"] == "Japanisch"
+    assert data["group"] == "cuisine"
+    assert data["household_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_create_tag_with_diet_group_creates_global_tag(
+    client: AsyncClient,
+) -> None:
+    auth = await _register(client, "newdietuser")
+    cookies = auth["cookies"]
+
+    resp = await client.post(
+        "/api/tags",
+        json={"name": "LowSaltDiet", "group": "diet"},
+        cookies=cookies,
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["name"] == "LowSaltDiet"
+    assert data["group"] == "diet"
+    assert data["household_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_create_tag_with_invalid_group_returns_422(
+    client: AsyncClient,
+) -> None:
+    auth = await _register(client, "badgroupuser")
+    cookies = auth["cookies"]
+
+    resp = await client.post(
+        "/api/tags",
+        json={"name": "Anything", "group": "bogus"},
+        cookies=cookies,
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_create_tag_default_group_is_ingredient(
+    client: AsyncClient,
+) -> None:
+    auth = await _register(client, "defaultgroupuser")
+    cookies = auth["cookies"]
+
+    resp = await client.post(
+        "/api/tags", json={"name": "MyStuff"}, cookies=cookies
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["group"] == "ingredient"
+    assert data["household_id"] == auth["data"]["household_id"]
+
+
+@pytest.mark.asyncio
+async def test_update_recipe_category_replaces_existing_category(
+    client: AsyncClient,
+) -> None:
+    auth = await _register(client, "categoryreplaceuser")
+    cookies = auth["cookies"]
+
+    list_resp = await client.get("/api/tags", cookies=cookies)
+    tags_by_name = {t["name"]: t for t in list_resp.json()}
+    hauptgericht_id = tags_by_name["Hauptgericht"]["id"]
+    vorspeise_id = tags_by_name["Vorspeise"]["id"]
+
+    recipe = await _create_recipe(client, cookies, title="Categorized")
+    recipe_id = recipe["id"]
+
+    resp = await client.put(
+        f"/api/recipes/{recipe_id}",
+        json={"tag_ids": [hauptgericht_id]},
+        cookies=cookies,
+    )
+    assert resp.status_code == 200
+    tag_groups = {t["name"]: t["group"] for t in resp.json()["tags"]}
+    assert tag_groups == {"Hauptgericht": "category"}
+
+    resp2 = await client.put(
+        f"/api/recipes/{recipe_id}",
+        json={"tag_ids": [vorspeise_id]},
+        cookies=cookies,
+    )
+    assert resp2.status_code == 200
+    tag_groups2 = {t["name"]: t["group"] for t in resp2.json()["tags"]}
+    assert tag_groups2 == {"Vorspeise": "category"}
+    assert "Hauptgericht" not in tag_groups2
+
+
+@pytest.mark.asyncio
+async def test_update_recipe_cuisine_replaces_existing_cuisine(
+    client: AsyncClient,
+) -> None:
+    auth = await _register(client, "cuisinereplaceuser")
+    cookies = auth["cookies"]
+
+    list_resp = await client.get("/api/tags", cookies=cookies)
+    tags_by_name = {t["name"]: t for t in list_resp.json()}
+    italienisch_id = tags_by_name["Italienisch"]["id"]
+    asiatisch_id = tags_by_name["Asiatisch"]["id"]
+
+    recipe = await _create_recipe(client, cookies, title="Foreign")
+    recipe_id = recipe["id"]
+
+    resp = await client.put(
+        f"/api/recipes/{recipe_id}",
+        json={"tag_ids": [italienisch_id]},
+        cookies=cookies,
+    )
+    assert resp.status_code == 200
+    assert {t["name"] for t in resp.json()["tags"]} == {"Italienisch"}
+
+    resp2 = await client.put(
+        f"/api/recipes/{recipe_id}",
+        json={"tag_ids": [asiatisch_id]},
+        cookies=cookies,
+    )
+    assert resp2.status_code == 200
+    assert {t["name"] for t in resp2.json()["tags"]} == {"Asiatisch"}
+
+
+@pytest.mark.asyncio
+async def test_update_recipe_diet_allows_multiple(
+    client: AsyncClient,
+) -> None:
+    auth = await _register(client, "dietmultiuser")
+    cookies = auth["cookies"]
+
+    list_resp = await client.get("/api/tags", cookies=cookies)
+    tags_by_name = {t["name"]: t for t in list_resp.json()}
+    veg_id = tags_by_name["VegetarianDiet"]["id"]
+    gf_id = tags_by_name["GlutenFreeDiet"]["id"]
+    ll_id = tags_by_name["LowLactoseDiet"]["id"]
+
+    recipe = await _create_recipe(client, cookies, title="Multi-Diet")
+    recipe_id = recipe["id"]
+
+    resp = await client.put(
+        f"/api/recipes/{recipe_id}",
+        json={"tag_ids": [veg_id, gf_id, ll_id]},
+        cookies=cookies,
+    )
+    assert resp.status_code == 200
+    diet_tags = {
+        t["name"] for t in resp.json()["tags"] if t["group"] == "diet"
+    }
+    assert diet_tags == {"VegetarianDiet", "GlutenFreeDiet", "LowLactoseDiet"}
+
+
+@pytest.mark.asyncio
+async def test_update_recipe_mixes_one_per_group_and_multi_value(
+    client: AsyncClient,
+) -> None:
+    auth = await _register(client, "mixedgroupsuser")
+    cookies = auth["cookies"]
+
+    list_resp = await client.get("/api/tags", cookies=cookies)
+    tags_by_name = {t["name"]: t for t in list_resp.json()}
+    haupt_id = tags_by_name["Hauptgericht"]["id"]
+    dessert_id = tags_by_name["Dessert"]["id"]
+    italienisch_id = tags_by_name["Italienisch"]["id"]
+    asiatisch_id = tags_by_name["Asiatisch"]["id"]
+    veg_id = tags_by_name["VegetarianDiet"]["id"]
+    vegan_id = tags_by_name["VeganDiet"]["id"]
+
+    recipe = await _create_recipe(client, cookies, title="Mixed")
+    recipe_id = recipe["id"]
+
+    resp = await client.put(
+        f"/api/recipes/{recipe_id}",
+        json={
+            "tag_ids": [
+                haupt_id,
+                italienisch_id,
+                veg_id,
+                vegan_id,
+            ]
+        },
+        cookies=cookies,
+    )
+    assert resp.status_code == 200
+    by_group: dict[str, list[str]] = {}
+    for t in resp.json()["tags"]:
+        by_group.setdefault(t["group"], []).append(t["name"])
+    assert by_group["category"] == ["Hauptgericht"]
+    assert by_group["cuisine"] == ["Italienisch"]
+    assert sorted(by_group["diet"]) == ["VeganDiet", "VegetarianDiet"]
+
+    resp2 = await client.put(
+        f"/api/recipes/{recipe_id}",
+        json={
+            "tag_ids": [
+                dessert_id,
+                asiatisch_id,
+                vegan_id,
+            ]
+        },
+        cookies=cookies,
+    )
+    assert resp2.status_code == 200
+    by_group2: dict[str, list[str]] = {}
+    for t in resp2.json()["tags"]:
+        by_group2.setdefault(t["group"], []).append(t["name"])
+    assert by_group2["category"] == ["Dessert"]
+    assert by_group2["cuisine"] == ["Asiatisch"]
+    assert by_group2["diet"] == ["VeganDiet"]
+
+
+@pytest.mark.asyncio
+async def test_season_tag_still_multi_value(client: AsyncClient) -> None:
+    auth = await _register(client, "seasonmultiuser")
+    cookies = auth["cookies"]
+
+    list_resp = await client.get("/api/tags", cookies=cookies)
+    tags_by_name = {t["name"]: t for t in list_resp.json()}
+    fr_id = tags_by_name["Frühling"]["id"]
+    so_id = tags_by_name["Sommer"]["id"]
+
+    recipe = await _create_recipe(client, cookies, title="Two Seasons")
+    recipe_id = recipe["id"]
+
+    resp = await client.put(
+        f"/api/recipes/{recipe_id}",
+        json={"tag_ids": [fr_id, so_id]},
+        cookies=cookies,
+    )
+    assert resp.status_code == 200
+    season_tags = {
+        t["name"] for t in resp.json()["tags"] if t["group"] == "season"
+    }
+    assert season_tags == {"Frühling", "Sommer"}
+
+
 # ----- Recipe detail test -----
 
 

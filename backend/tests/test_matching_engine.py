@@ -578,3 +578,36 @@ async def test_match_score_fields(
     assert salad["total_ingredients"] == 2
     assert "Salat" in salad["missing_ingredients"]
     assert salad["urgency_boost"] == 0.0
+
+
+@pytest.mark.asyncio
+async def test_match_dietary_filter_with_seeded_diet_tag(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    cookies, _, _, r_full, _ = await _setup_match_data(
+        client, db_session, "dietenduser",
+    )
+    from sqlalchemy import text
+
+    diet_tag_result = await db_session.execute(
+        text("SELECT id FROM tags WHERE name = 'VegetarianDiet'")
+    )
+    diet_tag_id = diet_tag_result.scalar_one()
+
+    await db_session.execute(
+        text(
+            "INSERT INTO recipe_tags (recipe_id, tag_id) "
+            f"VALUES ({r_full}, {diet_tag_id})"
+        )
+    )
+    await db_session.commit()
+
+    resp = await client.post(
+        "/api/match",
+        json={"mode": "partial", "dietary_filter": diet_tag_id},
+        cookies=cookies,
+    )
+    assert resp.status_code == 200
+    suggestions = resp.json()["suggestions"]
+    assert len(suggestions) == 1
+    assert suggestions[0]["recipe_id"] == r_full

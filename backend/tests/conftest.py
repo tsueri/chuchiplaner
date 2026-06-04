@@ -32,11 +32,45 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
                     "keywords, author, tags)"
                 )
             )
-            for name in ["Frühling", "Sommer", "Herbst", "Winter", "Ganzjährig"]:
+            season_tags = ["Frühling", "Sommer", "Herbst", "Winter", "Ganzjährig"]
+            category_tags = [
+                "Vorspeise", "Hauptgericht", "Dessert", "Snack", "Beilage",
+            ]
+            cuisine_tags = [
+                "Italienisch", "Asiatisch", "Schweizerisch",
+                "Mexikanisch", "Indisch", "Französisch",
+            ]
+            diet_tags = [
+                "VegetarianDiet", "VeganDiet", "GlutenFreeDiet",
+                "LowFatDiet", "LowLactoseDiet", "DiabeticDiet",
+                "HalalDiet", "KosherDiet",
+            ]
+            for name in season_tags:
                 connection.execute(
                     text(
                         "INSERT OR IGNORE INTO tags (name, \"group\", household_id) "
                         f"VALUES ('{name}', 'season', NULL)"
+                    )
+                )
+            for name in category_tags:
+                connection.execute(
+                    text(
+                        "INSERT OR IGNORE INTO tags (name, \"group\", household_id) "
+                        f"VALUES ('{name}', 'category', NULL)"
+                    )
+                )
+            for name in cuisine_tags:
+                connection.execute(
+                    text(
+                        "INSERT OR IGNORE INTO tags (name, \"group\", household_id) "
+                        f"VALUES ('{name}', 'cuisine', NULL)"
+                    )
+                )
+            for name in diet_tags:
+                connection.execute(
+                    text(
+                        "INSERT OR IGNORE INTO tags (name, \"group\", household_id) "
+                        f"VALUES ('{name}', 'diet', NULL)"
                     )
                 )
 

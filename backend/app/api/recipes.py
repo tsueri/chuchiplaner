@@ -685,8 +685,24 @@ async def update_recipe(
         tag_ids_set = set(body.tag_ids)
         recipe_tag_ids = {rt.tag_id for rt in recipe.tags}
 
-        for tr in list(recipe.tags):
-            if tr.tag_id not in tag_ids_set:
+        if tag_ids_set:
+            incoming_tags_result = await db.execute(
+                select(Tag).where(Tag.id.in_(tag_ids_set))
+            )
+            incoming_tags = incoming_tags_result.scalars().all()
+            single_value_groups = {
+                t.group for t in incoming_tags if t.group in ("category", "cuisine")
+            }
+            for tr in list(recipe.tags):
+                if tr.tag is None:
+                    continue
+                if tr.tag.group in single_value_groups and tr.tag_id not in tag_ids_set:
+                    recipe.tags.remove(tr)
+                    continue
+                if tr.tag_id not in tag_ids_set:
+                    recipe.tags.remove(tr)
+        else:
+            for tr in list(recipe.tags):
                 recipe.tags.remove(tr)
 
         new_tag_ids = tag_ids_set - recipe_tag_ids
@@ -1024,7 +1040,7 @@ async def list_tags(
 ) -> list[TagResponse]:
     result = await db.execute(
         select(Tag).where(
-            (Tag.group == "season")
+            Tag.group.in_(["season", "category", "cuisine", "diet"])
             | (
                 (Tag.group == "ingredient")
                 & (Tag.household_id == current_user.household_id)
@@ -1041,10 +1057,15 @@ async def create_tag(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> TagResponse:
+    global_groups = {"season", "category", "cuisine", "diet"}
+    if body.group in global_groups:
+        household_id: int | None = None
+    else:
+        household_id = current_user.household_id
     tag = Tag(
         name=body.name,
-        group="ingredient",
-        household_id=current_user.household_id,
+        group=body.group,
+        household_id=household_id,
     )
     db.add(tag)
     await db.flush()
