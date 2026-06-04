@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useParams } from "react-router-dom"
 import { formatWeekLabel } from "@/lib/iso-week"
 
@@ -64,7 +64,7 @@ export default function PublicPlanPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
 
-  const kwMatch = weekParam?.match(/^kw(\d+)$/i)
+  const kwMatch = useMemo(() => weekParam?.match(/^kw(\d+)$/i), [weekParam])
 
   useEffect(() => {
     if (!slug || !yearParam || !kwMatch) return
