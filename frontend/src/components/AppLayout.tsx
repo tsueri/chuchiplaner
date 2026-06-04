@@ -128,9 +128,9 @@ export function AppLayout() {
       <SidebarProvider>
         <MobileSheetCloseOnRouteChange />
         <SidebarShell />
-        <div className="flex min-h-svh flex-1 flex-col">
+        <div className="flex flex-1 flex-col min-h-0 overflow-hidden">
           <Topbar />
-          <main className="flex-1 p-6 md:p-8">
+          <main className="flex-1 overflow-auto p-6 md:p-8">
             <Outlet />
           </main>
         </div>

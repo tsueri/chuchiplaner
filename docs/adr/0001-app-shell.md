@@ -17,10 +17,11 @@ A self-hosted family meal planner that is used in the kitchen — often one-hand
    - Protected routes: `/`, `/plan`, `/grocery-list`, `/recipes`, `/recipes/:id`, `/inventory`, `/settings` — wrapped in `<AppLayout>` + `<ProtectedRoute>`, content via `<Outlet />`.
 4. Make the home route (`/`) a `<Navigate to="/plan" replace />` redirect. The previous `HomePage` button grid is deleted.
 5. **Do not expose a sidebar collapse toggle.** The sidebar is always expanded. The shadcn `SidebarRail` and the `Cmd/Ctrl+B` shortcut are trimmed from the generated block.
-6. Mobile uses a `Sheet` driven by a topbar hamburger, auto-closing on route change.
-7. Each page declares its title via a `<PageHeader title="..." />` component. No central route-handle / path-map registry.
-8. Add a dark-mode toggle in the sidebar footer backed by a `useDarkMode` hook. The hook reads/writes `localStorage` under the key `"theme"`, falls back to `matchMedia('(prefers-color-scheme: dark)')`, and toggles `.dark` on `<html>`. Apply a no-flash inline `<script>` in `index.html` that reads the same `localStorage` key and applies the class before React mounts.
-9. The `localStorage` key string (`"theme"`) is duplicated in two places — the inline no-flash script and the `useDarkMode` hook. Treat the key as a contract: if either side changes it, the other must change in lockstep.
+6. **Desktop sidebar is `position: fixed`, not scrollable.** The `SidebarProvider` wrapper uses `h-svh` to lock the viewport. The main content wrapper uses `min-h-0 overflow-hidden` to constrain its children, and the `<main>` element is the scroll container (`flex-1 overflow-auto`). The sidebar uses `fixed inset-y-0` with a gap div to reserve horizontal space in the flex layout. This means the sidebar never scrolls out of view, even on tall pages.
+7. Mobile uses a `Sheet` driven by a topbar hamburger, auto-closing on route change.
+8. Each page declares its title via a `<PageHeader title="..." />` component. No central route-handle / path-map registry.
+9. Add a dark-mode toggle in the sidebar footer backed by a `useDarkMode` hook. The hook reads/writes `localStorage` under the key `"theme"`, falls back to `matchMedia('(prefers-color-scheme: dark)')`, and toggles `.dark` on `<html>`. Apply a no-flash inline `<script>` in `index.html` that reads the same `localStorage` key and applies the class before React mounts.
+10. The `localStorage` key string (`"theme"`) is duplicated in two places — the inline no-flash script and the `useDarkMode` hook. Treat the key as a contract: if either side changes it, the other must change in lockstep.
 
 ## Consequences
 
