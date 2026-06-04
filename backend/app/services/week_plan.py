@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.household import MealSlotTemplate
-from app.models.recipe import Recipe
+from app.models.recipe import Recipe, RecipeIngredient
 from app.models.week_plan import MealSlot, WeekPlan
 
 MEAL_TYPES = ["breakfast", "lunch", "dinner", "dessert"]
@@ -309,7 +309,9 @@ async def compute_reservations(
     for slot in slots:
         recipe_result = await db.execute(
             select(Recipe).where(Recipe.id == slot.recipe_id).options(
-                selectinload(Recipe.ingredients)
+                selectinload(Recipe.ingredients).selectinload(
+                    RecipeIngredient.ingredient
+                )
             )
         )
         recipe = recipe_result.scalar_one_or_none()
@@ -320,7 +322,9 @@ async def compute_reservations(
         from app.services.unit_converter import UnitConverter
 
         for ri in recipe.ingredients:
-            grams, milliliters, pieces = UnitConverter.normalize(ri.quantity, ri.unit)
+            grams, milliliters, pieces = UnitConverter.normalize(
+                ri.quantity, ri.unit, ri.ingredient
+            )
             if ri.ingredient_id not in reservations:
                 reservations[ri.ingredient_id] = {
                     "grams": 0.0, "milliliters": 0.0, "pieces": 0.0

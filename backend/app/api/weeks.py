@@ -20,6 +20,7 @@ from app.schemas.week_plan import (
     WeekPlanResponse,
 )
 from app.services.week_plan import (
+    compute_reservations,
     get_or_create_plan,
     get_plan,
     is_editable,
@@ -218,11 +219,17 @@ async def unplan_recipe(
 async def get_week_reservations(
     year: int,
     iso_week: int,
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> dict[int, dict[str, float]]:
     if current_user.household_id is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
-    return {}
+
+    plan = await get_plan(db, current_user.household_id, year, iso_week)
+    if plan is None:
+        return {}
+
+    return await compute_reservations(db, plan.id)
 
 
 @router.put("/{year}/{iso_week}/visibility")

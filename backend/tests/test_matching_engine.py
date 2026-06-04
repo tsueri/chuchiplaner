@@ -611,3 +611,257 @@ async def test_match_dietary_filter_with_seeded_diet_tag(
     suggestions = resp.json()["suggestions"]
     assert len(suggestions) == 1
     assert suggestions[0]["recipe_id"] == r_full
+
+
+# ----- Cross-dimension matching tests -----
+
+
+async def _setup_cross_dim_data(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    username: str,
+) -> tuple[dict, int, int, int, int]:
+    """Setup data for cross-dimension matching tests.
+
+    Creates:
+      - ingredient 2001 "Mehl" with grams_per_el=10
+      - ingredient 2002 "Milch" without conversions (NULL)
+      - inventory: 100g Mehl, 100ml Milch
+      - recipe R1: "Pasta" needs 1 EL Mehl (=10g after conversion)
+      - recipe R2: "Brot" needs 11 EL Mehl (=110g after conversion, too much)
+      - recipe R3: "Milchshake" needs 1 EL Milch (=15ml old behaviour)
+    """
+    from sqlalchemy import text
+
+    resp = await client.post(
+        "/api/auth/register",
+        json={"username": username, "password": "secret123"},
+    )
+    cookies = resp.cookies
+    household_id = resp.json()["household_id"]
+
+    await db_session.execute(
+        text(
+            "INSERT INTO ingredients (id, name, grams_per_el) "
+            "VALUES (2001, 'Mehl', 10)"
+        )
+    )
+    await db_session.execute(
+        text(
+            "INSERT INTO ingredients (id, name) "
+            "VALUES (2002, 'Milch')"
+        )
+    )
+
+    await db_session.execute(
+        text(
+            "INSERT INTO inventory_items "
+            "(household_id, ingredient_id, quantity, unit, expiry_date, category) "
+            f"VALUES ({household_id}, 2001, 100, 'g', NULL, 'raw')"
+        )
+    )
+    await db_session.execute(
+        text(
+            "INSERT INTO inventory_items "
+            "(household_id, ingredient_id, quantity, unit, expiry_date, category) "
+            f"VALUES ({household_id}, 2002, 100, 'ml', NULL, 'raw')"
+        )
+    )
+
+    await db_session.execute(
+        text(
+            "INSERT INTO recipes (id, title, servings, household_id) "
+            f"VALUES (3001, 'Pasta', 4, {household_id})"
+        )
+    )
+    await db_session.execute(
+        text(
+            "INSERT INTO recipe_steps (recipe_id, position, text, name) "
+            "VALUES (3001, 0, 'Cook.', NULL)"
+        )
+    )
+    await db_session.execute(
+        text(
+            "INSERT INTO recipe_ingredients "
+            "(recipe_id, ingredient_id, quantity, unit, order_index) "
+            "VALUES (3001, 2001, 1, 'EL', 0)"
+        )
+    )
+    await db_session.execute(
+        text(
+            "INSERT INTO recipes_fts (rowid, title, description, steps, "
+            "ingredients, keywords, author, tags) "
+            "VALUES (3001, 'Pasta', '', 'Cook.', '', '', '', '')"
+        )
+    )
+
+    await db_session.execute(
+        text(
+            "INSERT INTO recipes (id, title, servings, household_id) "
+            f"VALUES (3002, 'Brot', 4, {household_id})"
+        )
+    )
+    await db_session.execute(
+        text(
+            "INSERT INTO recipe_steps (recipe_id, position, text, name) "
+            "VALUES (3002, 0, 'Bake.', NULL)"
+        )
+    )
+    await db_session.execute(
+        text(
+            "INSERT INTO recipe_ingredients "
+            "(recipe_id, ingredient_id, quantity, unit, order_index) "
+            "VALUES (3002, 2001, 11, 'EL', 0)"
+        )
+    )
+    await db_session.execute(
+        text(
+            "INSERT INTO recipes_fts (rowid, title, description, steps, "
+            "ingredients, keywords, author, tags) "
+            "VALUES (3002, 'Brot', '', 'Bake.', '', '', '', '')"
+        )
+    )
+
+    await db_session.execute(
+        text(
+            "INSERT INTO recipes (id, title, servings, household_id) "
+            f"VALUES (3003, 'Milchshake', 2, {household_id})"
+        )
+    )
+    await db_session.execute(
+        text(
+            "INSERT INTO recipe_steps (recipe_id, position, text, name) "
+            "VALUES (3003, 0, 'Mix.', NULL)"
+        )
+    )
+    await db_session.execute(
+        text(
+            "INSERT INTO recipe_ingredients "
+            "(recipe_id, ingredient_id, quantity, unit, order_index) "
+            "VALUES (3003, 2002, 1, 'EL', 0)"
+        )
+    )
+    await db_session.execute(
+        text(
+            "INSERT INTO recipes_fts (rowid, title, description, steps, "
+            "ingredients, keywords, author, tags) "
+            "VALUES (3003, 'Milchshake', '', 'Mix.', '', '', '', '')"
+        )
+    )
+
+    await db_session.commit()
+    return (cookies, 2001, 2002, 3001, 3002)
+
+
+@pytest.mark.asyncio
+async def test_cross_dimension_el_to_g_matches(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """Recipe with 1 EL Mehl (10g after conversion) matches 100g inventory."""
+    cookies, _, _, r_pasta, _ = await _setup_cross_dim_data(
+        client, db_session, "xdimuser1",
+    )
+
+    resp = await client.post(
+        "/api/match", json={"mode": "exact"}, cookies=cookies,
+    )
+    assert resp.status_code == 200
+    suggestions = resp.json()["suggestions"]
+    ids = [s["recipe_id"] for s in suggestions]
+    assert r_pasta in ids
+    pasta = [s for s in suggestions if s["recipe_id"] == r_pasta][0]
+    assert pasta["score"] == 1.0
+    assert pasta["matched_ingredients"] == 1
+    assert pasta["total_ingredients"] == 1
+    assert pasta["missing_ingredients"] == []
+
+
+@pytest.mark.asyncio
+async def test_cross_dimension_el_to_g_insufficient(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """Recipe with 11 EL Mehl (110g) is UNSATISFIED against 100g inventory."""
+    cookies, _, _, _, r_brot = await _setup_cross_dim_data(
+        client, db_session, "xdimuser2",
+    )
+
+    resp = await client.post(
+        "/api/match", json={"mode": "exact"}, cookies=cookies,
+    )
+    assert resp.status_code == 200
+    suggestions = resp.json()["suggestions"]
+    ids = [s["recipe_id"] for s in suggestions]
+    assert r_brot not in ids
+
+
+@pytest.mark.asyncio
+async def test_cross_dimension_expiring_urgency(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """Expiring EL inventory should trigger urgency boost."""
+    from sqlalchemy import text
+
+    cookies, _, _, r_pasta, _ = await _setup_cross_dim_data(
+        client, db_session, "xdimuser3",
+    )
+
+    household_id_result = await db_session.execute(
+        text("SELECT household_id FROM inventory_items LIMIT 1")
+    )
+    household_id = household_id_result.scalar_one()
+
+    await db_session.execute(
+        text(
+            "INSERT INTO inventory_items "
+            "(household_id, ingredient_id, quantity, unit, expiry_date, category) "
+            f"VALUES ({household_id}, 2001, 5, 'g', DATE('now', '+2 days'), 'raw')"
+        )
+    )
+    await db_session.commit()
+
+    resp = await client.post(
+        "/api/match", json={"mode": "partial"}, cookies=cookies,
+    )
+    assert resp.status_code == 200
+    suggestions = resp.json()["suggestions"]
+    pasta = [s for s in suggestions if s["recipe_id"] == r_pasta][0]
+    assert pasta["urgency_boost"] > 0
+    assert "Mehl" in pasta["expiring_ingredients"]
+
+
+@pytest.mark.asyncio
+async def test_cross_dimension_no_conversion_fallback(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """Ingredient without conversion: EL falls back to 15ml."""
+    cookies, _, _, _, _ = await _setup_cross_dim_data(
+        client, db_session, "xdimuser4",
+    )
+
+    resp = await client.post(
+        "/api/match", json={"mode": "exact"}, cookies=cookies,
+    )
+    assert resp.status_code == 200
+    suggestions = resp.json()["suggestions"]
+    titles = [s["title"] for s in suggestions]
+    assert "Milchshake" in titles
+
+
+@pytest.mark.asyncio
+async def test_cross_dimension_partial_mode_score(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """Cross-dimension match counts toward matched_ingredients in partial mode."""
+    cookies, _, _, r_pasta, _ = await _setup_cross_dim_data(
+        client, db_session, "xdimuser5",
+    )
+
+    resp = await client.post(
+        "/api/match", json={"mode": "partial"}, cookies=cookies,
+    )
+    assert resp.status_code == 200
+    suggestions = resp.json()["suggestions"]
+    pasta = [s for s in suggestions if s["recipe_id"] == r_pasta][0]
+    assert pasta["matched_ingredients"] == 1
+    assert pasta["total_ingredients"] == 1
+    assert pasta["score"] == 1.0

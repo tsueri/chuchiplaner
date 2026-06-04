@@ -1,4 +1,5 @@
 from datetime import date
+from typing import Any
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
@@ -7,6 +8,7 @@ from sqlalchemy.orm import selectinload
 
 from app.api.auth import get_current_user
 from app.db.session import get_db
+from app.models.ingredient import Ingredient
 from app.models.inventory import InventoryItem
 from app.models.recipe import (
     Recipe,
@@ -47,11 +49,13 @@ def _parse_reservations(
 def _gather_inventory(
     items: list[InventoryItem],
     ingredient_names: dict[int, str],
+    ingredients: dict[int, Any] | None = None,
 ) -> dict[int, IngredientAvailability]:
     today = date.today()
     by_ingredient: dict[int, list[tuple[float, float, float, date | None]]] = {}
     for item in items:
-        normalized = UnitConverter.normalize(item.quantity, item.unit)
+        ing = ingredients.get(item.ingredient_id) if ingredients else None
+        normalized = UnitConverter.normalize(item.quantity, item.unit, ing)
         grams, milliliters, pieces = normalized
         by_ingredient.setdefault(item.ingredient_id, []).append(
             (grams or 0, milliliters or 0, pieces or 0, item.expiry_date)
@@ -80,12 +84,14 @@ def _gather_inventory(
 def _gather_recipes(
     recipes: list[Recipe],
     ingredient_names: dict[int, str],
+    ingredients: dict[int, Any] | None = None,
 ) -> list[RecipeInfo]:
     result: list[RecipeInfo] = []
     for recipe in recipes:
         needs: list[RecipeIngredientNeed] = []
         for ri in recipe.ingredients:
-            normalized = UnitConverter.normalize(ri.quantity, ri.unit)
+            ing = ingredients.get(ri.ingredient_id) if ingredients else None
+            normalized = UnitConverter.normalize(ri.quantity, ri.unit, ing)
             grams, milliliters, pieces = normalized
             name = ingredient_names.get(
                 ri.ingredient_id, f"Ingredient {ri.ingredient_id}",
@@ -151,20 +157,18 @@ async def match_recipes(
         for ri in recipe.ingredients:
             all_ingredient_ids.add(ri.ingredient_id)
 
-    from sqlalchemy import text as sqla_text
     ingredient_names: dict[int, str] = {}
+    ingredients: dict[int, Ingredient] = {}
     if all_ingredient_ids:
-        names_result = await db.execute(
-            sqla_text(
-                "SELECT id, name FROM ingredients WHERE id IN "
-                f"({','.join(str(i) for i in all_ingredient_ids)})"
-            )
+        ing_result = await db.execute(
+            select(Ingredient).where(Ingredient.id.in_(all_ingredient_ids))
         )
-        for row in names_result:
-            ingredient_names[row[0]] = row[1]
+        for ing in ing_result.scalars().all():
+            ingredient_names[ing.id] = ing.name
+            ingredients[ing.id] = ing
 
-    inventory = _gather_inventory(inventory_items, ingredient_names)
-    recipe_infos = _gather_recipes(recipes, ingredient_names)
+    inventory = _gather_inventory(inventory_items, ingredient_names, ingredients)
+    recipe_infos = _gather_recipes(recipes, ingredient_names, ingredients)
 
     dietary_tag_name: str | None = None
     if body.dietary_filter is not None:
