@@ -135,6 +135,34 @@ async function postRecipe(body: {
   return res.json() as Promise<{ id: number }>
 }
 
+async function putFullRecipe(
+  recipeId: number,
+  body: {
+    title: string
+    description: string | null
+    steps: RecipeStepPayload[]
+    servings: number
+    prep_time_minutes: number | null
+    total_time_minutes: number | null
+    image_url: string | null
+    source_url: string | null
+    source_domain: string | null
+    ingredients: RecipeIngredientPayload[]
+    tag_ids: number[]
+  }
+): Promise<void> {
+  const res = await fetch(`/api/recipes/${recipeId}`, {
+    method: "PUT",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ detail: "Request failed" }))
+    throw new Error(data.detail || "Request failed")
+  }
+}
+
 async function putRecipeTags(
   recipeId: number,
   tagIds: number[]
@@ -340,6 +368,25 @@ export default function RecipeFormPage() {
           alias_name: r.raw,
           ingredient_id: r.ingredientId as number,
         }))
+
+      if (existingRecipeId !== null) {
+        await putFullRecipe(existingRecipeId, {
+          title: form.title.trim(),
+          description: toNull(form.description),
+          steps,
+          servings: form.servings,
+          prep_time_minutes: DurationSerializer.parseHuman(form.prepTimeText),
+          total_time_minutes: DurationSerializer.parseHuman(form.totalTimeText),
+          image_url: toNull(form.image_url),
+          source_url: toNull(form.source_url),
+          source_domain: toNull(form.source_domain),
+          ingredients,
+          tag_ids: selectedTagIds,
+        })
+        navigate(`/recipes/${existingRecipeId}`)
+        return
+      }
+
       const created = await postRecipe({
         title: form.title.trim(),
         description: toNull(form.description),
@@ -407,28 +454,6 @@ export default function RecipeFormPage() {
             ) : (
               error
             )}
-          </div>
-        )}
-
-        {importedFrom && existingRecipeId !== null && (
-          <div
-            role="status"
-            className={cn(
-              "flex items-center justify-between rounded-md p-3 text-sm",
-              "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200"
-            )}
-          >
-            <div>
-              <p className="font-medium">
-                Du hast dieses Rezept schon importiert
-              </p>
-              <Link
-                to={`/recipes/${existingRecipeId}`}
-                className="text-xs underline"
-              >
-                Zum bestehenden Rezept
-              </Link>
-            </div>
           </div>
         )}
 

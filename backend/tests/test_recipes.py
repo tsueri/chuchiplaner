@@ -2034,6 +2034,188 @@ async def test_create_recipe_no_false_409_null_source_url(
 
 
 @pytest.mark.asyncio
+async def test_reimport_colliding_url_upserts_existing_row(
+    client: AsyncClient,
+) -> None:
+    auth = await _register(client, "reimportuser")
+    cookies = auth["cookies"]
+
+    ing = await client.post(
+        "/api/ingredients", json={"name": "Rahm"}, cookies=cookies
+    )
+    ingredient_id = ing.json()["id"]
+
+    original = await _create_recipe(
+        client,
+        cookies,
+        title="Original",
+        source_url="https://example.com/upsert-target",
+        steps=[{"text": "Original step."}],
+    )
+    original_id = original["id"]
+
+    resp = await client.post(
+        "/api/recipes",
+        json={
+            "reimport": True,
+            "title": "Updated Title",
+            "description": "Updated description",
+            "steps": [
+                {"position": 0, "text": "New step 1", "name": None},
+                {"position": 1, "text": "New step 2", "name": None},
+            ],
+            "servings": 6,
+            "prep_time_minutes": 20,
+            "total_time_minutes": 45,
+            "source_url": "https://example.com/upsert-target",
+            "source_domain": "example.com",
+            "image_url": "https://img.example/new.jpg",
+            "ingredients": [
+                {
+                    "ingredient_id": ingredient_id,
+                    "quantity": 250.0,
+                    "unit": "g",
+                    "order_index": 0,
+                }
+            ],
+        },
+        cookies=cookies,
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["id"] == original_id
+    assert data["title"] == "Updated Title"
+    assert data["description"] == "Updated description"
+    assert data["servings"] == 6
+    assert data["prep_time_minutes"] == 20
+    assert data["total_time_minutes"] == 45
+    assert data["image_url"] == "https://img.example/new.jpg"
+    assert data["source_url"] == "https://example.com/upsert-target"
+    assert data["source_domain"] == "example.com"
+    assert len(data["ingredients"]) == 1
+    assert data["ingredients"][0]["ingredient_id"] == ingredient_id
+    assert data["ingredients"][0]["quantity"] == 250.0
+    assert data["ingredients"][0]["unit"] == "g"
+    assert len(data["steps"]) == 2
+    assert data["steps"][0]["text"] == "New step 1"
+    assert data["steps"][1]["text"] == "New step 2"
+
+    list_resp = await client.get("/api/recipes", cookies=cookies)
+    assert list_resp.status_code == 200
+    list_data = list_resp.json()
+    assert len(list_data) == 1
+    assert list_data[0]["id"] == original_id
+    assert list_data[0]["title"] == "Updated Title"
+
+
+@pytest.mark.asyncio
+async def test_reimport_new_url_creates_recipe_201(
+    client: AsyncClient,
+) -> None:
+    auth = await _register(client, "reimportnew")
+    cookies = auth["cookies"]
+
+    resp = await client.post(
+        "/api/recipes",
+        json={
+            "reimport": True,
+            "title": "Fresh",
+            "steps": [{"text": "New."}],
+            "source_url": "https://example.com/fresh-import",
+            "servings": 2,
+        },
+        cookies=cookies,
+    )
+    assert resp.status_code == 201
+    assert resp.json()["title"] == "Fresh"
+    assert resp.json()["source_url"] == "https://example.com/fresh-import"
+
+
+@pytest.mark.asyncio
+async def test_reimport_applies_tag_ids_with_one_per_group_rule(
+    client: AsyncClient,
+) -> None:
+    auth = await _register(client, "reimporttags")
+    cookies = auth["cookies"]
+
+    tags_resp = await client.get("/api/tags", cookies=cookies)
+    tags_by_name = {t["name"]: t for t in tags_resp.json()}
+    hauptgericht_id = tags_by_name["Hauptgericht"]["id"]
+    italienisch_id = tags_by_name["Italienisch"]["id"]
+    asiatisch_id = tags_by_name["Asiatisch"]["id"]
+    vegetarian_id = tags_by_name["VegetarianDiet"]["id"]
+    vegan_id = tags_by_name["VeganDiet"]["id"]
+
+    original = await _create_recipe(
+        client,
+        cookies,
+        title="Tag Upsert Target",
+        source_url="https://example.com/tag-upsert",
+    )
+    original_id = original["id"]
+
+    put_resp = await client.put(
+        f"/api/recipes/{original_id}",
+        json={"tag_ids": [hauptgericht_id, italienisch_id, vegetarian_id]},
+        cookies=cookies,
+    )
+    assert put_resp.status_code == 200
+
+    resp = await client.post(
+        "/api/recipes",
+        json={
+            "reimport": True,
+            "title": "Tag Upsert Target",
+            "source_url": "https://example.com/tag-upsert",
+            "tag_ids": [hauptgericht_id, asiatisch_id, vegan_id],
+        },
+        cookies=cookies,
+    )
+    assert resp.status_code == 200
+    tag_ids = {t["id"] for t in resp.json()["tags"]}
+    assert hauptgericht_id in tag_ids
+    assert asiatisch_id in tag_ids
+    assert italienisch_id not in tag_ids
+    assert vegan_id in tag_ids
+    assert vegetarian_id not in tag_ids
+
+
+@pytest.mark.asyncio
+async def test_create_recipe_409_preserved_when_reimport_false(
+    client: AsyncClient,
+) -> None:
+    auth = await _register(client, "manual409user")
+    cookies = auth["cookies"]
+
+    await client.post(
+        "/api/recipes",
+        json={
+            "title": "Original",
+            "instructions": "Steps.",
+            "source_url": "https://example.com/manual-409",
+            "servings": 2,
+        },
+        cookies=cookies,
+    )
+
+    resp = await client.post(
+        "/api/recipes",
+        json={
+            "reimport": False,
+            "title": "Duplicate",
+            "instructions": "Steps.",
+            "source_url": "https://example.com/manual-409",
+            "servings": 2,
+        },
+        cookies=cookies,
+    )
+    assert resp.status_code == 409
+    data = resp.json()
+    assert "detail" in data
+    assert data["existing_recipe_id"] is not None
+
+
+@pytest.mark.asyncio
 async def test_import_existing_lookup_filters_by_household(
     client: AsyncClient,
 ) -> None:

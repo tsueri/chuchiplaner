@@ -122,6 +122,8 @@ class RecipeSaveRequest(BaseModel):
     ingredients: list["RecipeIngredientItem"] = Field(default_factory=list)
     steps: list["RecipeStepItem"] = Field(default_factory=list)
     learned_aliases: list["LearnedAliasItem"] = Field(default_factory=list)
+    tag_ids: list[int] | None = None
+    reimport: bool = False
 
 
 class RecipeIngredientItem(BaseModel):
@@ -282,6 +284,7 @@ class RecipeUpdateRequest(BaseModel):
     description: str | None = Field(default=None, max_length=2048)
     image_url: str | None = Field(default=None, max_length=2048)
     source_url: str | None = Field(default=None, max_length=2048)
+    source_domain: str | None = Field(default=None, max_length=255)
     servings: int | None = Field(default=None, ge=1)
     prep_time_minutes: int | None = Field(default=None, ge=0)
     cook_time_minutes: int | None = Field(default=None, ge=0)

@@ -3,6 +3,7 @@ from datetime import datetime as dt
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -280,6 +281,8 @@ def _assign_recipe_fields(
         recipe.image_url = body.image_url
     if body.source_url is not None:
         recipe.source_url = body.source_url
+    if getattr(body, "source_domain", None) is not None:
+        recipe.source_domain = body.source_domain
     if body.servings is not None:
         recipe.servings = body.servings
     if body.prep_time_minutes is not None:
@@ -319,31 +322,231 @@ async def _apply_recipe_steps(
         )
 
 
+async def _apply_recipe_tags(
+    db: AsyncSession, recipe: Recipe, tag_ids: list[int]
+) -> None:
+    tag_ids_set = set(tag_ids)
+    recipe_tag_ids = {rt.tag_id for rt in recipe.tags}
+
+    if tag_ids_set:
+        incoming_tags_result = await db.execute(
+            select(Tag).where(Tag.id.in_(tag_ids_set))
+        )
+        incoming_tags = incoming_tags_result.scalars().all()
+        single_value_groups = {
+            t.group for t in incoming_tags if t.group in ("category", "cuisine")
+        }
+        for tr in list(recipe.tags):
+            if tr.tag is None:
+                continue
+            if tr.tag.group in single_value_groups and tr.tag_id not in tag_ids_set:
+                recipe.tags.remove(tr)
+                continue
+            if tr.tag_id not in tag_ids_set:
+                recipe.tags.remove(tr)
+    else:
+        for tr in list(recipe.tags):
+            recipe.tags.remove(tr)
+
+    new_tag_ids = tag_ids_set - recipe_tag_ids
+    if new_tag_ids:
+        tag_rows_result = await db.execute(
+            select(Tag).where(Tag.id.in_(new_tag_ids))
+        )
+        tag_rows = {t.id: t for t in tag_rows_result.scalars().all()}
+        for tid in new_tag_ids:
+            tag = tag_rows.get(tid)
+            recipe.tags.append(RecipeTag(tag_id=tid, tag=tag))
+
+
+async def _persist_recipe_aliases(
+    db: AsyncSession,
+    body: RecipeSaveRequest,
+    household_id: int | None,
+) -> None:
+    for alias_item in body.learned_aliases:
+        ing_result = await db.execute(
+            select(Ingredient).where(Ingredient.id == alias_item.ingredient_id)
+        )
+        if ing_result.scalar_one_or_none() is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"Ungültiger ingredient_id: "
+                    f"Zutat mit ID {alias_item.ingredient_id} existiert nicht."
+                ),
+            )
+        alias = IngredientAlias(
+            household_id=household_id,
+            alias_name=alias_item.alias_name,
+            ingredient_id=alias_item.ingredient_id,
+        )
+        db.add(alias)
+    try:
+        await db.flush()
+    except IntegrityError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Ein Alias mit diesem Namen existiert bereits "
+                "in diesem Haushalt."
+            ),
+        )
+
+
+async def _upsert_recipe(
+    db: AsyncSession,
+    body: RecipeSaveRequest,
+    existing: Recipe,
+    current_user: User,
+) -> RecipeDetailResponse:
+    _assign_recipe_fields(existing, body)
+
+    if body.ingredients is not None:
+        for item in body.ingredients:
+            ing_result = await db.execute(
+                select(Ingredient).where(Ingredient.id == item.ingredient_id)
+            )
+            if ing_result.scalar_one_or_none() is None:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=(
+                        f"Ungültiger ingredient_id: "
+                        f"Zutat mit ID {item.ingredient_id} existiert nicht."
+                    ),
+                )
+
+        for existing_ing in list(existing.ingredients):
+            existing.ingredients.remove(existing_ing)
+
+        for idx, item in enumerate(body.ingredients):
+            new_ri = RecipeIngredient(
+                recipe_id=existing.id,
+                ingredient_id=item.ingredient_id,
+                quantity=item.quantity,
+                unit=item.unit,
+                order_index=idx,
+            )
+            db.add(new_ri)
+            existing.ingredients.append(new_ri)
+
+    if body.steps is not None:
+        await _apply_recipe_steps(db, existing, body.steps)
+
+    if body.tag_ids is not None:
+        await _apply_recipe_tags(db, existing, body.tag_ids)
+
+    if body.learned_aliases:
+        await _persist_recipe_aliases(db, body, current_user.household_id)
+
+    await db.flush()
+
+    from sqlalchemy import text as sqla_text
+    await db.execute(
+        sqla_text("DELETE FROM recipes_fts WHERE rowid = :id"),
+        {"id": existing.id},
+    )
+
+    ingredient_names_result = await db.execute(
+        select(Ingredient.name).where(
+            Ingredient.id.in_({item.ingredient_id for item in body.ingredients})
+        )
+    )
+    ingredient_names = " ".join(ingredient_names_result.scalars().all())
+    tag_names = " ".join(
+        t.name for t in (await db.execute(
+            select(Tag).where(Tag.id.in_(body.tag_ids or []))
+        )).scalars().all()
+    ) if body.tag_ids else ""
+    fts_payload = {
+        "id": existing.id,
+        "title": existing.title,
+        "description": existing.description or "",
+        "steps": " ".join(s.text for s in body.steps or []),
+        "ingredients": ingredient_names,
+        "keywords": existing.keywords or "",
+        "author": existing.author or "",
+        "tags": tag_names,
+    }
+    await db.execute(
+        sqla_text(
+            "INSERT INTO recipes_fts(rowid, title, description, steps, "
+            "ingredients, keywords, author, tags) "
+            "VALUES (:id, :title, :description, :steps, "
+            ":ingredients, :keywords, :author, :tags)"
+        ),
+        fts_payload,
+    )
+
+    refreshed_result = await db.execute(
+        select(Recipe)
+        .where(Recipe.id == existing.id)
+        .options(
+            selectinload(Recipe.ingredients).selectinload(RecipeIngredient.ingredient),
+            selectinload(Recipe.steps),
+            selectinload(Recipe.tags).selectinload(RecipeTag.tag),
+            selectinload(Recipe.favorites),
+        )
+    )
+    refreshed = refreshed_result.unique().scalar_one()
+    return _build_recipe_detail(refreshed, current_user.id)
+
+
 @router.post("", response_model=RecipeResponse, status_code=status.HTTP_201_CREATED)
 async def create_recipe(
     body: RecipeSaveRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> JSONResponse | RecipeResponse:
+    """Create a new recipe, or upsert an existing one when ``reimport=True``.
+
+    Behavior:
+    - ``reimport=False`` (default): a ``source_url`` collision returns 409 with
+      ``existing_recipe_id``. This is the manual-create path: a user typing in
+      a URL that already exists in the household should be told, not silently
+      overwritten.
+    - ``reimport=True``: a ``source_url`` collision performs an upsert. The
+      existing row's fields are overwritten with the new body (title,
+      description, times, steps, ingredients, tags, image_url, servings).
+      The response is the updated ``RecipeDetailResponse`` (status 200) for
+      that row.
+    - ``reimport=True`` with a new ``source_url`` (or null) creates a new
+      recipe and returns 201 — same as the manual path.
+    """
     if body.source_url is not None:
         dup_result = await db.execute(
-            select(Recipe).where(
+            select(Recipe)
+            .where(
                 Recipe.source_url == body.source_url,
                 Recipe.household_id == current_user.household_id,
                 Recipe.deleted_at.is_(None),
             )
+            .options(
+                selectinload(Recipe.ingredients).selectinload(
+                    RecipeIngredient.ingredient
+                ),
+                selectinload(Recipe.steps),
+                selectinload(Recipe.tags).selectinload(RecipeTag.tag),
+            )
         )
         dup = dup_result.scalar_one_or_none()
         if dup is not None:
+            if not body.reimport:
+                return JSONResponse(
+                    status_code=status.HTTP_409_CONFLICT,
+                    content={
+                        "detail": (
+                            f"Duplikat: Ein Rezept mit der URL {body.source_url} "
+                            "existiert bereits in diesem Haushalt."
+                        ),
+                        "existing_recipe_id": dup.id,
+                    },
+                )
             return JSONResponse(
-                status_code=status.HTTP_409_CONFLICT,
-                content={
-                    "detail": (
-                        f"Duplikat: Ein Rezept mit der URL {body.source_url} "
-                        "existiert bereits in diesem Haushalt."
-                    ),
-                    "existing_recipe_id": dup.id,
-                },
+                status_code=status.HTTP_200_OK,
+                content=jsonable_encoder(
+                    await _upsert_recipe(db, body, dup, current_user)
+                ),
             )
 
     recipe = Recipe(
@@ -390,35 +593,11 @@ async def create_recipe(
         )
         db.add(recipe_ingredient)
 
-    try:
-        for alias_item in body.learned_aliases:
-            ing_result = await db.execute(
-                select(Ingredient).where(Ingredient.id == alias_item.ingredient_id)
-            )
-            if ing_result.scalar_one_or_none() is None:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=(
-                        f"Ungültiger ingredient_id: "
-                        f"Zutat mit ID {alias_item.ingredient_id} existiert nicht."
-                    ),
-                )
-            alias = IngredientAlias(
-                household_id=current_user.household_id,
-                alias_name=alias_item.alias_name,
-                ingredient_id=alias_item.ingredient_id,
-            )
-            db.add(alias)
+    if body.tag_ids is not None:
+        await _apply_recipe_tags(db, recipe, body.tag_ids)
 
-        await db.flush()
-    except IntegrityError:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=(
-                "Ein Alias mit diesem Namen existiert bereits "
-                "in diesem Haushalt."
-            ),
-        )
+    if body.learned_aliases:
+        await _persist_recipe_aliases(db, body, current_user.household_id)
 
     await db.flush()
 
@@ -682,38 +861,7 @@ async def update_recipe(
     _assign_recipe_fields(recipe, body)
 
     if body.tag_ids is not None:
-        tag_ids_set = set(body.tag_ids)
-        recipe_tag_ids = {rt.tag_id for rt in recipe.tags}
-
-        if tag_ids_set:
-            incoming_tags_result = await db.execute(
-                select(Tag).where(Tag.id.in_(tag_ids_set))
-            )
-            incoming_tags = incoming_tags_result.scalars().all()
-            single_value_groups = {
-                t.group for t in incoming_tags if t.group in ("category", "cuisine")
-            }
-            for tr in list(recipe.tags):
-                if tr.tag is None:
-                    continue
-                if tr.tag.group in single_value_groups and tr.tag_id not in tag_ids_set:
-                    recipe.tags.remove(tr)
-                    continue
-                if tr.tag_id not in tag_ids_set:
-                    recipe.tags.remove(tr)
-        else:
-            for tr in list(recipe.tags):
-                recipe.tags.remove(tr)
-
-        new_tag_ids = tag_ids_set - recipe_tag_ids
-        if new_tag_ids:
-            tag_rows_result = await db.execute(
-                select(Tag).where(Tag.id.in_(new_tag_ids))
-            )
-            tag_rows = {t.id: t for t in tag_rows_result.scalars().all()}
-            for tid in new_tag_ids:
-                tag = tag_rows.get(tid)
-                recipe.tags.append(RecipeTag(tag_id=tid, tag=tag))
+        await _apply_recipe_tags(db, recipe, body.tag_ids)
 
     if body.ingredients is not None:
         for item in body.ingredients:

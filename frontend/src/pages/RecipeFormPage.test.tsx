@@ -1298,7 +1298,7 @@ describe("RecipeFormPage URL import", () => {
     ).toBe("")
   })
 
-  it("renders a soft duplicate warning with link when import carries existing_recipe_id", async () => {
+  it("does not render a soft duplicate warning when import carries existing_recipe_id", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
       const url =
         typeof input === "string" ? input : (input as Request).url
@@ -1327,20 +1327,88 @@ describe("RecipeFormPage URL import", () => {
       "/recipes/new?url=" + encodeURIComponent("https://www.fooby.ch/recipe")
     )
 
-    await screen.findByText(/du hast dieses rezept schon importiert/i)
+    await screen.findByText(/importiert von www\.fooby\.ch/i)
     expect(
-      screen.getByRole("link", { name: /zum bestehenden rezept/i })
-    ).toHaveAttribute("href", "/recipes/7")
-
-    // Import banner still renders
+      screen.queryByText(/du hast dieses rezept schon importiert/i)
+    ).not.toBeInTheDocument()
     expect(
-      screen.getByText(/importiert von www\.fooby\.ch/i)
-    ).toBeInTheDocument()
+      screen.queryByRole("link", { name: /zum bestehenden rezept/i })
+    ).not.toBeInTheDocument()
 
-    // Speichern is still enabled (soft warning does not block save)
+    // Speichern is still enabled
     expect(
       screen.getByRole("button", { name: /speichern/i })
     ).not.toBeDisabled()
+  })
+
+  it("PUTs the scraped data to the existing recipe and navigates to its detail page when import carries existing_recipe_id", async () => {
+    const user = userEvent.setup()
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation((input) => {
+        const url =
+          typeof input === "string" ? input : (input as Request).url
+        if (url === "/api/tags") {
+          return Promise.resolve(mockFetchResponse([]))
+        }
+        if (url === "/api/recipes/import") {
+          return Promise.resolve(
+            mockFetchResponse({
+              title: "Fooby Pasta",
+              ingredients: [],
+              steps: [{ position: 0, text: "Alles mischen.", name: null }],
+              image_url: null,
+              servings: 4,
+              source_url: "https://www.fooby.ch/recipe",
+              source_domain: "www.fooby.ch",
+              existing_recipe_id: 7,
+              is_partial: false,
+            })
+          )
+        }
+        if (url === "/api/recipes/7" || url === "/api/recipes/7/") {
+          return Promise.resolve(
+            mockFetchResponse(
+              {
+                id: 7,
+                title: "Fooby Pasta",
+              },
+              { status: 200 }
+            )
+          )
+        }
+        return Promise.resolve(mockFetchResponse([]))
+      })
+
+    renderForm(
+      "/recipes/new?url=" + encodeURIComponent("https://www.fooby.ch/recipe")
+    )
+
+    await screen.findByText(/importiert von www\.fooby\.ch/i)
+    await user.click(screen.getByRole("button", { name: /speichern/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText("recipe-detail-stub")).toBeInTheDocument()
+    })
+
+    const putCall = fetchSpy.mock.calls.find(
+      ([u]) => u === "/api/recipes/7" || u === "/api/recipes/7/"
+    ) as [string, RequestInit] | undefined
+    expect(putCall).toBeDefined()
+    expect(putCall![1].method).toBe("PUT")
+    const body = JSON.parse(putCall![1].body as string)
+    expect(body.title).toBe("Fooby Pasta")
+    expect(body.source_url).toBe("https://www.fooby.ch/recipe")
+    expect(body.steps).toEqual([
+      { position: 0, text: "Alles mischen.", name: null },
+    ])
+
+    const postCall = fetchSpy.mock.calls.find(
+      ([u]) => u === "/api/recipes"
+    ) as [string, RequestInit] | undefined
+    if (postCall) {
+      expect(postCall[1].method).not.toBe("POST")
+    }
   })
 
   it("sends learned_aliases for fuzzy-accepted rows (0.6 ≤ confidence < 1.0)", async () => {
