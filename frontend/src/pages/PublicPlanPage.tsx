@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from "react"
 import { useParams } from "react-router-dom"
+import { FileDown } from "lucide-react"
+import { Button } from "@/components/ui/button"
 import { formatWeekLabel } from "@/lib/iso-week"
+import { generateWeekPlanPdf } from "@/lib/pdf-weekplan"
 
 interface PublicRecipe {
   id: number
@@ -63,6 +66,7 @@ export default function PublicPlanPage() {
   const [data, setData] = useState<PublicPlan | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
+  const [pdfGenerating, setPdfGenerating] = useState(false)
 
   const kwMatch = useMemo(() => weekParam?.match(/^kw(\d+)$/i), [weekParam])
 
@@ -133,6 +137,28 @@ export default function PublicPlanPage() {
     )
   }
 
+  const generatePdf = async () => {
+    if (!data || pdfGenerating) return
+    setPdfGenerating(true)
+    try {
+      await generateWeekPlanPdf({
+        weekLabel: formatWeekLabel(data.year, data.iso_week),
+        slots: data.slots
+          .filter((s) => s.recipe !== null)
+          .map((s) => ({
+            dayOfWeek: s.day_of_week,
+            mealType: s.meal_type,
+            recipeTitle: s.recipe!.title,
+            portions: s.portions,
+          })),
+        publicUrl: `${window.location.origin}/plan/${data.household_slug}/${data.year}/kw${data.iso_week}`,
+        fileName: `wochenplan-kw${data.iso_week}-${data.year}.pdf`,
+      })
+    } finally {
+      setPdfGenerating(false)
+    }
+  }
+
   const getSlot = (day: number, meal: string): PublicSlot | undefined => {
     return data.slots.find(
       (s) => s.day_of_week === day && s.meal_type === meal
@@ -141,11 +167,22 @@ export default function PublicPlanPage() {
 
   return (
     <div className="min-h-screen bg-background text-foreground p-4 max-w-4xl mx-auto">
-      <header className="mb-6">
-        <h1 className="text-2xl font-bold">{data.household_name}</h1>
-        <p className="text-lg text-muted-foreground">
-          {formatWeekLabel(data.year, data.iso_week)}
-        </p>
+      <header className="mb-6 flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">{data.household_name}</h1>
+          <p className="text-lg text-muted-foreground">
+            {formatWeekLabel(data.year, data.iso_week)}
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={generatePdf}
+          disabled={pdfGenerating}
+        >
+          <FileDown className="h-4 w-4" />
+          {pdfGenerating ? "..." : "PDF"}
+        </Button>
       </header>
 
       <div className="grid grid-cols-8 gap-1 text-sm">

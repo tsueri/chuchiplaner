@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react"
+import { FileDown } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { PageHeader } from "@/components/PageHeader"
+import { generateWeekPlanPdf } from "@/lib/pdf-weekplan"
 import {
   getCurrentIsoWeek,
   getIsoWeek,
@@ -103,6 +105,7 @@ export default function WeekPlanPage() {
   const [leftoverPortions, setLeftoverPortions] = useState(2)
   const [householdSlug, setHouseholdSlug] = useState("")
   const [publicSaving, setPublicSaving] = useState(false)
+  const [pdfGenerating, setPdfGenerating] = useState(false)
   const [recipeSearch, setRecipeSearch] = useState("")
   const [searchResults, setSearchResults] = useState<Recipe[]>([])
 
@@ -266,6 +269,30 @@ export default function WeekPlanPage() {
     navigator.clipboard.writeText(url)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
+  }
+
+  const generatePdf = async () => {
+    if (!weekData || pdfGenerating) return
+    setPdfGenerating(true)
+    try {
+      await generateWeekPlanPdf({
+        weekLabel: formatWeekLabel(year, isoWeek),
+        slots: weekData.slots
+          .filter((s) => s.recipe_id !== null && s.recipe_title)
+          .map((s) => ({
+            dayOfWeek: s.day_of_week,
+            mealType: s.meal_type,
+            recipeTitle: s.recipe_title!,
+            portions: s.portions,
+          })),
+        publicUrl: weekData.is_public && householdSlug
+          ? `${window.location.origin}/plan/${householdSlug}/${year}/kw${isoWeek}`
+          : null,
+        fileName: `wochenplan-kw${isoWeek}-${year}.pdf`,
+      })
+    } finally {
+      setPdfGenerating(false)
+    }
   }
 
   const toggleWeekVisibility = async () => {
@@ -444,6 +471,15 @@ export default function WeekPlanPage() {
               {copied ? "Kopiert!" : "Link kopieren"}
             </Button>
           )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={generatePdf}
+            disabled={pdfGenerating}
+          >
+            <FileDown className="h-4 w-4" />
+            {pdfGenerating ? "..." : "PDF"}
+          </Button>
           <Button
             variant="outline"
             size="sm"
