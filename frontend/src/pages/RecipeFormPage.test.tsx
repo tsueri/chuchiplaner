@@ -1708,6 +1708,81 @@ describe("RecipeFormPage URL import", () => {
       screen.getByRole("button", { name: /verwerfen/i })
     ).toBeInTheDocument()
   })
+
+  it("pre-fills description, times, and pre-selects diet tags from the import response", async () => {
+    vi.spyOn(globalThis, "fetch")
+      .mockImplementation((input) => {
+        const url =
+          typeof input === "string" ? input : (input as Request).url
+        if (url === "/api/tags") {
+          return Promise.resolve(
+            mockFetchResponse([
+              {
+                id: 1,
+                name: "VegetarianDiet",
+                group: "diet",
+                household_id: null,
+              },
+              {
+                id: 2,
+                name: "Frühling",
+                group: "season",
+                household_id: null,
+              },
+            ])
+          )
+        }
+        if (url === "/api/recipes/import") {
+          return Promise.resolve(
+            mockFetchResponse({
+              title: "Rich Recipe",
+              ingredients: [],
+              steps: [{ position: 0, text: "Mix.", name: null }],
+              image_url: null,
+              servings: 6,
+              source_url: "https://example.com/rich",
+              source_domain: "example.com",
+              existing_recipe_id: null,
+              is_partial: false,
+              description: "Ein reichhaltiges Rezept.",
+              prep_time_minutes: 20,
+              total_time_minutes: 60,
+              suitable_for_diet_tag_ids: [1],
+            })
+          )
+        }
+        return Promise.resolve(mockFetchResponse([]))
+      })
+
+    renderForm(
+      "/recipes/new?url=" + encodeURIComponent("https://example.com/rich")
+    )
+
+    await screen.findByText(/importiert von example\.com/i)
+
+    // Description pre-filled
+    expect(
+      (screen.getByLabelText(/beschreibung/i) as HTMLTextAreaElement).value
+    ).toBe("Ein reichhaltiges Rezept.")
+
+    // Prep time human-formatted
+    expect(
+      (screen.getByLabelText(/vorbereitungszeit/i) as HTMLInputElement).value
+    ).toBe("20 min")
+
+    // Total time human-formatted
+    expect(
+      (screen.getByLabelText(/gesamtzeit/i) as HTMLInputElement).value
+    ).toBe("1 Std.")
+
+    // VegetarianDiet tag is pre-selected
+    const vegPill = await screen.findByRole("button", { name: /VegetarianDiet/i })
+    expect(vegPill).toHaveAttribute("aria-pressed", "true")
+
+    // Frühling tag is NOT pre-selected
+    const frühlingPill = screen.getByRole("button", { name: /frühling/i })
+    expect(frühlingPill).toHaveAttribute("aria-pressed", "false")
+  })
 })
 
 describe("RecipeListPage URL import", () => {

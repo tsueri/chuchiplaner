@@ -2629,3 +2629,104 @@ async def test_import_recipe_returns_steps(client: AsyncClient) -> None:
     assert data["steps"][0]["text"] == "Schritt A\nSchritt B"
     assert data["steps"][0]["name"] is None
     assert "instructions" not in data
+
+
+@pytest.mark.asyncio
+async def test_import_recipe_returns_extended_fields_and_diet_tags(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    auth = await _register(client, "importextended")
+    cookies = auth["cookies"]
+
+    # Find a diet tag id for resolution
+    from sqlalchemy import text
+    veg_result = await db_session.execute(
+        text("SELECT id FROM tags WHERE name = 'VegetarianDiet'")
+    )
+    veg_tag_id = veg_result.scalar_one()
+
+    from datetime import date
+
+    mock_recipe = ScrapedRecipe(
+        title="Extended Import",
+        ingredients=["500g Rüebli"],
+        instructions="Schälen.\nKochen.",
+        image_url="https://img.example/ext.jpg",
+        servings=4,
+        source_url="https://www.example.com/extended",
+        source_domain="www.example.com",
+        description="Ein gesundes Rüebli-Rezept.",
+        prep_time_minutes=15,
+        cook_time_minutes=30,
+        total_time_minutes=45,
+        perform_time_minutes=10,
+        nutrients={"calories": "120 kcal", "fat": "5 g"},
+        cuisine="Schweizerisch",
+        category="Hauptgericht",
+        keywords="gesund, einfach",
+        author="Betty Bossi",
+        date_published=date(2024, 1, 15),
+        ratings=4.5,
+        suitable_for_diet=["https://schema.org/VegetarianDiet"],
+    )
+    with patch(
+        "app.api.recipes.RecipeScraper.scrape", return_value=mock_recipe
+    ):
+        resp = await client.post(
+            "/api/recipes/import",
+            json={"url": "https://www.example.com/extended"},
+            cookies=cookies,
+        )
+    assert resp.status_code == 200
+    data = resp.json()
+
+    # Basic fields
+    assert data["title"] == "Extended Import"
+    assert data["source_url"] == "https://www.example.com/extended"
+    assert data["is_partial"] is False
+
+    # Extended fields
+    assert data["description"] == "Ein gesundes Rüebli-Rezept."
+    assert data["prep_time_minutes"] == 15
+    assert data["cook_time_minutes"] == 30
+    assert data["total_time_minutes"] == 45
+    assert data["perform_time_minutes"] == 10
+    assert data["author"] == "Betty Bossi"
+    assert data["date_published"] == "2024-01-15"
+    assert data["keywords"] == "gesund, einfach"
+    assert data["ratings"] == 4.5
+
+    # suitable_for_diet resolution
+    assert "suitable_for_diet_tag_ids" in data
+    assert veg_tag_id in data["suitable_for_diet_tag_ids"]
+
+
+@pytest.mark.asyncio
+async def test_import_recipe_partial_scrape_populates_description(
+    client: AsyncClient,
+) -> None:
+    auth = await _register(client, "importpartialdesc")
+    cookies = auth["cookies"]
+
+    mock_recipe = ScrapedRecipe(
+        title="Partial",
+        ingredients=[],
+        instructions="",
+        servings=4,
+        source_url="https://www.example.com/partial",
+        source_domain="www.example.com",
+        is_partial=True,
+        description="Eine kurze Beschreibung.",
+    )
+    with patch(
+        "app.api.recipes.RecipeScraper.scrape", return_value=mock_recipe
+    ):
+        resp = await client.post(
+            "/api/recipes/import",
+            json={"url": "https://www.example.com/partial"},
+            cookies=cookies,
+        )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["is_partial"] is True
+    assert data["description"] == "Eine kurze Beschreibung."

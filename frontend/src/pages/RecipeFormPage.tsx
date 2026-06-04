@@ -76,6 +76,16 @@ interface ScrapedRecipe {
   source_domain: string
   existing_recipe_id: number | null
   is_partial: boolean
+  description: string | null
+  prep_time_minutes: number | null
+  cook_time_minutes: number | null
+  total_time_minutes: number | null
+  perform_time_minutes: number | null
+  author: string | null
+  date_published: string | null
+  keywords: string | null
+  ratings: number | null
+  suitable_for_diet_tag_ids: number[]
 }
 
 const INITIAL_STATE: FormState = {
@@ -245,11 +255,15 @@ export default function RecipeFormPage() {
           .join("\n")
         setForm({
           title: data.title,
-          description: "",
+          description: data.description ?? "",
           stepsText,
           servings: data.servings,
-          prepTimeText: "",
-          totalTimeText: "",
+          prepTimeText: data.prep_time_minutes !== null
+            ? DurationSerializer.formatHuman(data.prep_time_minutes) ?? ""
+            : "",
+          totalTimeText: data.total_time_minutes !== null
+            ? DurationSerializer.formatHuman(data.total_time_minutes) ?? ""
+            : "",
           image_url: data.image_url ?? "",
           source_url: data.source_url,
           source_domain: data.source_domain,
@@ -258,6 +272,9 @@ export default function RecipeFormPage() {
         setIsPartialImport(data.is_partial)
         setExistingRecipeId(data.existing_recipe_id ?? null)
         setError(null)
+        if (data.suitable_for_diet_tag_ids && data.suitable_for_diet_tag_ids.length > 0) {
+          setSelectedTagIds(data.suitable_for_diet_tag_ids)
+        }
         const importedRows: IngredientRow[] = data.ingredients.map(
           (item, idx) => {
             const isLocked =

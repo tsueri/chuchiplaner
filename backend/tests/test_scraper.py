@@ -15,6 +15,21 @@ def make_mock_scraper(**kwargs: Any) -> MagicMock:
     )
     mock.image.return_value = kwargs.get("image_url", None)
     mock.yields.return_value = kwargs.get("yields", "4 servings")
+
+    mock.description.return_value = kwargs.get("description", None)
+    mock.prep_time.return_value = kwargs.get("prep_time", None)
+    mock.cook_time.return_value = kwargs.get("cook_time", None)
+    mock.total_time.return_value = kwargs.get("total_time", None)
+    mock.perform_time.return_value = kwargs.get("perform_time", None)
+    mock.nutrients.return_value = kwargs.get("nutrients", None)
+    mock.cuisine.return_value = kwargs.get("cuisine", None)
+    mock.category.return_value = kwargs.get("category", None)
+    mock.keywords.return_value = kwargs.get("keywords", None)
+    mock.author.return_value = kwargs.get("author", None)
+    mock.date_published.return_value = kwargs.get("date_published", None)
+    mock.ratings.return_value = kwargs.get("ratings", None)
+    mock.suitable_for_diet.return_value = kwargs.get("suitable_for_diet", None)
+
     return mock
 
 
@@ -205,3 +220,85 @@ def test_partial_scrape_http_error_returns_none() -> None:
             )
 
     assert result is None
+
+
+# ----- Extended schema.org fields -----
+
+
+def test_scrape_fully_populated_object_exercises_every_new_field() -> None:
+    mock = make_mock_scraper(
+        description="A delicious Swiss dish.",
+        prep_time="PT15M",
+        cook_time="PT30M",
+        total_time="PT45M",
+        perform_time="PT10M",
+        nutrients={"calories": "240 kcal", "fat": "9 g"},
+        cuisine="Schweizerisch",
+        category="Hauptgericht",
+        keywords="schnell, einfach",
+        author="Betty Bossi",
+        date_published="2024-01-15",
+        ratings=4.5,
+        suitable_for_diet=["https://schema.org/VegetarianDiet"],
+    )
+    with patch("app.services.scraper.scrape_me", return_value=mock):
+        result = RecipeScraper.scrape("https://www.swissmilk.ch/rezept-extended")
+    assert result is not None
+    assert result.title == "Test Recipe"
+    assert result.description == "A delicious Swiss dish."
+    assert result.prep_time_minutes == 15
+    assert result.cook_time_minutes == 30
+    assert result.total_time_minutes == 45
+    assert result.perform_time_minutes == 10
+    assert result.nutrients == {"calories": "240 kcal", "fat": "9 g"}
+    assert result.cuisine == "Schweizerisch"
+    assert result.category == "Hauptgericht"
+    assert result.keywords == "schnell, einfach"
+    assert result.author == "Betty Bossi"
+    assert result.date_published is not None
+    assert result.date_published.isoformat() == "2024-01-15"
+    assert result.ratings == 4.5
+    assert result.suitable_for_diet == ["https://schema.org/VegetarianDiet"]
+
+
+def test_scrape_missing_method_returns_none_for_that_field() -> None:
+    mock = make_mock_scraper(
+        description="A dish.",
+        # No prep_time set on mock → mock.prep_time.return_value = None
+        total_time="PT30M",
+        cuisine="Italienisch",
+    )
+    del mock.prep_time  # simulate missing method
+    with patch("app.services.scraper.scrape_me", return_value=mock):
+        result = RecipeScraper.scrape("https://www.swissmilk.ch/missing-method")
+    assert result is not None
+    assert result.title == "Test Recipe"
+    assert result.description == "A dish."
+    assert result.prep_time_minutes is None
+    assert result.total_time_minutes == 30
+    assert result.cuisine == "Italienisch"
+
+
+def test_partial_scrape_populates_description_from_og_description() -> None:
+    html = (
+        "<html><head>"
+        "<title>Rezept</title>"
+        '<meta property="og:description" content="Ein schnelles Feierabend-Rezept.">'
+        "</head><body></body></html>"
+    )
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.text = html
+
+    with patch(
+        "app.services.scraper.scrape_me", side_effect=Exception("fail")
+    ):
+        with patch("httpx.Client.get", return_value=mock_response):
+            result = RecipeScraper.scrape(
+                "https://example.com/og-desc-recipe"
+            )
+
+    assert result is not None
+    assert result.is_partial is True
+    assert result.title == "Rezept"
+    assert result.description == "Ein schnelles Feierabend-Rezept."

@@ -257,6 +257,22 @@ async def import_recipe(
     if scraped.instructions:
         steps.append(ScrapedStepItem(position=0, text=scraped.instructions, name=None))
 
+    diet_tag_ids: list[int] = []
+    if scraped.suitable_for_diet:
+        diet_uris = {
+            uri.rstrip("/").split("/")[-1]
+            for uri in scraped.suitable_for_diet
+        }
+        if diet_uris:
+            diet_result = await db.execute(
+                select(Tag.id).where(
+                    Tag.name.in_(diet_uris),
+                    Tag.group == "diet",
+                    Tag.household_id.is_(None),
+                )
+            )
+            diet_tag_ids = [row for (row,) in diet_result.all()]
+
     return ScrapedRecipeResponse(
         title=scraped.title,
         ingredients=parsed_items,
@@ -267,6 +283,16 @@ async def import_recipe(
         existing_recipe_id=existing.id if existing else None,
         is_partial=scraped.is_partial,
         steps=steps,
+        description=scraped.description,
+        prep_time_minutes=scraped.prep_time_minutes,
+        cook_time_minutes=scraped.cook_time_minutes,
+        total_time_minutes=scraped.total_time_minutes,
+        perform_time_minutes=scraped.perform_time_minutes,
+        author=scraped.author,
+        date_published=scraped.date_published,
+        keywords=scraped.keywords,
+        ratings=scraped.ratings,
+        suitable_for_diet_tag_ids=diet_tag_ids,
     )
 
 

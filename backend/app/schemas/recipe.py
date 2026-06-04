@@ -90,6 +90,22 @@ class ScrapedRecipeResponse(BaseModel):
     existing_recipe_id: int | None = None
     is_partial: bool = False
     steps: list[ScrapedStepItem] = []
+    description: str | None = None
+    prep_time_minutes: int | None = None
+    cook_time_minutes: int | None = None
+    total_time_minutes: int | None = None
+    perform_time_minutes: int | None = None
+    author: str | None = None
+    date_published: date | None = None
+    keywords: str | None = None
+    ratings: float | None = None
+    suitable_for_diet_tag_ids: list[int] = []
+
+    @field_serializer("date_published")
+    def serialize_date_published(self, value: date | None) -> str | None:
+        if value is None:
+            return None
+        return value.isoformat()
 
 
 class LearnedAliasItem(BaseModel):
