@@ -38,6 +38,7 @@ from app.services.household import (
     remove_member,
     update_meal_template,
 )
+from app.services.week_plan import is_editable, sync_templates_to_plan
 from app.services.recipe_jsonld_exporter import RecipeJSONLDExporter
 
 router = APIRouter(prefix="/household", tags=["household"])
@@ -98,13 +99,6 @@ async def update_household(
 
     if body.default_size is not None:
         household.default_size = body.default_size
-        result = await db.execute(
-            select(MealSlotTemplate).where(
-                MealSlotTemplate.household_id == household.id
-            )
-        )
-        for slot in result.scalars().all():
-            slot.default_portions = body.default_size
 
     if body.default_public is not None:
         household.default_public = body.default_public
@@ -248,6 +242,16 @@ async def update_meal_slot_template(
         for s in body.slots
     ]
     await update_meal_template(db, current_user.household_id, slots_data)
+
+    plans_result = await db.execute(
+        select(WeekPlan)
+        .where(WeekPlan.household_id == current_user.household_id)
+        .options(selectinload(WeekPlan.slots))
+    )
+    for plan in plans_result.unique().scalars().all():
+        if is_editable(plan):
+            await sync_templates_to_plan(db, plan)
+
     return {"status": "ok"}
 
 

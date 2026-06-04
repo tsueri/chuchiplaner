@@ -1,5 +1,9 @@
 import pytest
 from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.household import Household
+from app.services.week_plan import get_or_create_plan
 
 
 async def _register(client: AsyncClient, username: str = "testuser") -> dict:
@@ -409,6 +413,56 @@ async def test_update_slot_portions(
         if s["day_of_week"] == 3 and s["meal_type"] == "dinner"
     )
     assert thursday_dinner["portions"] == 6
+
+
+@pytest.mark.asyncio
+async def test_updating_portions_preserves_recipe(
+    client: AsyncClient,
+) -> None:
+    reg = await _register(client, "weekuser10b")
+    cookies = reg["cookies"]
+    year, week = await _get_current_iso()
+
+    recipe = await _create_recipe(client, cookies, "Testessen")
+
+    await client.post(
+        "/api/weeks",
+        json={"year": year, "iso_week": week},
+        cookies=cookies,
+    )
+
+    await client.put(
+        f"/api/weeks/{year}/{week}/slots",
+        json={
+            "slots": [{
+                "day_of_week": 0,
+                "meal_type": "lunch",
+                "recipe_id": recipe["id"],
+            }]
+        },
+        cookies=cookies,
+    )
+
+    resp = await client.put(
+        f"/api/weeks/{year}/{week}/slots",
+        json={
+            "slots": [{
+                "day_of_week": 0,
+                "meal_type": "lunch",
+                "portions": 8,
+            }]
+        },
+        cookies=cookies,
+    )
+    assert resp.status_code == 200
+
+    get_resp = await client.get(f"/api/weeks/{year}/{week}", cookies=cookies)
+    slot = next(
+        s for s in get_resp.json()["slots"]
+        if s["day_of_week"] == 0 and s["meal_type"] == "lunch"
+    )
+    assert slot["recipe_id"] == recipe["id"]
+    assert slot["portions"] == 8
 
 
 # ----- Multiple slot update in one request -----
@@ -940,3 +994,130 @@ async def test_leftovers_shown_in_inventory(
     assert len(items) == 1
     assert items[0]["ingredient_name"] == "Suppe (Reste)"
     assert items[0]["source_recipe_id"] == recipe_id
+
+
+# ----- Meal template syncs to editable week plans -----
+
+
+@pytest.mark.asyncio
+async def test_meal_template_update_syncs_to_existing_week_plan(
+    client: AsyncClient,
+) -> None:
+    reg = await _register(client, "templatesync")
+    cookies = reg["cookies"]
+    year, week = await _get_current_iso()
+
+    await client.post(
+        "/api/weeks",
+        json={"year": year, "iso_week": week},
+        cookies=cookies,
+    )
+
+    resp = await client.put(
+        "/api/household/meal-template",
+        json={
+            "slots": [
+                {
+                    "day_of_week": day,
+                    "meal_type": "dinner",
+                    "default_portions": 6,
+                }
+                for day in range(7)
+            ]
+            + [
+                {
+                    "day_of_week": 5,
+                    "meal_type": "breakfast",
+                    "active": False,
+                }
+            ]
+        },
+        cookies=cookies,
+    )
+    assert resp.status_code == 200
+
+    get_resp = await client.get(f"/api/weeks/{year}/{week}", cookies=cookies)
+    get_data = get_resp.json()
+
+    for slot in get_data["slots"]:
+        if slot["meal_type"] == "dinner":
+            assert slot["portions"] == 6, (
+                f"Dinner slot ({slot['day_of_week']}) should have portions=6"
+            )
+        elif slot["meal_type"] == "breakfast" and slot["day_of_week"] == 5:
+            assert slot["active"] is False, "Saturday breakfast should be inactive"
+
+
+@pytest.mark.asyncio
+async def test_meal_template_deactivate_preserves_planned_recipe(
+    client: AsyncClient,
+) -> None:
+    reg = await _register(client, "templatesync2")
+    cookies = reg["cookies"]
+    year, week = await _get_current_iso()
+
+    recipe = await _create_recipe(client, cookies, "Brunch")
+
+    await client.post(
+        "/api/weeks",
+        json={"year": year, "iso_week": week},
+        cookies=cookies,
+    )
+
+    await client.put(
+        f"/api/weeks/{year}/{week}/slots",
+        json={
+            "slots": [{
+                "day_of_week": 5,
+                "meal_type": "breakfast",
+                "recipe_id": recipe["id"],
+            }]
+        },
+        cookies=cookies,
+    )
+
+    resp = await client.put(
+        "/api/household/meal-template",
+        json={
+            "slots": [{
+                "day_of_week": 5,
+                "meal_type": "breakfast",
+                "active": False,
+            }]
+        },
+        cookies=cookies,
+    )
+    assert resp.status_code == 200
+
+    get_resp = await client.get(f"/api/weeks/{year}/{week}", cookies=cookies)
+    sat_bf = next(
+        s for s in get_resp.json()["slots"]
+        if s["day_of_week"] == 5 and s["meal_type"] == "breakfast"
+    )
+    assert sat_bf["recipe_id"] == recipe["id"], (
+        "Slot with planned recipe should keep its recipe"
+    )
+
+
+@pytest.mark.asyncio
+async def test_plan_creation_falls_back_to_household_default_size(
+    db_session: AsyncSession,
+) -> None:
+    household = Household(
+        name="fallback",
+        slug="fallback",
+        invite_code="abc12345",
+        default_size=5,
+    )
+    db_session.add(household)
+    await db_session.flush()
+
+    plan = await get_or_create_plan(
+        db_session, household.id, 2030, 1, copy_from_previous=False
+    )
+
+    for slot in plan.slots:
+        assert slot.portions == 5, (
+            f"slot ({slot.day_of_week}, {slot.meal_type}) "
+            f"should fall back to default_size=5, got {slot.portions}"
+        )

@@ -196,11 +196,7 @@ export default function PublicPlanPage() {
           </div>
         ))}
 
-        {MEAL_TYPES.filter((meal) =>
-          data.slots.some(
-            (s) => s.meal_type === meal && s.recipe !== null
-          )
-        ).map((meal) =>
+        {MEAL_TYPES.map((meal) =>
           DAY_LABELS.map((_, dayIdx) => {
             const slot = getSlot(dayIdx, meal)
             const isActive = slot?.active !== false

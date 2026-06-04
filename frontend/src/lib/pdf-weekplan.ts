@@ -34,60 +34,103 @@ export interface WeekPlanPdfOptions {
 
 const PAGE_WIDTH = 210
 const PAGE_HEIGHT = 297
+const MARGIN = 20
 const TRUNCATE_AT = 50
+const TRUNCATE_AT_TWO_COL = 30
+const MAX_MEAL_HEIGHT = 215
 
-function truncate(text: string): string {
-  if (text.length <= TRUNCATE_AT) return text
-  return text.substring(0, TRUNCATE_AT) + "\u2026"
+function truncate(text: string, max: number): string {
+  if (text.length <= max) return text
+  return text.substring(0, max) + "\u2026"
+}
+
+function slotColumnHeight(slots: WeekPlanPdfSlot[]): number {
+  let h = 0
+  let prevDay: number | null = null
+  for (const s of slots) {
+    if (prevDay !== null && s.dayOfWeek !== prevDay) h += 6
+    prevDay = s.dayOfWeek
+    h += 17
+  }
+  return h
+}
+
+function renderColumn(
+  doc: jsPDF,
+  slots: WeekPlanPdfSlot[],
+  x: number,
+  width: number,
+  yStart: number,
+  truncateAt: number,
+): void {
+  let y = yStart
+  let prevDay: number | null = null
+  const cx = x + width / 2
+
+  for (const slot of slots) {
+    if (prevDay !== null && slot.dayOfWeek !== prevDay) {
+      doc.setDrawColor(200)
+      doc.line(x + 5, y, x + width - 5, y)
+      y += 6
+    }
+    prevDay = slot.dayOfWeek
+
+    const header = `${DAY_LABELS[slot.dayOfWeek] || ""} ${MEAL_LABELS[slot.mealType] || slot.mealType}`
+    doc.setFont("Times", "Bold")
+    doc.setFontSize(11)
+    doc.text(header, cx, y, { align: "center" })
+    y += 7
+
+    doc.setFont("Times", "Normal")
+    doc.setFontSize(10)
+    doc.text(truncate(slot.recipeTitle, truncateAt), cx, y, {
+      align: "center",
+    })
+    y += 10
+  }
 }
 
 export function populatePdf(
   doc: jsPDF,
   options: { weekLabel: string; slots: WeekPlanPdfSlot[] },
-): number {
-  const margin = 20
-  let y = margin
+): void {
+  const yStart = MARGIN
 
   doc.setFont("Times", "Bold")
   doc.setFontSize(16)
-  doc.text(options.weekLabel, PAGE_WIDTH / 2, y, { align: "center" })
-  y += 12
+  doc.text(options.weekLabel, PAGE_WIDTH / 2, yStart, { align: "center" })
 
   doc.setDrawColor(150)
-  doc.line(margin, y, PAGE_WIDTH - margin, y)
-  y += 10
+  const ruleY = yStart + 12
+  doc.line(MARGIN, ruleY, PAGE_WIDTH - MARGIN, ruleY)
 
-  let currentDay: number | null = null
-  for (const slot of options.slots) {
-    if (currentDay !== null && slot.dayOfWeek !== currentDay) {
-      doc.setDrawColor(200)
-      doc.line(margin + 10, y, PAGE_WIDTH - margin - 10, y)
-      y += 6
-    }
-    currentDay = slot.dayOfWeek
+  const mealsY = ruleY + 10
+  const slots = options.slots
 
-    const header = `${DAY_LABELS[slot.dayOfWeek] || ""} ${MEAL_LABELS[slot.mealType] || slot.mealType}`
-    doc.setFont("Times", "Bold")
-    doc.setFontSize(11)
-    doc.text(header, PAGE_WIDTH / 2, y, { align: "center" })
-    y += 7
+  if (slots.length === 0) return
 
-    doc.setFont("Times", "Normal")
-    doc.setFontSize(10)
-    doc.text(truncate(slot.recipeTitle), PAGE_WIDTH / 2, y, {
-      align: "center",
-    })
-    y += 10
+  const needsTwoCol = slotColumnHeight(slots) > MAX_MEAL_HEIGHT
+
+  if (!needsTwoCol) {
+    const colWidth = PAGE_WIDTH - 2 * MARGIN
+    renderColumn(doc, slots, MARGIN, colWidth, mealsY, TRUNCATE_AT)
+    return
   }
 
-  return y
+  const mid = Math.ceil(slots.length / 2)
+  const colWidth = (PAGE_WIDTH - 2 * MARGIN - 10) / 2
+  const leftX = MARGIN
+  const rightX = MARGIN + colWidth + 10
+
+  renderColumn(doc, slots.slice(0, mid), leftX, colWidth, mealsY, TRUNCATE_AT_TWO_COL)
+  renderColumn(doc, slots.slice(mid), rightX, colWidth, mealsY, TRUNCATE_AT_TWO_COL)
 }
 
 export async function embedQrCode(doc: jsPDF, url: string): Promise<void> {
   const qrSize = 20
-  const margin = 15
-  const qrX = PAGE_WIDTH - margin - qrSize
-  const qrY = PAGE_HEIGHT - margin - qrSize - 5
+  const qrMargin = 15
+  const qrX = PAGE_WIDTH - qrMargin - qrSize
+  const qrY = PAGE_HEIGHT - qrMargin - qrSize - 5
 
   const qrDataUrl = await QRCode.toDataURL(url, {
     width: 120,

@@ -454,17 +454,16 @@ export default function WeekPlanPage() {
         )}
         <div className="ml-auto flex gap-1 items-center">
           {editable && (
-            <button
-              onClick={toggleWeekVisibility}
-              disabled={publicSaving}
-              className={`inline-flex items-center gap-1 px-2 py-1 text-xs rounded border ${
-                weekData?.is_public
-                  ? "bg-primary/10 border-primary text-primary"
-                  : "bg-muted border-muted-foreground/20 text-muted-foreground"
-              }`}
-            >
-              {weekData?.is_public ? "Öffentlich" : "Privat"}
-            </button>
+            <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={weekData?.is_public ?? false}
+                onChange={toggleWeekVisibility}
+                disabled={publicSaving}
+                className="h-3.5 w-3.5"
+              />
+              Öffentlich
+            </label>
           )}
           {weekData?.is_public && (
             <Button variant="outline" size="sm" onClick={copyPublicLink}>
@@ -479,13 +478,6 @@ export default function WeekPlanPage() {
           >
             <FileDown className="h-4 w-4" />
             {pdfGenerating ? "..." : "PDF"}
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => refreshAll()}
-          >
-            Aktualisieren
           </Button>
         </div>
       </div>
@@ -531,11 +523,7 @@ export default function WeekPlanPage() {
                   {day}
                 </div>
               ))}
-              {MEAL_TYPES.filter((meal) =>
-                weekData.slots.some(
-                  (s) => s.meal_type === meal && s.recipe_id !== null
-                )
-              ).map((meal) =>
+              {MEAL_TYPES.map((meal) =>
                 DAY_LABELS.map((_, dayIdx) => {
                   const slot = getSlot(dayIdx, meal)
                   const isActive = slot?.active !== false

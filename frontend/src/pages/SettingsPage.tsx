@@ -441,7 +441,7 @@ export default function SettingsPage() {
             </Button>
           </div>
           <p className="text-xs text-muted-foreground">
-            Ändert die Standardportionen aller Mahlzeiten auf diesen Wert.
+            Standardwert für neue Mahlzeitenvorlagen. In der Tabelle unten überschreibbar.
           </p>
         </div>
       )}
@@ -529,47 +529,42 @@ export default function SettingsPage() {
                     {day}
                   </th>
                 ))}
-                <th className="p-1 text-center font-medium">Port.</th>
               </tr>
             </thead>
             <tbody>
-              {MEAL_TYPES.map((meal) => {
-                const rowPortions = getSlot(0, meal).portions
-                return (
-                  <tr key={meal} className="border-t">
-                    <td className="p-1 font-medium whitespace-nowrap">
-                      {MEAL_LABELS[meal]}
-                    </td>
-                    {DAY_LABELS.map((_, dayIdx) => {
-                      const slot = getSlot(dayIdx, meal)
-                      return (
-                        <td key={dayIdx} className="p-1 text-center">
+              {MEAL_TYPES.map((meal) => (
+                <tr key={meal} className="border-t">
+                  <td className="p-1 font-medium whitespace-nowrap">
+                    {MEAL_LABELS[meal]}
+                  </td>
+                  {DAY_LABELS.map((_, dayIdx) => {
+                    const slot = getSlot(dayIdx, meal)
+                    return (
+                      <td key={dayIdx} className="p-1 text-center">
+                        <div className="flex items-center gap-1">
                           <input
                             type="checkbox"
                             checked={slot.active}
                             onChange={() => toggleSlot(dayIdx, meal, slot.active)}
-                            className="h-4 w-4"
+                            className="h-4 w-4 shrink-0"
                           />
-                        </td>
-                      )
-                    })}
-                    <td className="p-1 text-center">
-                      <input
-                        type="number"
-                        min={1}
-                        value={rowPortions}
-                        onChange={(e) => {
-                          const val = Math.max(1, parseInt(e.target.value) || 1)
-                          DAY_LABELS.forEach((_, dayIdx) =>
-                            setSlotPortions(dayIdx, meal, val)
-                          )
-                        }}
-                        className="w-14 rounded border px-2 py-1 text-sm text-center"
-                      />
-                    </td>
-                  </tr>
-                )
-              })}
+                          <input
+                            type="number"
+                            min={1}
+                            value={slot.portions}
+                            disabled={!slot.active}
+                            onChange={(e) => {
+                              const val = Math.max(1, parseInt(e.target.value) || 1)
+                              setSlotPortions(dayIdx, meal, val)
+                            }}
+                            className="w-10 rounded border px-1 py-0.5 text-xs text-center disabled:opacity-30"
+                          />
+                        </div>
+                      </td>
+                    )
+                  })}
+                </tr>
+              ))}
             </tbody>
           </table>
 

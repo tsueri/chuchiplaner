@@ -84,7 +84,11 @@ async def get_or_create_plan(
         for meal_type in MEAL_TYPES:
             template = templates.get((day, meal_type))
             active = template.active if template else True
-            portions = template.default_portions if template else 1
+            portions = (
+                template.default_portions if template
+                else household.default_size if household
+                else 1
+            )
             recipe_id = prev_slot_map.get(
                 (day, meal_type)
             ) if copy_from_previous else None
@@ -202,6 +206,30 @@ async def list_weeks(
             "total_slots": len(active_slots),
         })
     return weeks
+
+
+async def sync_templates_to_plan(
+    db: AsyncSession,
+    plan: WeekPlan,
+) -> None:
+    templates = await _get_meal_templates(db, plan.household_id)
+
+    for slot in plan.slots:
+        template = templates.get((slot.day_of_week, slot.meal_type))
+        if template is None:
+            continue
+
+        has_recipe = slot.recipe_id is not None
+        template_active = template.active
+
+        if has_recipe:
+            slot.active = True
+        else:
+            slot.active = template_active
+
+        slot.portions = template.default_portions
+
+    await db.flush()
 
 
 async def update_slots(

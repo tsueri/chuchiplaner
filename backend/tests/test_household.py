@@ -400,7 +400,7 @@ async def test_meal_template_requires_auth(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_default_size_flows_into_new_slots(
+async def test_default_size_does_not_overwrite_template_portions(
     client: AsyncClient,
 ) -> None:
     admin_resp = await _register(client, "sizeinittst")
@@ -411,14 +411,36 @@ async def test_default_size_flows_into_new_slots(
         assert s["default_portions"] == 1
 
     await client.put(
+        "/api/household/meal-template",
+        json={
+            "slots": [{
+                "day_of_week": day,
+                "meal_type": "dinner",
+                "default_portions": 6,
+            } for day in range(7)]
+        },
+        cookies=cookies,
+    )
+
+    await client.put(
         "/api/household",
         json={"default_size": 3},
         cookies=cookies,
     )
 
+    household = (await client.get("/api/household", cookies=cookies)).json()
+    assert household["default_size"] == 3
+
     slots2 = (await client.get("/api/household/meal-template", cookies=cookies)).json()
     for s in slots2:
-        assert s["default_portions"] == 3
+        if s["meal_type"] == "dinner":
+            assert s["default_portions"] == 6, (
+                f"dinner template should keep override 6, got {s['default_portions']}"
+            )
+        else:
+            assert s["default_portions"] == 1, (
+                f"non-dinner template should stay at 1, got {s['default_portions']}"
+            )
 
 
 @pytest.mark.asyncio

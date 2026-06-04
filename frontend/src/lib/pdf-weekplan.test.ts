@@ -46,7 +46,7 @@ describe("populatePdf", () => {
     expect(raw).toContain("(Spaghetti Bolognese)")
   })
 
-  it("truncates long recipe titles at 50 chars", () => {
+  it("truncates long recipe titles at 50 chars in single column", () => {
     const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" })
     const longTitle = "A".repeat(60)
     populatePdf(doc, {
@@ -54,7 +54,6 @@ describe("populatePdf", () => {
       slots: [makeSlot(0, "lunch", longTitle, 1)],
     })
     const raw = pdfText(doc)
-    // Should have 50 A's + ellipsis, not all 60 A's
     const match = raw.match(/\(A+[\u2026\u0085]/)
     expect(match).toBeTruthy()
     expect(match![0]).toContain("A".repeat(50))
@@ -94,6 +93,36 @@ describe("populatePdf", () => {
     })
     const raw = pdfText(doc)
     expect(raw).toContain("(Montag snack)")
+  })
+
+  it("uses two columns when content exceeds one column", () => {
+    const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" })
+    const slots: WeekPlanPdfSlot[] = []
+    for (let day = 0; day < 7; day++) {
+      slots.push(makeSlot(day, "lunch", `Recipe ${day} lunch`, 2))
+      slots.push(makeSlot(day, "dinner", `Recipe ${day} dinner`, 2))
+    }
+    populatePdf(doc, { weekLabel: "KW 23", slots })
+    const raw = pdfText(doc)
+    expect(raw).toContain("(Recipe 0 lunch)")
+    expect(raw).toContain("(Recipe 6 dinner)")
+  })
+
+  it("truncates shorter in two-column mode", () => {
+    const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" })
+    const longTitle = "B".repeat(40)
+    const slots: WeekPlanPdfSlot[] = []
+    for (let day = 0; day < 7; day++) {
+      slots.push(makeSlot(day, "lunch", `Recipe ${day}`, 2))
+      slots.push(makeSlot(day, "dinner", longTitle, 2))
+    }
+    populatePdf(doc, { weekLabel: "KW 23", slots })
+    const raw = pdfText(doc)
+    // In 2-col mode, truncates at 30 chars + ellipsis
+    const match = raw.match(/\(B+[\u2026\u0085]/)
+    expect(match).toBeTruthy()
+    expect(match![0]).toContain("B".repeat(30))
+    expect(match![0]).not.toContain("B".repeat(31))
   })
 })
 
