@@ -39,6 +39,13 @@ const TRUNCATE_AT = 50
 const TRUNCATE_AT_TWO_COL = 30
 const MAX_MEAL_HEIGHT = 215
 
+const MEAL_ORDER: Record<string, number> = {
+  breakfast: 0,
+  lunch: 1,
+  dinner: 2,
+  dessert: 3,
+}
+
 function truncate(text: string, max: number): string {
   if (text.length <= max) return text
   return text.substring(0, max) + "\u2026"
@@ -105,7 +112,10 @@ export function populatePdf(
   doc.line(MARGIN, ruleY, PAGE_WIDTH - MARGIN, ruleY)
 
   const mealsY = ruleY + 10
-  const slots = options.slots
+  const slots = [...options.slots].sort((a, b) => {
+    if (a.dayOfWeek !== b.dayOfWeek) return a.dayOfWeek - b.dayOfWeek
+    return (MEAL_ORDER[a.mealType] ?? 9) - (MEAL_ORDER[b.mealType] ?? 9)
+  })
 
   if (slots.length === 0) return
 

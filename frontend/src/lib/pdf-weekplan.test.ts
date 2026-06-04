@@ -124,6 +124,26 @@ describe("populatePdf", () => {
     expect(match![0]).toContain("B".repeat(30))
     expect(match![0]).not.toContain("B".repeat(31))
   })
+
+  it("orders slots by day then meal type", () => {
+    const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" })
+    populatePdf(doc, {
+      weekLabel: "KW 23",
+      slots: [
+        makeSlot(1, "dinner", "Abendessen Di", 2),
+        makeSlot(0, "lunch", "Mittagessen Mo", 2),
+        makeSlot(0, "breakfast", "Fruehstueck Mo", 1),
+      ],
+    })
+    const raw = pdfText(doc)
+    const monIdx = raw.indexOf("(Montag")
+    const tueIdx = raw.indexOf("(Dienstag")
+    expect(monIdx).toBeLessThan(tueIdx)
+    // Within Monday: breakfast before lunch
+    const breakfastIdx = raw.indexOf("(Fruehstueck Mo)")
+    const lunchIdx = raw.indexOf("(Mittagessen Mo)")
+    expect(breakfastIdx).toBeLessThan(lunchIdx)
+  })
 })
 
 describe("embedQrCode", () => {
