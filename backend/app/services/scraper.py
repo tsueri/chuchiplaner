@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from html.parser import HTMLParser
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import httpx
 from recipe_scrapers import scrape_me
@@ -259,6 +259,38 @@ class RecipeScraper:
             "Chrome/131.0.0.0 Safari/537.36"
         ),
     }
+
+    @staticmethod
+    def _fetch_url_safely(url: str, timeout: float = 10.0) -> httpx.Response:
+        max_hops = 5
+        hops = 0
+        current_url = url
+
+        with httpx.Client(
+            timeout=timeout,
+            headers=RecipeScraper._http_headers,
+            follow_redirects=False,
+        ) as client:
+            while True:
+                if hops > max_hops:
+                    raise SSRFBlockedError("Max redirects exceeded")
+
+                parsed = urlparse(current_url)
+                hostname = parsed.hostname
+                if not hostname:
+                    raise SSRFBlockedError(f"Invalid hostname in URL: {current_url}")
+                resolve_and_validate_host(hostname)
+
+                response = client.get(current_url)
+
+                if response.status_code in (301, 302, 303, 307, 308):
+                    location = response.headers.get("Location")
+                    if location:
+                        current_url = urljoin(current_url, location)
+                        hops += 1
+                        continue
+
+                return response
 
     @classmethod
     def scrape(cls, url: str) -> ScrapedRecipe | None:

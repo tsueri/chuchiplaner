@@ -601,6 +601,200 @@ def test_jsonld_author_string_passed_through() -> None:
     assert result.author == "Betty Bossi"
 
 
+# ----- _fetch_url_safely tests -----
+
+
+def _make_mock_http_response(
+    status_code: int = 200,
+    text: str = "ok",
+    url: str = "https://example.com",
+    headers: dict | None = None,
+) -> MagicMock:
+    resp = MagicMock()
+    resp.status_code = status_code
+    resp.text = text
+    resp.headers = headers or {}
+    resp.url = url
+    return resp
+
+
+def test_fetch_url_safely_normal_fetch() -> None:
+    mock_response = _make_mock_http_response()
+    with patch("socket.getaddrinfo", return_value=_make_getaddrinfo_result("93.184.216.34")):
+        with patch("httpx.Client.get", return_value=mock_response) as mock_get:
+            result = RecipeScraper._fetch_url_safely("https://example.com")
+    assert result.status_code == 200
+    assert result.text == "ok"
+    mock_get.assert_called_once()
+
+
+def test_fetch_url_safely_single_redirect() -> None:
+    redirect_resp = _make_mock_http_response(
+        status_code=301,
+        headers={"Location": "https://example.com/final"},
+        url="https://example.com/start",
+    )
+    final_resp = _make_mock_http_response(
+        url="https://example.com/final",
+    )
+
+    responses: dict[str, MagicMock] = {
+        "https://example.com/start": redirect_resp,
+        "https://example.com/final": final_resp,
+    }
+
+    def get_side_effect(url, **kwargs):
+        if url in responses:
+            return responses[url]
+        raise Exception(f"Unexpected URL: {url}")
+
+    with patch("socket.getaddrinfo", return_value=_make_getaddrinfo_result("93.184.216.34")):
+        with patch("httpx.Client.get", side_effect=get_side_effect) as mock_get:
+            result = RecipeScraper._fetch_url_safely("https://example.com/start")
+    assert result.status_code == 200
+    assert mock_get.call_count == 2
+
+
+def test_fetch_url_safely_redirect_to_127_0_0_1_raises() -> None:
+    redirect_resp = _make_mock_http_response(
+        status_code=301,
+        headers={"Location": "http://127.0.0.1/"},
+        url="https://example.com/start",
+    )
+
+    with patch("socket.getaddrinfo", return_value=_make_getaddrinfo_result("93.184.216.34")):
+        with patch("httpx.Client.get", return_value=redirect_resp):
+            try:
+                RecipeScraper._fetch_url_safely("https://example.com/start")
+                assert False, "should have raised"
+            except SSRFBlockedError:
+                pass
+
+
+def test_fetch_url_safely_redirect_to_10_0_0_1_raises() -> None:
+    redirect_resp = _make_mock_http_response(
+        status_code=301,
+        headers={"Location": "http://10.0.0.1/"},
+        url="https://example.com/start",
+    )
+
+    with patch("socket.getaddrinfo", return_value=_make_getaddrinfo_result("93.184.216.34")):
+        with patch("httpx.Client.get", return_value=redirect_resp):
+            try:
+                RecipeScraper._fetch_url_safely("https://example.com/start")
+                assert False, "should have raised"
+            except SSRFBlockedError:
+                pass
+
+
+def test_fetch_url_safely_relative_redirect() -> None:
+    redirect_resp = _make_mock_http_response(
+        status_code=301,
+        headers={"Location": "/new-path"},
+        url="https://example.com/start",
+    )
+    final_resp = _make_mock_http_response(
+        url="https://example.com/new-path",
+    )
+
+    responses: dict[str, MagicMock] = {
+        "https://example.com/start": redirect_resp,
+        "https://example.com/new-path": final_resp,
+    }
+
+    def get_side_effect(url, **kwargs):
+        if url in responses:
+            return responses[url]
+        raise Exception(f"Unexpected URL: {url}")
+
+    with patch("socket.getaddrinfo", return_value=_make_getaddrinfo_result("93.184.216.34")):
+        with patch("httpx.Client.get", side_effect=get_side_effect) as mock_get:
+            result = RecipeScraper._fetch_url_safely("https://example.com/start")
+    assert result.status_code == 200
+    assert result.url == "https://example.com/new-path"
+    assert mock_get.call_count == 2
+
+
+def test_fetch_url_safely_multi_hop_redirect() -> None:
+    resp1 = _make_mock_http_response(
+        status_code=302,
+        headers={"Location": "https://example.com/middle"},
+        url="https://example.com/start",
+    )
+    resp2 = _make_mock_http_response(
+        status_code=302,
+        headers={"Location": "https://example.com/final"},
+        url="https://example.com/middle",
+    )
+    resp3 = _make_mock_http_response(
+        url="https://example.com/final",
+    )
+
+    responses: dict[str, MagicMock] = {
+        "https://example.com/start": resp1,
+        "https://example.com/middle": resp2,
+        "https://example.com/final": resp3,
+    }
+
+    def get_side_effect(url, **kwargs):
+        if url in responses:
+            return responses[url]
+        raise Exception(f"Unexpected URL: {url}")
+
+    with patch("socket.getaddrinfo", return_value=_make_getaddrinfo_result("93.184.216.34")):
+        with patch("httpx.Client.get", side_effect=get_side_effect) as mock_get:
+            result = RecipeScraper._fetch_url_safely("https://example.com/start")
+    assert result.status_code == 200
+    assert mock_get.call_count == 3
+
+
+def test_fetch_url_safely_max_redirects_exceeded() -> None:
+    redirect_resp = _make_mock_http_response(
+        status_code=301,
+        headers={"Location": "https://example.com/loop"},
+        url="https://example.com/start",
+    )
+
+    with patch("socket.getaddrinfo", return_value=_make_getaddrinfo_result("93.184.216.34")):
+        with patch(
+            "httpx.Client.get", return_value=redirect_resp
+        ) as mock_get:
+            try:
+                RecipeScraper._fetch_url_safely("https://example.com/start")
+                assert False, "should have raised"
+            except SSRFBlockedError:
+                pass
+            assert mock_get.call_count == 6
+
+
+def test_fetch_url_safely_redirect_to_private_hostname_raises() -> None:
+    redirect_resp = _make_mock_http_response(
+        status_code=301,
+        headers={"Location": "http://internal.corp/"},
+        url="https://example.com/start",
+    )
+
+    public_addr = _make_getaddrinfo_result("93.184.216.34")
+    private_addr = _make_getaddrinfo_result("10.0.0.1")
+
+    addrinfo_results = [public_addr.copy(), private_addr.copy()]
+
+    def getaddrinfo_side_effect(hostname, *args, **kwargs):
+        if hostname == "example.com":
+            return addrinfo_results[0]
+        if hostname == "internal.corp":
+            return addrinfo_results[1]
+        raise socket.gaierror("Name or service not known")
+
+    with patch("socket.getaddrinfo", side_effect=getaddrinfo_side_effect):
+        with patch("httpx.Client.get", return_value=redirect_resp):
+            try:
+                RecipeScraper._fetch_url_safely("https://example.com/start")
+                assert False, "should have raised"
+            except SSRFBlockedError:
+                pass
+
+
 # ----- SSRF validation primitives -----
 
 
