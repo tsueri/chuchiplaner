@@ -1,6 +1,5 @@
 from datetime import UTC
 from datetime import datetime as dt
-from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.encoders import jsonable_encoder
@@ -47,7 +46,7 @@ from app.services.fts_rebuilder import FTSRebuilder
 from app.services.ingredient_line_parser import IngredientLineParser
 from app.services.normalizer import IngredientNormalizer
 from app.services.nutrition_parser import NutritionParser
-from app.services.scraper import RecipeScraper
+from app.services.scraper import RecipeScraper, SSRFBlockedError, validate_url_syntax
 
 router = APIRouter(prefix="/recipes", tags=["recipes"])
 tag_router = APIRouter(prefix="/tags", tags=["tags"])
@@ -168,23 +167,24 @@ async def import_recipe(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> ScrapedRecipeResponse:
-    parsed = urlparse(body.url)
-    if not parsed.scheme or not parsed.netloc:
+    try:
+        safe_url = validate_url_syntax(body.url)
+    except SSRFBlockedError:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid URL",
+            detail="URL is not allowed",
         )
 
     result = await db.execute(
         select(Recipe).where(
-            Recipe.source_url == body.url,
+            Recipe.source_url == safe_url,
             Recipe.household_id == current_user.household_id,
             Recipe.deleted_at.is_(None),
         )
     )
     existing = result.scalar_one_or_none()
 
-    scraped = RecipeScraper.scrape(body.url)
+    scraped = RecipeScraper.scrape(safe_url)
     if scraped is None:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,

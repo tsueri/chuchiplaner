@@ -130,6 +130,41 @@ async def test_import_recipe_invalid_url(client: AsyncClient) -> None:
         cookies=cookies,
     )
     assert response.status_code == 400
+    assert response.json()["detail"] == "URL is not allowed"
+
+
+@pytest.mark.asyncio
+async def test_import_recipe_localhost_rejected(client: AsyncClient) -> None:
+    reg_resp = await client.post(
+        "/api/auth/register",
+        json={"username": "localhuser", "password": "secret123"},
+    )
+    cookies = reg_resp.cookies
+
+    response = await client.post(
+        "/api/recipes/import",
+        json={"url": "http://localhost"},
+        cookies=cookies,
+    )
+    assert response.status_code == 400
+    assert response.json()["detail"] == "URL is not allowed"
+
+
+@pytest.mark.asyncio
+async def test_import_recipe_private_ip_rejected(client: AsyncClient) -> None:
+    reg_resp = await client.post(
+        "/api/auth/register",
+        json={"username": "privipuser", "password": "secret123"},
+    )
+    cookies = reg_resp.cookies
+
+    response = await client.post(
+        "/api/recipes/import",
+        json={"url": "http://127.0.0.1"},
+        cookies=cookies,
+    )
+    assert response.status_code == 400
+    assert response.json()["detail"] == "URL is not allowed"
 
 
 @pytest.mark.asyncio
