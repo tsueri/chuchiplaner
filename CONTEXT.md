@@ -32,6 +32,7 @@ A self-hosted family meal planner for Swiss households. Reduces food waste by pl
 | **MatchingEngine** | Core algorithm that scores recipes against available inventory. Returns `ScoredRecipe` objects sorted by match percentage + urgency boost (ingredients expiring within 3 days get +0.1). Three modes: `exact` (all ingredients available), `partial` (any match), `ingredient_first` (filter by specific ingredient). |
 | **UnitConverter** | Static utility that normalizes ingredient quantities to canonical units. Input: (amount, unit_str). Output: (grams, milliliters, pieces) — exactly one non-None. Supports g, kg, ml, l, EL (15ml), TL (5ml), Stück, Bund, Prise. |
 | **DurationSerializer** | Static utility for the four ISO 8601 duration fields on Recipe. `to_iso_duration(minutes)` → `"PT1H30M"` (None in → None out); `from_iso_duration(iso)` → minutes, truncating `PT45S` to `0` and returning `None` for garbage; `format_human(minutes)` → German string (`"1 Std. 30 min"`, `"45 min"`, `"1 Std."`); `parse_human(human)` → minutes, accepting `"1h 30m"`, `"90 min"`, `"1:30"`, `"2 Std."`, `"2.5h"`, returning `None` for anything else. Pure module — same shape as `UnitConverter`. |
+| **RecipeJSONLDExporter** | Static utility: `to_jsonld(recipe: Recipe) -> dict` emits a schema.org/Recipe JSON-LD node with `@context: "https://schema.org"` and `@type: "Recipe"`. Every non-null field on the recipe becomes the corresponding schema.org property. Time fields use `DurationSerializer.to_iso_duration` for ISO 8601 output. Tags are split by group: `category` → `recipeCategory` (string), `cuisine` → `recipeCuisine` (string), `diet` → `suitableForDiet` (list of `https://schema.org/<dietName>` URIs). Steps become `recipeInstructions`: one `HowToStep` per step, with optional `name`. Ingredients become `recipeIngredient`: joined canonical names. `nutrition`, `aggregateRating` pass through verbatim (already stored in schema.org shape). `keywords` is the raw comma-separated string. `identifier` is the recipe's integer `id`. Season and ingredient-group tags are ignored. Missing fields are absent, not `null`. Used by the household export endpoint to produce the `recipes_as_jsonld` block.|
 | **FTSRebuilder** | Single source of truth for the `recipes_fts` virtual table (columns: `title, description, steps, ingredients, keywords, author, tags`) and its per-column bm25 weights (`ingredients=5.0`, `steps=3.0`, `description=3.0`, others=1.0). `rebuild(db)` drops and recreates the table and repopulates by joining `recipes` to `recipe_steps`, `recipe_ingredients`, and `tags` (soft-deleted rows skipped). `reindex_one(db, recipe_id)` rewrites a single row using the same join — independent of in-memory ORM state — and is called by `create_recipe` / `update_recipe`. `delete_one(db, recipe_id)` removes a row and is called by the soft-delete path. `weights_sql()` returns the bm25 weights in column order for `ORDER BY bm25(recipes_fts, …)` in the search endpoint. |
 | **IngredientLineParser** | Splits a raw scraped ingredient string (e.g. `"600g Kalbfleisch"`, `"1 Zwiebel, gehackt"`) into `(quantity, unit, name)`. Returns `quantity=None, unit=None, name=line` for unparseable lines (e.g. `"Salz und Pfeffer"`). Uses the source-side unit vocabulary — canonical synonyms (Esslöffel, Teelöffel, Dose, Becher, …) plus the standard `UnitConverter` set — and is the only module that knows those synonyms. Unit name maps to the canonical form (`"EL"` not `"Esslöffel"`). Ranges (`"2-3 EL"`) collapse to the lower bound. |
 | **IngredientNormalizer** | Resolves parsed ingredient names to canonical Ingredient IDs. Uses household aliases first, then exact name match, then fuzzy matching (SequenceMatcher, threshold 0.6). Returns `(ingredient_id, confidence)` where 1.0 means exact/alias. Wired into the import pipeline: `POST /api/recipes/import` runs the parser + normalizer for every scraped line and returns one `ScrapedIngredientItem` per line. |
@@ -59,7 +60,7 @@ browser ──▶ Vite dev proxy (5173) ──▶ FastAPI (8000) ──▶ SQLit
 
 **Search**: FTS5 virtual table (`recipes_fts`) on the seven columns `(title, description, steps, ingredients, keywords, author, tags)`. Populated on create/update via raw SQL through `FTSRebuilder` (`app/services/fts_rebuilder.py`). The search endpoint orders FTS hits by `bm25` with per-column weights — `ingredients` (5.0) ranks above `steps`/`description` (3.0) which rank above `title` (1.0); `keywords`/`author`/`tags` carry the default 1.0 weight — so a query that matches an ingredient name returns the recipe even when the word never appears in the title or steps. The LIKE fallback on `title` still applies when FTS returns nothing.
 
-**Backup**: Docker sidecar (`backup/`) copies the SQLite file daily with 7-day retention. Manual JSON export button in settings (`GET /api/household/export`).
+**Backup**: Docker sidecar (`backup/`) copies the SQLite file daily with 7-day retention. Manual JSON export button in settings (`GET /api/household/export`). The export now also emits a `recipes_as_jsonld` block with `@context: "https://schema.org"` and a `@graph` of all recipes serialised as schema.org/Recipe nodes via `RecipeJSONLDExporter`, so the backup file can be consumed by any schema.org-aware tool (e.g. Google Rich Results validator).
 
 ## Backend Map
 
@@ -102,6 +103,7 @@ backend/
 │       ├── scraper.py       # RecipeScraper: recipe-scrapers lib, in-memory cache, 2s rate limit, threading.Lock
 │       ├── unit_converter.py   # Static class: normalize(amount, unit) → (grams, ml, pieces)
 │       ├── duration_serializer.py  # Static utility: ISO 8601 ↔ minutes ↔ German human strings
+│       ├── recipe_jsonld_exporter.py  # Static utility: Recipe → schema.org/Recipe JSON-LD node
 │       ├── fts_rebuilder.py   # FTSRebuilder: rebuild(db) / reindex_one(db, id) / delete_one(db, id) / weights_sql()
 │       └── normalizer.py       # IngredientNormalizer: resolve(name, aliases) → (id, confidence), learn_alias()
 ├── alembic/                 # 13 migrations (builds full schema incrementally)
@@ -230,7 +232,7 @@ When a recipe is planned but not yet cooked, its ingredients are reserved (scale
 
 **Framework**: pytest + pytest-asyncio (mode: auto). In-memory SQLite databases. Test client via `httpx.AsyncClient` with FastAPI TestClient-style transport.
 
-**What's tested** (19 test files in `tests/`):
+**What's tested** (20 test files in `tests/`):
 
 | Test file | Scope |
 |---|---|
@@ -243,6 +245,7 @@ When a recipe is planned but not yet cooked, its ingredients are reserved (scale
 | `test_household.py` | Household CRUD, invite codes, member management, meal templates, export |
 | `test_ingredients.py` | Ingredient CRUD, aliases |
 | `test_recipes.py` | Recipe CRUD, import, tags, favorites, notes, FTS search (bm25-ranked + LIKE fallback), soft delete |
+| `test_recipe_jsonld_exporter.py` | `RecipeJSONLDExporter.to_jsonld`: minimal recipe, all fields, durations, tags by group, diet URIs, HowToSteps, pass-through fields |
 | `test_fts_rebuilder.py` | FTSRebuilder: column / weight invariants, full rebuild from join, ingredient-only search, soft-delete skip, per-row reindex / delete |
 | `test_inventory.py` | Inventory CRUD, category filtering |
 | `test_weeks.py` | Week plan CRUD, slot updates, cooking, leftovers, visibility, ISO week logic |

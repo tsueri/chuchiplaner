@@ -442,6 +442,10 @@ async def test_export_household_data(client: AsyncClient) -> None:
     assert "meal_template" in data
     assert len(data["meal_template"]) == 28
     assert "recipes" in data
+    assert "recipes_as_jsonld" in data
+    assert data["recipes_as_jsonld"]["@context"] == "https://schema.org"
+    assert "@graph" in data["recipes_as_jsonld"]
+    assert isinstance(data["recipes_as_jsonld"]["@graph"], list)
     assert "week_plans" in data
     assert "inventory" in data
     assert "grocery_lists" in data
@@ -574,3 +578,116 @@ async def test_alias_cross_household_same_alias_returns_201(
         cookies=cookies2,
     )
     assert second.status_code == 201
+
+
+@pytest.mark.asyncio
+async def test_export_jsonld_full_recipe(client: AsyncClient) -> None:
+    resp = await _register(client, "jsonlduser")
+    assert resp.status_code == 200
+    cookies = resp.cookies
+
+    tags_resp = await client.get("/api/tags", cookies=cookies)
+    tags_list = tags_resp.json()
+
+    def _tag_id(name: str, group: str) -> int:
+        for t in tags_list:
+            if t["name"] == name and t["group"] == group:
+                return t["id"]
+        raise ValueError(f"Tag {name}/{group} not found")
+
+    cat_id = _tag_id("Hauptgericht", "category")
+    cui_id = _tag_id("Italienisch", "cuisine")
+    diet_id = _tag_id("VegetarianDiet", "diet")
+
+    ing_resp = await client.post(
+        "/api/ingredients", json={"name": "Spaghetti"}, cookies=cookies
+    )
+    ing_id = ing_resp.json()["id"]
+
+    recipe_body = {
+        "title": "Spaghetti Napoli",
+        "description": "Einfaches Pastagericht",
+        "image_url": "https://example.com/napoli.jpg",
+        "servings": 4,
+        "author": "Chef Koch",
+        "date_published": "2025-06-01",
+        "prep_time_minutes": 10,
+        "cook_time_minutes": 20,
+        "total_time_minutes": 30,
+        "perform_time_minutes": 15,
+        "nutrition": {"calories": "400 kcal", "carbohydrateContent": "50 g"},
+        "aggregate_rating": {"ratingValue": 4.5, "reviewCount": 10},
+        "keywords": "Pasta, Tomate, Schnell",
+        "steps": [
+            {"text": "Wasser kochen.", "name": "Vorbereitung"},
+            {"text": "Spaghetti kochen und Sauce zubereiten."},
+        ],
+        "ingredients": [
+            {
+                "ingredient_id": ing_id,
+                "quantity": 500.0,
+                "unit": "g",
+                "order_index": 0,
+            }
+        ],
+    }
+    create_resp = await client.post(
+        "/api/recipes", json=recipe_body, cookies=cookies
+    )
+    assert create_resp.status_code == 201
+    recipe_id = create_resp.json()["id"]
+
+    await client.put(
+        f"/api/recipes/{recipe_id}",
+        json={"tag_ids": [cat_id, cui_id, diet_id]},
+        cookies=cookies,
+    )
+
+    export_resp = await client.get("/api/household/export", cookies=cookies)
+    assert export_resp.status_code == 200
+    data = export_resp.json()
+
+    assert "recipes_as_jsonld" in data
+    jsonld = data["recipes_as_jsonld"]
+    assert jsonld["@context"] == "https://schema.org"
+    assert len(jsonld["@graph"]) == 1
+
+    recipe_node = jsonld["@graph"][0]
+    assert recipe_node["@type"] == "Recipe"
+    assert recipe_node["name"] == "Spaghetti Napoli"
+    assert recipe_node["description"] == "Einfaches Pastagericht"
+    assert recipe_node["image"] == "https://example.com/napoli.jpg"
+    assert recipe_node["recipeYield"] == "4"
+    assert recipe_node["author"] == {"@type": "Person", "name": "Chef Koch"}
+    assert recipe_node["datePublished"] == "2025-06-01"
+    assert recipe_node["prepTime"] == "PT10M"
+    assert recipe_node["cookTime"] == "PT20M"
+    assert recipe_node["totalTime"] == "PT30M"
+    assert recipe_node["performTime"] == "PT15M"
+    assert recipe_node["nutrition"] == {
+        "calories": "400 kcal",
+        "carbohydrateContent": "50 g",
+    }
+    assert recipe_node["aggregateRating"] == {
+        "ratingValue": 4.5,
+        "reviewCount": 10,
+    }
+    assert recipe_node["keywords"] == "Pasta, Tomate, Schnell"
+    assert recipe_node["recipeIngredient"] == ["Spaghetti"]
+    assert len(recipe_node["recipeInstructions"]) == 2
+    assert recipe_node["recipeInstructions"][0] == {
+        "@type": "HowToStep",
+        "text": "Wasser kochen.",
+        "name": "Vorbereitung",
+    }
+    assert recipe_node["recipeInstructions"][1] == {
+        "@type": "HowToStep",
+        "text": "Spaghetti kochen und Sauce zubereiten.",
+    }
+    assert recipe_node["recipeCategory"] == "Hauptgericht"
+    assert recipe_node["recipeCuisine"] == "Italienisch"
+    assert recipe_node["suitableForDiet"] == [
+        "https://schema.org/VegetarianDiet"
+    ]
+    assert recipe_node["identifier"] == recipe_id
+    assert "season" not in recipe_node

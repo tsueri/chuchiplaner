@@ -3,6 +3,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.api.auth import get_current_user
 from app.db.session import get_db
@@ -37,6 +38,7 @@ from app.services.household import (
     remove_member,
     update_meal_template,
 )
+from app.services.recipe_jsonld_exporter import RecipeJSONLDExporter
 
 router = APIRouter(prefix="/household", tags=["household"])
 
@@ -312,6 +314,13 @@ async def export_household_data(
         select(Recipe)
         .where(Recipe.household_id == hid)
         .where(Recipe.deleted_at.is_(None))
+        .options(
+            selectinload(Recipe.ingredients).joinedload(
+                RecipeIngredient.ingredient
+            ),
+            selectinload(Recipe.steps),
+            selectinload(Recipe.tags).joinedload(RecipeTag.tag),
+        )
     )
     recipes = recipes_result.unique().scalars().all()
     recipe_ids = [r.id for r in recipes]
@@ -459,6 +468,12 @@ async def export_household_data(
             }
             for r in recipes
         ],
+        "recipes_as_jsonld": {
+            "@context": "https://schema.org",
+            "@graph": [
+                RecipeJSONLDExporter.to_jsonld(r) for r in recipes
+            ],
+        },
         "week_plans": [
             {
                 "id": wp.id, "year": wp.year, "iso_week": wp.iso_week,
