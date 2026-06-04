@@ -309,7 +309,6 @@ async def compute_reservations(
     for slot in slots:
         recipe_result = await db.execute(
             select(Recipe).where(Recipe.id == slot.recipe_id).options(
-<<<<<<< HEAD
                 selectinload(Recipe.ingredients).joinedload(RecipeIngredient.ingredient)
             )
         )
@@ -322,7 +321,6 @@ async def compute_reservations(
 
         for ri in recipe.ingredients:
             grams, milliliters, pieces = UnitConverter.normalize(
-<<<<<<< HEAD
                 ri.quantity, ri.unit, ingredient=ri.ingredient
             )
             if ri.ingredient_id not in reservations:
