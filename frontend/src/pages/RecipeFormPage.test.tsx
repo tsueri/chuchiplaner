@@ -156,6 +156,7 @@ describe("RecipeFormPage", () => {
       author: null,
       date_published: null,
       keywords: null,
+      nutrition: null,
       image_url: null,
       source_url: null,
       source_domain: null,

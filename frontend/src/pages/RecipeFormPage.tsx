@@ -17,6 +17,11 @@ import { LimitedExtendedToggle } from "@/components/LimitedExtendedToggle"
 import { PageHeader } from "@/components/PageHeader"
 import { cn } from "@/lib/utils"
 import { DurationSerializer } from "@/lib/duration-serializer"
+import {
+  NutritionEditor,
+  parseNutrition,
+  nutritionFromApi,
+} from "@/components/NutritionEditor"
 
 interface FormState {
   title: string
@@ -30,6 +35,7 @@ interface FormState {
   author: string
   datePublished: string
   keywords: string
+  nutritionText: Record<string, string>
   image_url: string
   source_url: string
   source_domain: string
@@ -96,6 +102,7 @@ interface ScrapedRecipe {
   date_published: string | null
   keywords: string | null
   ratings: number | null
+  nutrients: Record<string, unknown> | null
   suitable_for_diet_tag_ids: number[]
 }
 
@@ -111,6 +118,7 @@ const INITIAL_STATE: FormState = {
   author: "",
   datePublished: "",
   keywords: "",
+  nutritionText: {},
   image_url: "",
   source_url: "",
   source_domain: "",
@@ -141,6 +149,7 @@ async function postRecipe(body: {
   author: string | null
   date_published: string | null
   keywords: string | null
+  nutrition: Record<string, number> | null
   image_url: string | null
   source_url: string | null
   source_domain: string | null
@@ -180,6 +189,7 @@ async function putFullRecipe(
     author: string | null
     date_published: string | null
     keywords: string | null
+    nutrition: Record<string, number> | null
     image_url: string | null
     source_url: string | null
     source_domain: string | null
@@ -301,6 +311,7 @@ export default function RecipeFormPage() {
           author: data.author ?? "",
           datePublished: data.date_published ?? "",
           keywords: data.keywords ?? "",
+          nutritionText: nutritionFromApi(data.nutrients ?? null),
           image_url: data.image_url ?? "",
           source_url: data.source_url,
           source_domain: data.source_domain,
@@ -443,6 +454,9 @@ export default function RecipeFormPage() {
       const authorOut = extendedNull ? null : toNull(form.author)
       const dateOut = extendedNull ? null : toNull(form.datePublished)
       const keywordsOut = extendedNull ? null : toNull(form.keywords)
+      const nutritionOut = extendedNull
+        ? null
+        : parseNutrition(form.nutritionText)
       const learnedAliases: LearnedAliasPayload[] = rows
         .filter(
           (r) =>
@@ -468,6 +482,7 @@ export default function RecipeFormPage() {
           author: authorOut,
           date_published: dateOut,
           keywords: keywordsOut,
+          nutrition: nutritionOut,
           image_url: toNull(form.image_url),
           source_url: toNull(form.source_url),
           source_domain: toNull(form.source_domain),
@@ -490,6 +505,7 @@ export default function RecipeFormPage() {
         author: authorOut,
         date_published: dateOut,
         keywords: keywordsOut,
+        nutrition: nutritionOut,
         image_url: toNull(form.image_url),
         source_url: toNull(form.source_url),
         source_domain: toNull(form.source_domain),
@@ -839,6 +855,20 @@ export default function RecipeFormPage() {
                 placeholder="kommagetrennt, z.B. schnell, gesund"
               />
             </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <label className="text-sm font-medium">Bewertung</label>
+                <span className="text-xs text-muted-foreground">
+                  Keine eigene Bewertung möglich
+                </span>
+              </div>
+            </div>
+
+            <NutritionEditor
+              nutrition={form.nutritionText}
+              onChange={(n) => update("nutritionText", n)}
+            />
           </>
         )}
 

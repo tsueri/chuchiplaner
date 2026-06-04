@@ -46,6 +46,7 @@ from app.schemas.recipe import (
 from app.services.fts_rebuilder import FTSRebuilder
 from app.services.ingredient_line_parser import IngredientLineParser
 from app.services.normalizer import IngredientNormalizer
+from app.services.nutrition_parser import NutritionParser
 from app.services.scraper import RecipeScraper
 
 router = APIRouter(prefix="/recipes", tags=["recipes"])
@@ -247,6 +248,12 @@ async def import_recipe(
             )
             diet_tag_ids = [row for (row,) in diet_result.all()]
 
+    nutrients_parsed = None
+    if scraped.nutrients:
+        parsed_nutrition = NutritionParser.parse(scraped.nutrients)
+        if parsed_nutrition is not None:
+            nutrients_parsed = parsed_nutrition.to_dict()
+
     return ScrapedRecipeResponse(
         title=scraped.title,
         ingredients=parsed_items,
@@ -266,6 +273,7 @@ async def import_recipe(
         date_published=scraped.date_published,
         keywords=scraped.keywords,
         ratings=scraped.ratings,
+        nutrients=nutrients_parsed,
         suitable_for_diet_tag_ids=diet_tag_ids,
     )
 

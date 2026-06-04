@@ -17,6 +17,11 @@ import { cn } from "@/lib/utils"
 import { useAuth } from "@/contexts/useAuth"
 import { PageHeader } from "@/components/PageHeader"
 import { DurationSerializer } from "@/lib/duration-serializer"
+import {
+  NutritionEditor,
+  parseNutrition,
+  nutritionFromApi,
+} from "@/components/NutritionEditor"
 
 interface RecipeDetail {
   id: number
@@ -85,6 +90,7 @@ interface EditState {
   author: string
   datePublished: string
   keywords: string
+  nutritionText: Record<string, string>
   image_url: string
   source_url: string
   source_domain: string
@@ -123,6 +129,7 @@ function buildEditState(
     author: recipe.author ?? "",
     datePublished: recipe.date_published ?? "",
     keywords: recipe.keywords ?? "",
+    nutritionText: nutritionFromApi(recipe.nutrition),
     image_url: recipe.image_url ?? "",
     source_url: recipe.source_url ?? "",
     source_domain: recipe.source_domain ?? "",
@@ -158,6 +165,31 @@ async function api(path: string, options?: RequestInit) {
 function parseQuantity(value: string): number {
   const n = parseFloat(value)
   return Number.isFinite(n) ? n : 0
+}
+
+import { NUTRITION_FIELDS } from "@/components/NutritionEditor.types"
+
+function NährwerteGrid({
+  grid,
+}: {
+  grid: Record<string, { value: number; unit: string }>
+}) {
+  return (
+    <div className="grid grid-cols-3 gap-x-4 gap-y-0.5">
+      {NUTRITION_FIELDS.filter((f) => f.key in grid).map((field) => {
+        const entry = grid[field.key]
+        const unit = entry.unit || field.unit
+        return (
+          <div key={field.key} className="flex justify-between text-xs">
+            <span className="text-muted-foreground">{field.label}</span>
+            <span className="font-medium tabular-nums">
+              {entry.value} {unit}
+            </span>
+          </div>
+        )
+      })}
+    </div>
+  )
 }
 
 function emptyToNull(value: string): string | null {
@@ -406,6 +438,9 @@ export default function RecipeDetailPage() {
     const authorOut = isSimple ? null : emptyToNull(editState.author)
     const dateOut = isSimple ? null : emptyToNull(editState.datePublished)
     const keywordsOut = isSimple ? null : emptyToNull(editState.keywords)
+    const nutritionOut = isSimple
+      ? null
+      : parseNutrition(editState.nutritionText)
     try {
       const updated = (await api(`/recipes/${id}`, {
         method: "PUT",
@@ -421,6 +456,7 @@ export default function RecipeDetailPage() {
           author: authorOut,
           date_published: dateOut,
           keywords: keywordsOut,
+          nutrition: nutritionOut,
           image_url: emptyToNull(editState.image_url),
           source_url: emptyToNull(editState.source_url),
           source_domain: emptyToNull(editState.source_domain),
@@ -752,6 +788,20 @@ export default function RecipeDetailPage() {
                   placeholder="kommagetrennt, z.B. schnell, gesund"
                 />
               </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <label className="text-sm font-medium">Bewertung</label>
+                  <span className="text-xs text-muted-foreground">
+                    Keine eigene Bewertung möglich
+                  </span>
+                </div>
+              </div>
+
+              <NutritionEditor
+                nutrition={editState.nutritionText}
+                onChange={(n) => updateEditField("nutritionText", n)}
+              />
             </>
           )}
 
@@ -920,13 +970,15 @@ export default function RecipeDetailPage() {
       </p>
 
       {(() => {
-        const rows: { label?: string; value: string; chips?: boolean }[] = []
+        const rows: {
+          label?: string
+          value: string
+          chips?: boolean
+          nutritionGrid?: Record<string, { value: number; unit: string }>
+        }[] = []
 
         if (recipe.author) {
           rows.push({ label: "Autor", value: recipe.author })
-        }
-        if (recipe.date_published) {
-          rows.push({ label: "Veröffentlicht", value: recipe.date_published })
         }
         if (recipe.date_published) {
           rows.push({ label: "Veröffentlicht", value: recipe.date_published })
@@ -957,12 +1009,65 @@ export default function RecipeDetailPage() {
         if (cuisineTag) {
           rows.push({ label: "Küche", value: cuisineTag.name })
         }
+        if (recipe.aggregate_rating) {
+          const ar = recipe.aggregate_rating
+          const ratingValue =
+            typeof ar.ratingValue === "number" ? ar.ratingValue : null
+          const reviewCount =
+            typeof ar.reviewCount === "number" ? ar.reviewCount : null
+          if (ratingValue !== null) {
+            const fullStars = Math.round(ratingValue)
+            const stars = "★".repeat(fullStars) + "☆".repeat(5 - fullStars)
+            let label = `Bewertung: ${stars} ${ratingValue}/5`
+            if (reviewCount !== null) {
+              label += ` (${reviewCount} Bewertungen)`
+            }
+            rows.push({ label: "Bewertung", value: label })
+          }
+        }
         const dietTags = recipe.tags.filter((t) => t.group === "diet")
         for (const dt of dietTags) {
           rows.push({ value: dt.name, chips: true })
         }
         if (recipe.keywords) {
-          rows.push({ label: "Schlagwörter", value: recipe.keywords, chips: true })
+          rows.push({
+            label: "Schlagwörter",
+            value: recipe.keywords,
+            chips: true,
+          })
+        }
+        if (
+          recipe.nutrition &&
+          typeof recipe.nutrition === "object" &&
+          Object.keys(recipe.nutrition).length > 0
+        ) {
+          const grid: Record<string, { value: number; unit: string }> = {}
+          for (const [key, val] of Object.entries(recipe.nutrition)) {
+            if (
+              val !== null &&
+              val !== undefined &&
+              typeof val === "object" &&
+              !Array.isArray(val) &&
+              "value" in val &&
+              typeof (val as Record<string, unknown>).value === "number"
+            ) {
+              grid[key] = {
+                value: (val as Record<string, number>).value,
+                unit: String(
+                  (val as Record<string, unknown>).unit ?? ""
+                ),
+              }
+            } else if (typeof val === "number") {
+              grid[key] = { value: val, unit: "" }
+            }
+          }
+          if (Object.keys(grid).length > 0) {
+            rows.push({
+              label: "Nährwerte",
+              value: "",
+              nutritionGrid: grid,
+            })
+          }
         }
 
         if (rows.length === 0) return null
@@ -971,8 +1076,12 @@ export default function RecipeDetailPage() {
           <div className="mt-3 space-y-1 text-sm text-muted-foreground">
             {rows.map((row, idx) => (
               <div key={idx} className="flex items-center gap-1.5">
-                {row.label && <span className="font-medium">{row.label}:</span>}
-                {row.chips ? (
+                {row.label && (
+                  <span className="font-medium">{row.label}:</span>
+                )}
+                {row.nutritionGrid ? (
+                  <NährwerteGrid grid={row.nutritionGrid} />
+                ) : row.chips ? (
                   <div className="flex flex-wrap gap-1">
                     {row.value.split(",").map((kw, ki) => (
                       <span

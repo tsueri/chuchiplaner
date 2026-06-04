@@ -99,6 +99,7 @@ class ScrapedRecipeResponse(BaseModel):
     date_published: date | None = None
     keywords: str | None = None
     ratings: float | None = None
+    nutrients: dict[str, Any] | None = None
     suitable_for_diet_tag_ids: list[int] = []
 
     @field_serializer("date_published")
