@@ -86,14 +86,18 @@ def _seed_data() -> None:
 
 
 def upgrade() -> None:
-    op.add_column("ingredients", sa.Column("grams_per_el", sa.Float(), nullable=True))
-    op.add_column("ingredients", sa.Column("ml_per_el", sa.Float(), nullable=True))
-    op.add_column("ingredients", sa.Column("grams_per_tl", sa.Float(), nullable=True))
-    op.add_column("ingredients", sa.Column("ml_per_tl", sa.Float(), nullable=True))
-    op.add_column("ingredients", sa.Column("grams_per_msp", sa.Float(), nullable=True))
-    op.add_column("ingredients", sa.Column("ml_per_msp", sa.Float(), nullable=True))
-    op.add_column("ingredients", sa.Column("grams_per_pris", sa.Float(), nullable=True))
-    op.add_column("ingredients", sa.Column("ml_per_pris", sa.Float(), nullable=True))
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    existing_columns = [c["name"] for c in inspector.get_columns("ingredients")]
+
+    new_columns = [
+        "grams_per_el", "ml_per_el", "grams_per_tl", "ml_per_tl",
+        "grams_per_msp", "ml_per_msp", "grams_per_pris", "ml_per_pris",
+    ]
+    for col in new_columns:
+        if col not in existing_columns:
+            op.add_column("ingredients", sa.Column(col, sa.Float(), nullable=True))
+
     _seed_data()
 
 
