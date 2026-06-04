@@ -56,6 +56,140 @@ async def test_create_ingredient_empty_name(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
+async def test_list_ingredients_returns_conversion_fields(client: AsyncClient) -> None:
+    response = await client.post("/api/ingredients", json={"name": "Mehl"})
+    assert response.status_code == 201
+
+    response = await client.get("/api/ingredients", params={"q": "Mehl"})
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 1
+    item = data[0]
+    assert "grams_per_el" in item
+    assert item["grams_per_el"] is None
+    assert "ml_per_el" in item
+    assert "grams_per_tl" in item
+    assert "ml_per_tl" in item
+    assert "grams_per_msp" in item
+    assert "ml_per_msp" in item
+    assert "grams_per_pris" in item
+    assert "ml_per_pris" in item
+
+
+@pytest.mark.asyncio
+async def test_get_ingredient_returns_conversion_fields(client: AsyncClient) -> None:
+    response = await client.post("/api/ingredients", json={"name": "Zucker"})
+    ingredient_id = response.json()["id"]
+
+    response = await client.get(f"/api/ingredients/{ingredient_id}")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["id"] == ingredient_id
+    assert data["name"] == "Zucker"
+    assert data["grams_per_el"] is None
+    assert data["ml_per_el"] is None
+
+
+@pytest.mark.asyncio
+async def test_get_ingredient_not_found(client: AsyncClient) -> None:
+    response = await client.get("/api/ingredients/99999")
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_patch_ingredient_set_conversion(client: AsyncClient) -> None:
+    response = await client.post("/api/ingredients", json={"name": "Salz"})
+    ingredient_id = response.json()["id"]
+
+    response = await client.patch(
+        f"/api/ingredients/{ingredient_id}",
+        json={"grams_per_el": 10},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["grams_per_el"] == 10
+    assert data["ml_per_el"] is None
+
+
+@pytest.mark.asyncio
+async def test_patch_ingredient_mutual_exclusivity(client: AsyncClient) -> None:
+    response = await client.post("/api/ingredients", json={"name": "Honig"})
+    ingredient_id = response.json()["id"]
+
+    response = await client.patch(
+        f"/api/ingredients/{ingredient_id}",
+        json={"grams_per_el": 10, "ml_per_el": 15},
+    )
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_patch_ingredient_clear_value(client: AsyncClient) -> None:
+    response = await client.post("/api/ingredients", json={"name": "Butter"})
+    ingredient_id = response.json()["id"]
+
+    await client.patch(
+        f"/api/ingredients/{ingredient_id}",
+        json={"grams_per_el": 10},
+    )
+
+    response = await client.patch(
+        f"/api/ingredients/{ingredient_id}",
+        json={"grams_per_el": None},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["grams_per_el"] is None
+
+
+@pytest.mark.asyncio
+async def test_patch_ingredient_not_found(client: AsyncClient) -> None:
+    response = await client.patch(
+        "/api/ingredients/99999",
+        json={"grams_per_el": 10},
+    )
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_patch_ingredient_mutual_exclusivity_tl(client: AsyncClient) -> None:
+    response = await client.post("/api/ingredients", json={"name": "Zimt"})
+    ingredient_id = response.json()["id"]
+
+    response = await client.patch(
+        f"/api/ingredients/{ingredient_id}",
+        json={"grams_per_tl": 5, "ml_per_tl": 5},
+    )
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_post_ingredient_unchanged(client: AsyncClient) -> None:
+    response = await client.post("/api/ingredients", json={"name": "Käse"})
+    assert response.status_code == 201
+    data = response.json()
+    assert data["name"] == "Käse"
+    assert data["grams_per_el"] is None
+
+
+@pytest.mark.asyncio
+async def test_patch_ingredient_msp_conversion(client: AsyncClient) -> None:
+    response = await client.post("/api/ingredients", json={"name": "Muskat"})
+    ingredient_id = response.json()["id"]
+
+    response = await client.patch(
+        f"/api/ingredients/{ingredient_id}",
+        json={"grams_per_msp": 1, "grams_per_pris": 0.5},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["grams_per_msp"] == 1
+    assert data["grams_per_pris"] == 0.5
+    assert data["ml_per_msp"] is None
+    assert data["ml_per_pris"] is None
+
+
+@pytest.mark.asyncio
 async def test_add_alias(
     client: AsyncClient,
 ) -> None:
