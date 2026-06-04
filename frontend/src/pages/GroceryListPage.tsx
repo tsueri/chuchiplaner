@@ -32,7 +32,7 @@ interface GroceryListData {
   items: GroceryListItem[]
 }
 
-const UNITS = ["g", "kg", "ml", "l", "EL", "TL", "St\u00fcck", "Bund", "Prise", "Packung"]
+const UNITS = ["g", "kg", "ml", "l", "EL", "TL", "St\u00fcck", "Bund", "Prise", "Msp", "Packung"]
 
 async function api(path: string, options?: RequestInit) {
   const res = await fetch(`/api${path}`, {

@@ -25,7 +25,7 @@ interface Ingredient {
 type SortMode = "expiry" | "name" | "category"
 type CategoryFilter = "all" | "raw" | "cooked" | "frozen"
 
-const UNITS = ["g", "kg", "ml", "l", "EL", "TL", "St\u00fcck", "Bund", "Prise"]
+const UNITS = ["g", "kg", "ml", "l", "EL", "TL", "St\u00fcck", "Bund", "Prise", "Msp"]
 
 async function api(path: string, options?: RequestInit) {
   const res = await fetch(`/api${path}`, {
