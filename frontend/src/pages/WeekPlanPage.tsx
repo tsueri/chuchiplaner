@@ -244,6 +244,32 @@ export default function WeekPlanPage() {
     }
   }
 
+  const moveRecipe = async (
+    sourceSlotId: number,
+    targetDay: number,
+    targetMeal: string,
+    recipeId: number
+  ) => {
+    if (!editable) return
+    setSaving(true)
+    try {
+      await api(`/weeks/${year}/${isoWeek}/slots`, {
+        method: "PUT",
+        body: JSON.stringify({
+          slots: [{ day_of_week: targetDay, meal_type: targetMeal, recipe_id: recipeId }],
+        }),
+      })
+      await api(`/weeks/${year}/${isoWeek}/slots/${sourceSlotId}/recipe`, {
+        method: "DELETE",
+      })
+      refreshAll()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to move recipe")
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const createWeek = async (copyFromPrevious: boolean) => {
     setSaving(true)
     try {
@@ -388,7 +414,13 @@ export default function WeekPlanPage() {
       setDragOverDay(null)
       setDragOverMeal(null)
       const recipeId = parseInt(e.dataTransfer.getData("recipe_id") || "0")
-      if (recipeId > 0) planRecipe(day, meal, recipeId)
+      if (recipeId <= 0) return
+      const sourceSlotId = parseInt(e.dataTransfer.getData("source_slot_id") || "0")
+      if (sourceSlotId > 0) {
+        moveRecipe(sourceSlotId, day, meal, recipeId)
+      } else {
+        planRecipe(day, meal, recipeId)
+      }
     }
 
   const handleSlotDragOver =
@@ -408,6 +440,13 @@ export default function WeekPlanPage() {
   const handleSlotDragLeave = () => {
     setDragOverDay(null)
     setDragOverMeal(null)
+  }
+
+  const handleSlotDragStart = (slot: MealSlot) => (e: React.DragEvent) => {
+    e.dataTransfer.setData("recipe_id", String(slot.recipe_id))
+    e.dataTransfer.setData("recipe_title", slot.recipe_title || "")
+    e.dataTransfer.setData("source_slot_id", String(slot.id))
+    e.dataTransfer.effectAllowed = "move"
   }
 
   if (loading) {
@@ -540,6 +579,12 @@ export default function WeekPlanPage() {
                         </div>
                       )}
                       <div
+                        draggable={!!(slot?.recipe_id && editable && !slot.cooked)}
+                        onDragStart={
+                          slot?.recipe_id && editable && !slot.cooked
+                            ? handleSlotDragStart(slot)
+                            : undefined
+                        }
                         className={[
                           "rounded border p-1 min-h-[70px] text-xs cursor-default",
                           isActive && editable

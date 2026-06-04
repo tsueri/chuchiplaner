@@ -233,6 +233,77 @@ async def test_unplan_recipe_from_slot(
     assert updated_slot["recipe_id"] is None
 
 
+# ----- Move recipe between slots -----
+
+
+@pytest.mark.asyncio
+async def test_move_recipe_to_another_slot(
+    client: AsyncClient,
+) -> None:
+    reg = await _register(client, "weekuser6b")
+    cookies = reg["cookies"]
+    year, week = await _get_current_iso()
+
+    recipe = await _create_recipe(client, cookies, "Risotto")
+
+    create_resp = await client.post(
+        "/api/weeks",
+        json={"year": year, "iso_week": week},
+        cookies=cookies,
+    )
+    plan_data = create_resp.json()
+
+    monday_lunch = next(
+        s for s in plan_data["slots"]
+        if s["day_of_week"] == 0 and s["meal_type"] == "lunch"
+    )
+
+    await client.put(
+        f"/api/weeks/{year}/{week}/slots",
+        json={
+            "slots": [{
+                "day_of_week": 0,
+                "meal_type": "lunch",
+                "recipe_id": recipe["id"],
+            }]
+        },
+        cookies=cookies,
+    )
+
+    await client.put(
+        f"/api/weeks/{year}/{week}/slots",
+        json={
+            "slots": [{
+                "day_of_week": 0,
+                "meal_type": "dinner",
+                "recipe_id": recipe["id"],
+            }]
+        },
+        cookies=cookies,
+    )
+
+    await client.delete(
+        f"/api/weeks/{year}/{week}/slots/{monday_lunch['id']}/recipe",
+        cookies=cookies,
+    )
+
+    get_resp = await client.get(f"/api/weeks/{year}/{week}", cookies=cookies)
+    slots = get_resp.json()["slots"]
+
+    source = next(
+        s for s in slots
+        if s["id"] == monday_lunch["id"]
+    )
+    assert source["recipe_id"] is None
+
+    target = next(
+        s for s in slots
+        if s["day_of_week"] == 0 and s["meal_type"] == "dinner"
+    )
+    assert target["recipe_id"] == recipe["id"]
+    assert target["recipe_title"] == "Risotto"
+
+
 # ----- Copy from previous week -----
 
 
