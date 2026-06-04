@@ -1,4 +1,4 @@
-from app.services.nutrition_parser import NutritionParser, NutritionInformation, NutritionValue
+from app.services.nutrition_parser import NutritionParser
 
 
 def test_parse_none_returns_none() -> None:
@@ -191,7 +191,9 @@ def test_parse_negative_value() -> None:
 
 
 def test_to_dict_serializes_all_fields() -> None:
-    result = NutritionParser.parse({"calories": "240 kcal", "carbohydrateContent": "30 g"})
+    result = NutritionParser.parse(
+        {"calories": "240 kcal", "carbohydrateContent": "30 g"}
+    )
     assert result is not None
     d = result.to_dict()
     assert d == {
