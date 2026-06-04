@@ -21,17 +21,13 @@ def _ingredient(name: str, grams_per_el: float | None, grams_per_tl: float | Non
                 grams_per_msp: float | None = None,
                 grams_per_pris: float | None = None) -> None:
     """Update a single ingredient's conversion values."""
-    sets = ["grams_per_el = :el", "grams_per_tl = :tl"]
-    params = {"name": name, "el": grams_per_el, "tl": grams_per_tl}
+    sets = [f"grams_per_el = {grams_per_el}", f"grams_per_tl = {grams_per_tl}"]
     if grams_per_msp is not None:
-        sets.append("grams_per_msp = :msp")
-        params["msp"] = grams_per_msp
+        sets.append(f"grams_per_msp = {grams_per_msp}")
     if grams_per_pris is not None:
-        sets.append("grams_per_pris = :pris")
-        params["pris"] = grams_per_pris
+        sets.append(f"grams_per_pris = {grams_per_pris}")
     op.execute(
-        sa.text(f"UPDATE ingredients SET {', '.join(sets)} WHERE name = :name"),
-        params,
+        sa.text(f"UPDATE ingredients SET {', '.join(sets)} WHERE name = '{name}'")
     )
 
 
