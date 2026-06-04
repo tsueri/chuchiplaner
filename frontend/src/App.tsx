@@ -4,6 +4,7 @@ import { AppLayout } from "@/components/AppLayout"
 import { ProtectedRoute } from "@/components/ProtectedRoute"
 import GroceryListPage from "@/pages/GroceryListPage"
 import GroceryListSharePage from "@/pages/GroceryListSharePage"
+import IngredientsPage from "@/pages/IngredientsPage"
 import InventoryPage from "@/pages/InventoryPage"
 import LoginPage from "@/pages/LoginPage"
 import PublicPlanPage from "@/pages/PublicPlanPage"
@@ -44,6 +45,7 @@ function App() {
           <Route path="/recipes" element={<RecipeListPage />} />
           <Route path="/recipes/new" element={<RecipeFormPage />} />
           <Route path="/recipes/:id" element={<RecipeDetailPage />} />
+          <Route path="/ingredients" element={<IngredientsPage />} />
           <Route path="/inventory" element={<InventoryPage />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Route>

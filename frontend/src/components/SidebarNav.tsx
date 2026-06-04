@@ -1,5 +1,6 @@
 import {
   CalendarDays,
+  Leaf,
   Refrigerator,
   Settings,
   ShoppingCart,
@@ -17,6 +18,7 @@ const NAV_ITEMS = [
   { to: "/plan", label: "Wochenplan", Icon: CalendarDays },
   { to: "/grocery-list", label: "Einkaufsliste", Icon: ShoppingCart },
   { to: "/recipes", label: "Rezepte", Icon: UtensilsCrossed },
+  { to: "/ingredients", label: "Zutaten", Icon: Leaf },
   { to: "/inventory", label: "Vorrat", Icon: Refrigerator },
   { to: "/settings", label: "Einstellungen", Icon: Settings },
 ] as const
