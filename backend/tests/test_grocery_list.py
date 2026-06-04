@@ -1,5 +1,9 @@
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.ingredient import Ingredient
 
 
 async def _register(client: AsyncClient, username: str = "testuser") -> dict:
@@ -612,3 +616,195 @@ async def test_cannot_add_item_to_completed_list(
         cookies=cookies,
     )
     assert resp.status_code == 400
+
+
+# ----- Cross-dimension matching (ingredient-aware conversions) -----
+
+
+@pytest.mark.asyncio
+async def test_el_to_grams_deducts_inventory_cross_dimension(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    reg = await _register(client, "grocery19")
+    cookies = reg["cookies"]
+    year, week = await _get_current_iso()
+
+    ing = await _create_ingredient(client, cookies, "Mehl")
+    result = await db_session.execute(
+        select(Ingredient).where(Ingredient.id == ing["id"])
+    )
+    mehl = result.scalar_one()
+    mehl.grams_per_el = 10.0
+    await db_session.flush()
+
+    recipe = await _create_recipe(
+        client, cookies, "Pfannkuchen",
+        ingredients=[
+            {"ingredient_id": ing["id"], "quantity": 500, "unit": "g", "order_index": 0}
+        ],
+    )
+
+    await client.post(
+        "/api/inventory",
+        json={
+            "ingredient_id": ing["id"],
+            "quantity": 2,
+            "unit": "EL",
+            "category": "raw",
+        },
+        cookies=cookies,
+    )
+
+    plan = await _create_plan(client, cookies, year, week)
+    await _plan_recipe(client, cookies, year, week, 0, "lunch", recipe["id"])
+
+    data = await _get_grocery_list(client, cookies, plan["id"])
+    assert len(data["items"]) == 1
+    assert data["items"][0]["name"] == "Mehl"
+    assert data["items"][0]["quantity"] == 480.0
+    assert data["items"][0]["unit"] == "g"
+
+
+@pytest.mark.asyncio
+async def test_tl_to_grams_cross_dimension_deduction(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    reg = await _register(client, "grocery20")
+    cookies = reg["cookies"]
+    year, week = await _get_current_iso()
+
+    ing = await _create_ingredient(client, cookies, "Salz")
+    result = await db_session.execute(
+        select(Ingredient).where(Ingredient.id == ing["id"])
+    )
+    salz = result.scalar_one()
+    salz.grams_per_tl = 5.0
+    await db_session.flush()
+
+    recipe = await _create_recipe(
+        client, cookies, "Brot",
+        ingredients=[
+            {"ingredient_id": ing["id"], "quantity": 10, "unit": "TL", "order_index": 0}
+        ],
+    )
+
+    await client.post(
+        "/api/inventory",
+        json={
+            "ingredient_id": ing["id"],
+            "quantity": 20,
+            "unit": "g",
+            "category": "raw",
+        },
+        cookies=cookies,
+    )
+
+    plan = await _create_plan(client, cookies, year, week)
+    await _plan_recipe(client, cookies, year, week, 0, "lunch", recipe["id"])
+
+    data = await _get_grocery_list(client, cookies, plan["id"])
+    assert len(data["items"]) == 1
+    assert data["items"][0]["name"] == "Salz"
+    assert data["items"][0]["quantity"] == 30.0
+    assert data["items"][0]["unit"] == "g"
+
+
+@pytest.mark.asyncio
+async def test_no_conversion_preserves_old_el_ml_behavior(
+    client: AsyncClient,
+) -> None:
+    reg = await _register(client, "grocery21")
+    cookies = reg["cookies"]
+    year, week = await _get_current_iso()
+
+    ing = await _create_ingredient(client, cookies, "Öl")
+    recipe = await _create_recipe(
+        client, cookies, "Dressing",
+        ingredients=[
+            {"ingredient_id": ing["id"], "quantity": 2, "unit": "EL", "order_index": 0}
+        ],
+    )
+
+    plan = await _create_plan(client, cookies, year, week)
+    await _plan_recipe(client, cookies, year, week, 0, "lunch", recipe["id"])
+
+    data = await _get_grocery_list(client, cookies, plan["id"])
+    assert len(data["items"]) == 1
+    assert data["items"][0]["quantity"] == 30.0
+    assert data["items"][0]["unit"] == "ml"
+
+
+@pytest.mark.asyncio
+async def test_recipe_breakdown_shows_g_unit_when_el_converted_to_g(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    reg = await _register(client, "grocery22")
+    cookies = reg["cookies"]
+    year, week = await _get_current_iso()
+
+    ing = await _create_ingredient(client, cookies, "Honig")
+    result = await db_session.execute(
+        select(Ingredient).where(Ingredient.id == ing["id"])
+    )
+    honig = result.scalar_one()
+    honig.grams_per_el = 20.0
+    await db_session.flush()
+
+    recipe = await _create_recipe(
+        client, cookies, "Honigkuchen",
+        ingredients=[
+            {"ingredient_id": ing["id"], "quantity": 3, "unit": "EL", "order_index": 0}
+        ],
+    )
+
+    plan = await _create_plan(client, cookies, year, week)
+    await _plan_recipe(client, cookies, year, week, 0, "lunch", recipe["id"])
+
+    data = await _get_grocery_list(client, cookies, plan["id"])
+    assert len(data["items"]) == 1
+    assert data["items"][0]["quantity"] == 60.0
+    assert data["items"][0]["unit"] == "g"
+    breakdown = data["items"][0]["recipe_breakdown"]
+    assert len(breakdown) == 1
+    assert breakdown[0]["unit"] == "g"
+    assert breakdown[0]["quantity"] == 60.0
+
+
+@pytest.mark.asyncio
+async def test_mixed_units_aggregate_correctly(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    reg = await _register(client, "grocery23")
+    cookies = reg["cookies"]
+    year, week = await _get_current_iso()
+
+    ing = await _create_ingredient(client, cookies, "Mehl")
+    result = await db_session.execute(
+        select(Ingredient).where(Ingredient.id == ing["id"])
+    )
+    mehl = result.scalar_one()
+    mehl.grams_per_el = 10.0
+    await db_session.flush()
+
+    recipe1 = await _create_recipe(
+        client, cookies, "Kuchen",
+        ingredients=[
+            {"ingredient_id": ing["id"], "quantity": 200, "unit": "g", "order_index": 0}
+        ],
+    )
+    recipe2 = await _create_recipe(
+        client, cookies, "Pfannkuchen",
+        ingredients=[
+            {"ingredient_id": ing["id"], "quantity": 3, "unit": "EL", "order_index": 0}
+        ],
+    )
+
+    plan = await _create_plan(client, cookies, year, week)
+    await _plan_recipe(client, cookies, year, week, 0, "lunch", recipe1["id"])
+    await _plan_recipe(client, cookies, year, week, 1, "lunch", recipe2["id"])
+
+    data = await _get_grocery_list(client, cookies, plan["id"])
+    assert len(data["items"]) == 1
+    assert data["items"][0]["name"] == "Mehl"
+    assert data["items"][0]["quantity"] == 230.0
+    assert data["items"][0]["unit"] == "g"

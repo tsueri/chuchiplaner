@@ -12,7 +12,7 @@ from app.models.grocery_list import GroceryList, GroceryListItem
 from app.models.household import Household
 from app.models.ingredient import Ingredient
 from app.models.inventory import InventoryItem
-from app.models.recipe import Recipe
+from app.models.recipe import Recipe, RecipeIngredient
 from app.models.week_plan import MealSlot, WeekPlan
 from app.services.unit_converter import UnitConverter
 
@@ -66,7 +66,11 @@ async def _compute_needs(
         recipe_result = await db.execute(
             select(Recipe)
             .where(Recipe.id == slot.recipe_id)
-            .options(selectinload(Recipe.ingredients))
+            .options(
+                selectinload(Recipe.ingredients).selectinload(
+                    RecipeIngredient.ingredient
+                )
+            )
         )
         recipe = recipe_result.scalar_one_or_none()
         if recipe is None:
@@ -75,7 +79,9 @@ async def _compute_needs(
         scale = slot.portions / recipe.servings if recipe.servings > 0 else 1
 
         for ri in recipe.ingredients:
-            grams, ml, pieces = UnitConverter.normalize(ri.quantity, ri.unit)
+            grams, ml, pieces = UnitConverter.normalize(
+                ri.quantity, ri.unit, ingredient=ri.ingredient
+            )
             needed = grams or ml or pieces or 0
             if needed == 0:
                 continue
@@ -182,16 +188,20 @@ async def _get_inventory_sums(
     household_id: int,
 ) -> dict[int, float]:
     result = await db.execute(
-        select(InventoryItem).where(
+        select(InventoryItem)
+        .where(
             InventoryItem.household_id == household_id,
             InventoryItem.category == "raw",
         )
+        .options(selectinload(InventoryItem.ingredient))
     )
     items = list(result.scalars().all())
 
     sums: dict[int, float] = {}
     for item in items:
-        grams, ml, pieces = UnitConverter.normalize(item.quantity, item.unit)
+        grams, ml, pieces = UnitConverter.normalize(
+            item.quantity, item.unit, ingredient=item.ingredient
+        )
         available = grams or ml or pieces or 0
 
         if available == 0:
