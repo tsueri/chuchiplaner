@@ -2,6 +2,7 @@ import os
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.auth import router as auth_router
@@ -50,9 +51,14 @@ def create_app() -> FastAPI:
             StaticFiles(directory=os.path.join(static_dir, "assets")),
             name="assets",
         )
-        app.mount(
-            "/", StaticFiles(directory=static_dir, html=True), name="static"
-        )
+        @app.get("/{full_path:path}", response_class=FileResponse)
+        async def serve_frontend(full_path: str) -> FileResponse:
+            file_path = os.path.realpath(os.path.join(static_dir, full_path))
+            if not file_path.startswith(os.path.realpath(static_dir) + os.sep):
+                return FileResponse(os.path.join(static_dir, "index.html"))
+            if os.path.isfile(file_path):
+                return FileResponse(file_path)
+            return FileResponse(os.path.join(static_dir, "index.html"))
 
     return app
 

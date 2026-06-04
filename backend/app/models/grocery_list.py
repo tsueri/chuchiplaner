@@ -30,6 +30,7 @@ class GroceryList(Base):
         String(64), nullable=True, unique=True
     )
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    generated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     items: Mapped[list["GroceryListItem"]] = relationship(

@@ -527,7 +527,7 @@ export default function GroceryListPage() {
               Einkaufsliste als erledigt markieren?
             </p>
             <p className="text-sm text-muted-foreground">
-              Nicht abgehakte Artikel werden in den Vorrat übertragen.
+              Abgehakte Artikel werden in den Vorrat übertragen.
             </p>
             <div className="flex justify-end gap-2">
               <Button

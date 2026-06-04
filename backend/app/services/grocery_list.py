@@ -36,10 +36,18 @@ async def get_or_generate_list(
             GroceryList.week_plan_id == week_plan_id,
             GroceryList.completed_at.is_(None),
         )
+        .order_by(GroceryList.created_at.desc())
+        .limit(1)
         .options(selectinload(GroceryList.items))
     )
-    existing = result.scalar_one_or_none()
+    existing = result.scalars().first()
     if existing is not None:
+        if plan is None:
+            return existing
+        if existing.generated_at is None:
+            planned = [s for s in plan.slots if s.active and s.recipe_id is not None]
+            if planned:
+                return await regenerate_list(db, household_id, existing)
         return existing
 
     if plan is not None:
@@ -143,6 +151,7 @@ async def generate_list(
     glist = GroceryList(
         household_id=household_id,
         week_plan_id=plan.id,
+        generated_at=datetime.now(timezone.utc),
     )
     db.add(glist)
     await db.flush()
@@ -234,6 +243,7 @@ async def regenerate_list(
             await _populate_items(
                 db, glist, household_id, ingredient_needs, recipe_refs
             )
+            glist.generated_at = datetime.now(timezone.utc)
             await db.flush()
 
     return glist
@@ -247,10 +257,10 @@ async def complete_list(
     if glist.completed_at is not None:
         return {"transferred_count": 0}
 
-    unchecked = [item for item in glist.items if not item.checked]
+    checked = [item for item in glist.items if item.checked]
     transferred = 0
 
-    for item in unchecked:
+    for item in checked:
         if item.ingredient_id is None:
             continue
 

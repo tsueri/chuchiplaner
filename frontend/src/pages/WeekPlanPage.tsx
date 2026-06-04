@@ -1,6 +1,12 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { PageHeader } from "@/components/PageHeader"
+import {
+  getCurrentIsoWeek,
+  getIsoWeek,
+  formatWeekLabel,
+  isoWeekMonday,
+} from "@/lib/iso-week"
 
 interface Recipe {
   recipe_id: number
@@ -68,30 +74,6 @@ async function api(path: string, options?: RequestInit) {
   return res.json()
 }
 
-function getCurrentIsoWeek(): [number, number] {
-  const now = new Date()
-  const jan4 = new Date(now.getFullYear(), 0, 4)
-  const jan4Day = jan4.getDay() || 7
-  const week1Start = new Date(jan4)
-  week1Start.setDate(jan4.getDate() - jan4Day + 1)
-  const diff = now.getTime() - week1Start.getTime()
-  const week = Math.floor(diff / (86400000 * 7)) + 1
-  return [now.getFullYear(), week]
-}
-
-function formatWeekLabel(year: number, week: number): string {
-  const firstDay = new Date(year, 0, 4)
-  const dayOfWeek = firstDay.getDay() || 7
-  const monday = new Date(firstDay)
-  monday.setDate(firstDay.getDate() - dayOfWeek + 1 + (week - 1) * 7)
-  const sunday = new Date(monday)
-  sunday.setDate(monday.getDate() + 6)
-  return (
-    `KW ${week}, ${monday.getDate()}.` +
-    `–${sunday.getDate()}.${sunday.getMonth() + 1}`
-  )
-}
-
 function isCurrentOrFuture(year: number, week: number): boolean {
   const [cy, cw] = getCurrentIsoWeek()
   if (year > cy) return true
@@ -121,6 +103,8 @@ export default function WeekPlanPage() {
   const [leftoverPortions, setLeftoverPortions] = useState(2)
   const [householdSlug, setHouseholdSlug] = useState("")
   const [publicSaving, setPublicSaving] = useState(false)
+  const [recipeSearch, setRecipeSearch] = useState("")
+  const [searchResults, setSearchResults] = useState<Recipe[]>([])
 
   const refreshAll = useCallback(() => {
     let cancelled = false
@@ -171,23 +155,32 @@ export default function WeekPlanPage() {
     return cancel
   }, [refreshAll])
 
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const searchRecipes = (query: string) => {
+    setRecipeSearch(query)
+    clearTimeout(searchTimer.current)
+    if (query.trim().length < 2) {
+      setSearchResults([])
+      return
+    }
+    searchTimer.current = setTimeout(() => {
+      api(`/recipes?search=${encodeURIComponent(query.trim())}&limit=20`)
+        .then((data: Recipe[]) => setSearchResults(data))
+        .catch(() => setSearchResults([]))
+    }, 250)
+  }
+
   const navigateWeek = (delta: number) => {
-    const current = new Date(year, 0, 4)
-    const dayOfWeek = current.getDay() || 7
-    const monday = new Date(current)
-    monday.setDate(current.getDate() - dayOfWeek + 1 + (isoWeek - 1) * 7)
+    setLoading(true)
+    const monday = isoWeekMonday(year, isoWeek)
     monday.setDate(monday.getDate() + delta * 7)
-    const jan4 = new Date(monday.getFullYear(), 0, 4)
-    const jan4Day = jan4.getDay() || 7
-    const week1Start = new Date(jan4)
-    week1Start.setDate(jan4.getDate() - jan4Day + 1)
-    const diff = monday.getTime() - week1Start.getTime()
-    const newWeek = Math.floor(diff / (86400000 * 7)) + 1
-    setYear(monday.getFullYear())
+    const [newYear, newWeek] = getIsoWeek(monday)
+    setYear(newYear)
     setIsoWeek(newWeek)
   }
 
   const goToToday = () => {
+    setLoading(true)
     const [tcy, tcw] = getCurrentIsoWeek()
     setYear(tcy)
     setIsoWeek(tcw)
@@ -610,6 +603,39 @@ export default function WeekPlanPage() {
 
           <div className="flex-[3] border-l overflow-auto p-3">
             <h2 className="font-semibold mb-2">Vorschläge</h2>
+
+            <input
+              type="text"
+              placeholder="Menü suchen..."
+              value={recipeSearch}
+              onChange={(e) => searchRecipes(e.target.value)}
+              className="w-full rounded-md border px-3 py-1.5 text-sm mb-3"
+            />
+
+            {recipeSearch.trim().length >= 2 && (
+              <div className="space-y-2 mb-3">
+                {searchResults.length === 0 && (
+                  <p className="text-sm text-muted-foreground">
+                    Keine Menüs gefunden.
+                  </p>
+                )}
+                {searchResults.map((recipe) => (
+                  <div
+                    key={`search-${recipe.recipe_id}`}
+                    className="rounded border p-2 text-sm cursor-grab active:cursor-grabbing hover:border-primary/50"
+                    draggable={editable}
+                    onDragStart={handleDragStart(recipe)}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium truncate">{recipe.title}</span>
+                    </div>
+                    <div className="flex gap-2 mt-1 text-xs text-muted-foreground">
+                      <span>{recipe.matched_ingredients}/{recipe.total_ingredients} Zutaten</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
 
             <div className="flex gap-1 mb-3">
               {[

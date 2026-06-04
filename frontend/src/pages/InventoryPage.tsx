@@ -438,7 +438,7 @@ export default function InventoryPage() {
       {/* Item list */}
       {sortedItems.length === 0 ? (
         <div className="rounded-lg border border-dashed p-12 text-center text-muted-foreground">
-          Keine Vorr\u00e4te vorhanden. F\u00fcge Zutaten hinzu, um deinen Vorrat zu
+          Keine Vorräte vorhanden. Füge Zutaten hinzu, um deinen Vorrat zu
           verfolgen.
         </div>
       ) : (

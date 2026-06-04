@@ -205,3 +205,45 @@ def test_parse_range_no_space_around_dash() -> None:
     assert result == ParsedIngredientLine(
         quantity=2.0, unit="EL", name="Honig"
     )
+
+
+def test_parse_unicode_fraction_half() -> None:
+    result = IngredientLineParser.parse("\u00bd EL fl\u00fcssiger Honig")
+    assert result == ParsedIngredientLine(
+        quantity=0.5, unit="EL", name="fl\u00fcssiger Honig"
+    )
+
+
+def test_parse_compound_quantity_with_fraction() -> None:
+    result = IngredientLineParser.parse("1 \u00bc TL Salz")
+    assert result == ParsedIngredientLine(
+        quantity=1.25, unit="TL", name="Salz"
+    )
+
+
+def test_parse_msp_with_dot() -> None:
+    result = IngredientLineParser.parse("2 Msp. Muskat")
+    assert result == ParsedIngredientLine(
+        quantity=2.0, unit="Msp", name="Muskat"
+    )
+
+
+def test_parse_deciliter() -> None:
+    result = IngredientLineParser.parse("5 dl Milchwasser")
+    assert result == ParsedIngredientLine(
+        quantity=5.0, unit="ml", name="Milchwasser"
+    )
+
+
+def test_parse_deciliter_rotwein() -> None:
+    result = IngredientLineParser.parse("1 dl Rotwein")
+    assert result == ParsedIngredientLine(
+        quantity=1.0, unit="ml", name="Rotwein"
+    )
+
+
+def test_parse_quarter_fraction() -> None:
+    result = IngredientLineParser.parse("\u00be l Wasser")
+    assert result == ParsedIngredientLine(
+        quantity=0.75, unit="l", name="Wasser"
+    )

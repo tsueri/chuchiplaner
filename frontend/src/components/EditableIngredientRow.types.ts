@@ -2,12 +2,14 @@ export const INGREDIENT_UNITS = [
   "g",
   "kg",
   "ml",
+  "dl",
   "l",
   "EL",
   "TL",
   "Stück",
   "Bund",
   "Prise",
+  "Msp",
 ] as const
 
 export interface EditableIngredientValue {

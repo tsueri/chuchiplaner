@@ -312,6 +312,14 @@ async def test_complete_transfers_to_inventory(
 
     data = await _get_grocery_list(client, cookies, plan["id"])
     list_id = data["id"]
+    items = data["items"]
+
+    butter_item = next(i for i in items if i["name"] == "Butter")
+    await client.put(
+        f"/api/grocery-list/items/{butter_item['id']}",
+        json={"checked": True},
+        cookies=cookies,
+    )
 
     comp_resp = await client.post(
         "/api/grocery-list/complete",
@@ -336,7 +344,7 @@ async def test_complete_transfers_to_inventory(
 
 
 @pytest.mark.asyncio
-async def test_checked_items_not_transferred(
+async def test_checked_items_transferred(
     client: AsyncClient,
 ) -> None:
     reg = await _register(client, "grocery9")
@@ -382,7 +390,7 @@ async def test_checked_items_not_transferred(
     )
     items_inv = inv_resp.json()
     assert len(items_inv) == 1
-    assert items_inv[0]["ingredient_name"] == "Eier"
+    assert items_inv[0]["ingredient_name"] == "Mehl"
 
 
 # ----- Regenerate -----

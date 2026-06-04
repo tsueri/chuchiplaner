@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
 import { useParams } from "react-router-dom"
+import { formatWeekLabel } from "@/lib/iso-week"
 
 interface PublicRecipe {
   id: number
@@ -36,16 +37,6 @@ const MEAL_LABELS: Record<string, string> = {
   dessert: "Dessert",
 }
 const MEAL_TYPES = ["breakfast", "lunch", "dinner", "dessert"]
-
-function formatWeekLabel(year: number, week: number): string {
-  const firstDay = new Date(year, 0, 4)
-  const dayOfWeek = firstDay.getDay() || 7
-  const monday = new Date(firstDay)
-  monday.setDate(firstDay.getDate() - dayOfWeek + 1 + (week - 1) * 7)
-  const sunday = new Date(monday)
-  sunday.setDate(monday.getDate() + 6)
-  return `KW ${week}, ${monday.getDate()}.–${sunday.getDate()}.${sunday.getMonth() + 1}.`
-}
 
 const DOMAIN_COLORS: Record<string, string> = {
   "fooby.ch": "bg-emerald-100 text-emerald-800",

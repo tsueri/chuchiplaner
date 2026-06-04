@@ -6,12 +6,13 @@ class UnitConverter:
 
     ML_UNITS: dict[str, int] = {
         "ml": 1,
+        "dl": 100,
         "l": 1000,
         "el": 15,
         "tl": 5,
     }
 
-    PIECE_UNITS: set[str] = {"st\u00fcck", "bund", "prise"}
+    PIECE_UNITS: set[str] = {"st\u00fcck", "bund", "prise", "msp"}
 
     @staticmethod
     def normalize(

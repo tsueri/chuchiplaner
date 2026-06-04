@@ -24,7 +24,33 @@ interface IngredientComboboxProps {
 function IngredientCombobox({ value, onChange }: IngredientComboboxProps) {
   const [results, setResults] = useState<Ingredient[]>([])
   const [manuallyClosed, setManuallyClosed] = useState(false)
+  const [creating, setCreating] = useState(false)
+  const [searchCompleted, setSearchCompleted] = useState(false)
+  const [userInteracted, setUserInteracted] = useState(false)
   const locked = value.ingredientId !== null
+
+  const createIngredient = async (name: string) => {
+    setCreating(true)
+    try {
+      const res = await fetch("/api/ingredients", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      })
+      if (!res.ok) return
+      const created = (await res.json()) as Ingredient
+      onChange({
+        ...value,
+        ingredientId: created.id,
+        ingredientName: created.name,
+        query: "",
+        suggestedIngredientId: null,
+      })
+    } finally {
+      setCreating(false)
+    }
+  }
 
   useEffect(() => {
     if (locked) return
@@ -44,6 +70,7 @@ function IngredientCombobox({ value, onChange }: IngredientComboboxProps) {
         const data = (await res.json()) as Ingredient[]
         if (!controller.signal.aborted) {
           setResults(data)
+          setSearchCompleted(true)
         }
       } catch {
         // aborted or network error — ignore
@@ -55,11 +82,12 @@ function IngredientCombobox({ value, onChange }: IngredientComboboxProps) {
     }
   }, [value.query, locked])
 
+  const queryTrimmed = value.query.trim()
   const showDropdown =
     !locked &&
-    value.query.trim() !== "" &&
+    queryTrimmed !== "" &&
     !manuallyClosed &&
-    results.length > 0
+    (results.length > 0 || (searchCompleted && userInteracted))
 
   if (locked) {
     return (
@@ -112,10 +140,11 @@ function IngredientCombobox({ value, onChange }: IngredientComboboxProps) {
         className="w-full"
         onChange={(e) => {
           setResults([])
+          setSearchCompleted(false)
           setManuallyClosed(false)
           onChange({ ...value, query: e.target.value, suggestedIngredientId: null })
         }}
-        onFocus={() => setManuallyClosed(false)}
+        onFocus={() => { setManuallyClosed(false); setUserInteracted(true) }}
         onBlur={() => setManuallyClosed(true)}
       />
       {value.raw && (
@@ -153,6 +182,19 @@ function IngredientCombobox({ value, onChange }: IngredientComboboxProps) {
               {ing.name}
             </li>
           ))}
+          {results.length === 0 && queryTrimmed !== "" && (
+            <li
+              role="option"
+              tabIndex={0}
+              onMouseDown={(e) => {
+                e.preventDefault()
+                createIngredient(queryTrimmed)
+              }}
+              className="cursor-pointer px-2.5 py-1 text-sm text-primary hover:bg-muted"
+            >
+              {creating ? "Erstelle..." : `"${queryTrimmed}" erstellen`}
+            </li>
+          )}
           {value.suggestedIngredientId !== null && (
             <li
               role="option"
