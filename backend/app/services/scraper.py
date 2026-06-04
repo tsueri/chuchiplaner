@@ -124,7 +124,7 @@ class _MetaParser(HTMLParser):
 
 class _JsonLdRecipeParser:
     @staticmethod
-    def extract(html: str) -> dict | None:
+    def extract(html: str) -> dict[str, Any] | None:
         pattern = r'<script[^>]*type="application/ld\+json"[^>]*>(.*?)</script>'
         for match in re.finditer(pattern, html, re.DOTALL):
             try:
@@ -137,7 +137,7 @@ class _JsonLdRecipeParser:
         return None
 
     @staticmethod
-    def _find_recipe(data: Any) -> dict | None:
+    def _find_recipe(data: Any) -> dict[str, Any] | None:
         if isinstance(data, dict):
             if _jsonld_is_type(data, "Recipe"):
                 return data
@@ -154,7 +154,7 @@ class _JsonLdRecipeParser:
         return None
 
     @staticmethod
-    def _parse_recipe(recipe: dict) -> dict:
+    def _parse_recipe(recipe: dict[str, Any]) -> dict[str, Any]:
         result: dict[str, Any] = {}
 
         result["title"] = recipe.get("name", "")
@@ -223,7 +223,7 @@ class _JsonLdRecipeParser:
         return result
 
 
-def _jsonld_is_type(data: dict, type_name: str) -> bool:
+def _jsonld_is_type(data: dict[str, Any], type_name: str) -> bool:
     dt = data.get("@type")
     if isinstance(dt, str):
         return dt == type_name
