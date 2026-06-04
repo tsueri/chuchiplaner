@@ -168,9 +168,9 @@ async def update_week_slots(
             detail="This week is not editable (past or too far in the future)",
         )
 
-    updates_data: list[dict] = []
+    updates_data: list[dict[str, int | str]] = []
     for s in body.slots:
-        upd: dict = {"day_of_week": s.day_of_week, "meal_type": s.meal_type}
+        upd: dict[str, int | str] = {"day_of_week": s.day_of_week, "meal_type": s.meal_type}
         if s.recipe_id is not None:
             upd["recipe_id"] = s.recipe_id
         if s.portions is not None:
