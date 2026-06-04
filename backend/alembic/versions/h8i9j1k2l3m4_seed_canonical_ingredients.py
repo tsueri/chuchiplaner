@@ -194,7 +194,7 @@ INGREDIENTS = [
 def upgrade() -> None:
     for name in INGREDIENTS:
         op.execute(
-            f"INSERT INTO ingredients (name) VALUES ('{name}')"
+            f"INSERT OR IGNORE INTO ingredients (name) VALUES ('{name}')"
         )
 
 
