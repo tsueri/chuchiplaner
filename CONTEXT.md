@@ -32,6 +32,7 @@ A self-hosted family meal planner for Swiss households. Reduces food waste by pl
 | **MatchingEngine** | Core algorithm that scores recipes against available inventory. Returns `ScoredRecipe` objects sorted by match percentage + urgency boost (ingredients expiring within 3 days get +0.1). Three modes: `exact` (all ingredients available), `partial` (any match), `ingredient_first` (filter by specific ingredient). |
 | **UnitConverter** | Static utility that normalizes ingredient quantities to canonical units. Input: (amount, unit_str). Output: (grams, milliliters, pieces) — exactly one non-None. Supports g, kg, ml, l, EL (15ml), TL (5ml), Stück, Bund, Prise. |
 | **DurationSerializer** | Static utility for the four ISO 8601 duration fields on Recipe. `to_iso_duration(minutes)` → `"PT1H30M"` (None in → None out); `from_iso_duration(iso)` → minutes, truncating `PT45S` to `0` and returning `None` for garbage; `format_human(minutes)` → German string (`"1 Std. 30 min"`, `"45 min"`, `"1 Std."`); `parse_human(human)` → minutes, accepting `"1h 30m"`, `"90 min"`, `"1:30"`, `"2 Std."`, `"2.5h"`, returning `None` for anything else. Pure module — same shape as `UnitConverter`. |
+| **FTSRebuilder** | Single source of truth for the `recipes_fts` virtual table (columns: `title, description, steps, ingredients, keywords, author, tags`) and its per-column bm25 weights (`ingredients=5.0`, `steps=3.0`, `description=3.0`, others=1.0). `rebuild(db)` drops and recreates the table and repopulates by joining `recipes` to `recipe_steps`, `recipe_ingredients`, and `tags` (soft-deleted rows skipped). `reindex_one(db, recipe_id)` rewrites a single row using the same join — independent of in-memory ORM state — and is called by `create_recipe` / `update_recipe`. `delete_one(db, recipe_id)` removes a row and is called by the soft-delete path. `weights_sql()` returns the bm25 weights in column order for `ORDER BY bm25(recipes_fts, …)` in the search endpoint. |
 | **IngredientLineParser** | Splits a raw scraped ingredient string (e.g. `"600g Kalbfleisch"`, `"1 Zwiebel, gehackt"`) into `(quantity, unit, name)`. Returns `quantity=None, unit=None, name=line` for unparseable lines (e.g. `"Salz und Pfeffer"`). Uses the source-side unit vocabulary — canonical synonyms (Esslöffel, Teelöffel, Dose, Becher, …) plus the standard `UnitConverter` set — and is the only module that knows those synonyms. Unit name maps to the canonical form (`"EL"` not `"Esslöffel"`). Ranges (`"2-3 EL"`) collapse to the lower bound. |
 | **IngredientNormalizer** | Resolves parsed ingredient names to canonical Ingredient IDs. Uses household aliases first, then exact name match, then fuzzy matching (SequenceMatcher, threshold 0.6). Returns `(ingredient_id, confidence)` where 1.0 means exact/alias. Wired into the import pipeline: `POST /api/recipes/import` runs the parser + normalizer for every scraped line and returns one `ScrapedIngredientItem` per line. |
 | **ScrapedIngredientItem** | Per-scraped-line payload inside the import response. Fields: `raw` (original string), `name` (parsed), `quantity` (float or null), `unit` (canonical form or null), `ingredient_id` (matched canonical or null), `confidence` (0.0–1.0). The form pre-fills one row per item, locking rows at confidence 1.0, pre-selecting the suggestion at 0.6–1.0, and leaving rows open at < 0.6. |
@@ -56,7 +57,7 @@ browser ──▶ Vite dev proxy (5173) ──▶ FastAPI (8000) ──▶ SQLit
 
 **i18n**: react-i18next with `i18next-parser` for extraction. Currently one locale (`de`), minimally used — most strings are hardcoded German.
 
-**Search**: FTS5 virtual table (`recipes_fts`) on recipe title + instructions. Populated on create/update via raw SQL. Full-text query with LIKE fallback.
+**Search**: FTS5 virtual table (`recipes_fts`) on the seven columns `(title, description, steps, ingredients, keywords, author, tags)`. Populated on create/update via raw SQL through `FTSRebuilder` (`app/services/fts_rebuilder.py`). The search endpoint orders FTS hits by `bm25` with per-column weights — `ingredients` (5.0) ranks above `steps`/`description` (3.0) which rank above `title` (1.0); `keywords`/`author`/`tags` carry the default 1.0 weight — so a query that matches an ingredient name returns the recipe even when the word never appears in the title or steps. The LIKE fallback on `title` still applies when FTS returns nothing.
 
 **Backup**: Docker sidecar (`backup/`) copies the SQLite file daily with 7-day retention. Manual JSON export button in settings (`GET /api/household/export`).
 
@@ -100,6 +101,8 @@ backend/
 │       ├── matching_engine.py  # Pure function: suggest(inventory, recipes, mode, ...) → sorted ScoredRecipe[]
 │       ├── scraper.py       # RecipeScraper: recipe-scrapers lib, in-memory cache, 2s rate limit, threading.Lock
 │       ├── unit_converter.py   # Static class: normalize(amount, unit) → (grams, ml, pieces)
+│       ├── duration_serializer.py  # Static utility: ISO 8601 ↔ minutes ↔ German human strings
+│       ├── fts_rebuilder.py   # FTSRebuilder: rebuild(db) / reindex_one(db, id) / delete_one(db, id) / weights_sql()
 │       └── normalizer.py       # IngredientNormalizer: resolve(name, aliases) → (id, confidence), learn_alias()
 ├── alembic/                 # 13 migrations (builds full schema incrementally)
 └── tests/                   # pytest + pytest-asyncio, in-memory SQLite, HTTP test client per feature
@@ -203,7 +206,7 @@ Recipes use a `deleted_at` timestamp (nullable). All recipe queries filter `WHER
 MealSlot's `recipe_id` is nullable. When a recipe is soft-deleted, slot references are NOT cleaned up — the plan still shows the recipe title but the detail link is dead. The frontend handles this with "Delete"-button check (`recipe_id` truthiness).
 
 ### FTS5 search
-Full-text search uses a virtual `recipes_fts` table. Populated on recipe create/update via raw SQL in `recipes.py` (not SQLAlchemy ORM). The search endpoint falls back to `LIKE` when FTS returns no results.
+Full-text search uses a virtual `recipes_fts` table with seven columns: `(title, description, steps, ingredients, keywords, author, tags)`. Populated on recipe create/update via raw SQL in `FTSRebuilder.reindex_one`; rebuilt in bulk via `FTSRebuilder.rebuild` (used by the slice 1 migration and available as a runtime tool). The search endpoint orders FTS hits by `bm25(recipes_fts, …)` with per-column weights from `FTSRebuilder.WEIGHTS` — `ingredients=5.0`, `steps=3.0`, `description=3.0`, `title=1.0`, `keywords=1.0`, `author=1.0`, `tags=1.0` — so a hit in `ingredients` ranks above a hit in `steps`/`description`, which rank above a hit in `title`. When FTS returns no rows the endpoint falls back to a `Recipe.title.contains(search)` SQL LIKE so partial-prefix queries (e.g. `"Spagh"`) still resolve.
 
 ### Scraper caching
 Recipe URLs are cached in-memory for the lifetime of the process. A 2-second rate limit between requests protects the source sites. Blocking `time.sleep` (not async) — acceptable because the scrape endpoint is called manually, not in hot paths.
@@ -227,7 +230,7 @@ When a recipe is planned but not yet cooked, its ingredients are reserved (scale
 
 **Framework**: pytest + pytest-asyncio (mode: auto). In-memory SQLite databases. Test client via `httpx.AsyncClient` with FastAPI TestClient-style transport.
 
-**What's tested** (15 test files in `tests/`):
+**What's tested** (19 test files in `tests/`):
 
 | Test file | Scope |
 |---|---|
@@ -239,7 +242,8 @@ When a recipe is planned but not yet cooked, its ingredients are reserved (scale
 | `test_auth.py` | Register, login, logout, session validation, password change |
 | `test_household.py` | Household CRUD, invite codes, member management, meal templates, export |
 | `test_ingredients.py` | Ingredient CRUD, aliases |
-| `test_recipes.py` | Recipe CRUD, import, tags, favorites, notes, FTS search, soft delete |
+| `test_recipes.py` | Recipe CRUD, import, tags, favorites, notes, FTS search (bm25-ranked + LIKE fallback), soft delete |
+| `test_fts_rebuilder.py` | FTSRebuilder: column / weight invariants, full rebuild from join, ingredient-only search, soft-delete skip, per-row reindex / delete |
 | `test_inventory.py` | Inventory CRUD, category filtering |
 | `test_weeks.py` | Week plan CRUD, slot updates, cooking, leftovers, visibility, ISO week logic |
 | `test_grocery_list.py` | List generation, regeneration, item management, completion, sharing |

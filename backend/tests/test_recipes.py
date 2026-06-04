@@ -1496,6 +1496,119 @@ async def test_search_recipes_by_steps(client: AsyncClient) -> None:
     assert data[0]["title"] == "Risotto"
 
 
+@pytest.mark.asyncio
+async def test_search_recipes_by_ingredient_only(client: AsyncClient) -> None:
+    auth = await _register(client, "searchingredientonly")
+    cookies = auth["cookies"]
+
+    await _create_recipe_with_ingredients(
+        client, cookies, title="Pasta", ingredient_names=["Tomate"]
+    )
+    await _create_recipe(client, cookies, title="Boring Steak")
+
+    resp = await client.get(
+        "/api/recipes", params={"search": "Tomate"}, cookies=cookies
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    titles = [r["title"] for r in data]
+    assert "Pasta" in titles
+    assert "Boring Steak" not in titles
+
+
+@pytest.mark.asyncio
+async def test_search_reweighting_ingredients_above_steps_above_title(
+    client: AsyncClient,
+) -> None:
+    auth = await _register(client, "searchreweight")
+    cookies = auth["cookies"]
+
+    r_ingredient = await _create_recipe_with_ingredients(
+        client,
+        cookies,
+        title="Pasta",
+        ingredient_names=["Tomatenpaste"],
+    )
+    r_step = await _create_recipe(
+        client,
+        cookies,
+        title="Pizza",
+        steps=[{"text": "Use Tomatenpaste sauce."}],
+    )
+    r_title = await _create_recipe(
+        client,
+        cookies,
+        title="Tomatenpaste Spezial",
+        steps=[{"text": "Cook it."}],
+    )
+
+    resp = await client.get(
+        "/api/recipes", params={"search": "Tomatenpaste"}, cookies=cookies
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    ids = [r["id"] for r in data]
+
+    assert r_ingredient["id"] in ids
+    assert r_step["id"] in ids
+    assert r_title["id"] in ids
+
+    pos_ing = ids.index(r_ingredient["id"])
+    pos_step = ids.index(r_step["id"])
+    pos_title = ids.index(r_title["id"])
+    assert pos_ing < pos_step, (
+        f"ingredient hit must rank above steps hit; got order {ids}"
+    )
+    assert pos_step < pos_title, (
+        f"steps hit must rank above title hit; got order {ids}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_search_like_fallback_when_fts_returns_nothing(
+    client: AsyncClient,
+) -> None:
+    auth = await _register(client, "searchlikefb")
+    cookies = auth["cookies"]
+
+    await _create_recipe(client, cookies, title="Plain Spaghetti")
+
+    resp = await client.get(
+        "/api/recipes", params={"search": "Spagh"}, cookies=cookies
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    titles = [r["title"] for r in data]
+    assert "Plain Spaghetti" in titles
+
+
+@pytest.mark.asyncio
+async def test_search_title_like_substring_union_with_fts(
+    client: AsyncClient,
+) -> None:
+    auth = await _register(client, "searchlikeunion")
+    cookies = auth["cookies"]
+
+    r_substring = await _create_recipe(
+        client, cookies, title="Tomatencremesuppe", steps=[{"text": "Cook."}]
+    )
+    r_fts = await _create_recipe_with_ingredients(
+        client,
+        cookies,
+        title="Pasta Asciutta",
+        ingredient_names=["Tomate"],
+    )
+
+    resp = await client.get(
+        "/api/recipes", params={"search": "Tomate"}, cookies=cookies
+    )
+    assert resp.status_code == 200
+    ids = [r["id"] for r in resp.json()]
+    assert r_substring["id"] in ids
+    assert r_fts["id"] in ids
+    assert ids.index(r_fts["id"]) < ids.index(r_substring["id"])
+
+
 # ----- Tag filter tests -----
 
 

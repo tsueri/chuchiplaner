@@ -43,6 +43,7 @@ from app.schemas.recipe import (
     TagCreateRequest,
     TagResponse,
 )
+from app.services.fts_rebuilder import FTSRebuilder
 from app.services.ingredient_line_parser import IngredientLineParser
 from app.services.normalizer import IngredientNormalizer
 from app.services.scraper import RecipeScraper
@@ -87,33 +88,6 @@ def _build_recipe_step_responses(
 ) -> list[RecipeStepResponse]:
     sorted_steps = sorted(steps, key=lambda s: s.position)
     return [_build_recipe_step_response(s) for s in sorted_steps]
-
-
-def _fts_row_payload(
-    recipe: Recipe,
-    steps: list[RecipeStep] | None = None,
-    ingredients: list[RecipeIngredient] | None = None,
-    tags: list[RecipeTag] | None = None,
-) -> dict[str, object]:
-    steps_text = " ".join(s.text for s in (steps or recipe.steps or []))
-    ingredients_text = " ".join(
-        ri.ingredient.name for ri in (ingredients or recipe.ingredients or [])
-        if ri.ingredient is not None
-    )
-    tag_names = " ".join(
-        rt.tag.name for rt in (tags or recipe.tags or [])
-        if rt.tag is not None
-    )
-    return {
-        "id": recipe.id,
-        "title": recipe.title,
-        "description": recipe.description or "",
-        "steps": steps_text,
-        "ingredients": ingredients_text,
-        "keywords": recipe.keywords or "",
-        "author": recipe.author or "",
-        "tags": tag_names,
-    }
 
 
 def _build_recipe_list_item(
@@ -467,42 +441,7 @@ async def _upsert_recipe(
 
     await db.flush()
 
-    from sqlalchemy import text as sqla_text
-    await db.execute(
-        sqla_text("DELETE FROM recipes_fts WHERE rowid = :id"),
-        {"id": existing.id},
-    )
-
-    ingredient_names_result = await db.execute(
-        select(Ingredient.name).where(
-            Ingredient.id.in_({item.ingredient_id for item in body.ingredients})
-        )
-    )
-    ingredient_names = " ".join(ingredient_names_result.scalars().all())
-    tag_names = " ".join(
-        t.name for t in (await db.execute(
-            select(Tag).where(Tag.id.in_(body.tag_ids or []))
-        )).scalars().all()
-    ) if body.tag_ids else ""
-    fts_payload = {
-        "id": existing.id,
-        "title": existing.title,
-        "description": existing.description or "",
-        "steps": " ".join(s.text for s in body.steps or []),
-        "ingredients": ingredient_names,
-        "keywords": existing.keywords or "",
-        "author": existing.author or "",
-        "tags": tag_names,
-    }
-    await db.execute(
-        sqla_text(
-            "INSERT INTO recipes_fts(rowid, title, description, steps, "
-            "ingredients, keywords, author, tags) "
-            "VALUES (:id, :title, :description, :steps, "
-            ":ingredients, :keywords, :author, :tags)"
-        ),
-        fts_payload,
-    )
+    await FTSRebuilder.reindex_one(db, existing.id)
 
     refreshed_result = await db.execute(
         select(Recipe)
@@ -627,26 +566,7 @@ async def create_recipe(
 
     await db.flush()
 
-    from sqlalchemy import text as sqla_text
-    fts_payload = {
-        "id": recipe.id,
-        "title": recipe.title,
-        "description": recipe.description or "",
-        "steps": " ".join(s.text for s in body.steps),
-        "ingredients": "",
-        "keywords": recipe.keywords or "",
-        "author": recipe.author or "",
-        "tags": "",
-    }
-    await db.execute(
-        sqla_text(
-            "INSERT INTO recipes_fts(rowid, title, description, steps, "
-            "ingredients, keywords, author, tags) "
-            "VALUES (:id, :title, :description, :steps, "
-            ":ingredients, :keywords, :author, :tags)"
-        ),
-        fts_payload,
-    )
+    await FTSRebuilder.reindex_one(db, recipe.id)
 
     refreshed_result = await db.execute(
         select(Recipe)
@@ -716,18 +636,20 @@ async def list_recipes(
         Recipe.deleted_at.is_(None),
     )
 
+    fts_ids_ranked: list[int] = []
     if search:
         from sqlalchemy import text as sqla_text
         fts_result = await db.execute(
             sqla_text(
-                "SELECT rowid FROM recipes_fts WHERE recipes_fts MATCH :query"
+                "SELECT rowid FROM recipes_fts WHERE recipes_fts MATCH :query "
+                f"ORDER BY bm25(recipes_fts, {FTSRebuilder.weights_sql()})"
             ),
             {"query": search},
         )
-        fts_ids = [row[0] for row in fts_result.fetchall()]
-        if fts_ids:
+        fts_ids_ranked = [row[0] for row in fts_result.fetchall()]
+        if fts_ids_ranked:
             base_query = base_query.where(
-                Recipe.title.contains(search) | Recipe.id.in_(fts_ids)
+                Recipe.title.contains(search) | Recipe.id.in_(fts_ids_ranked)
             )
         else:
             base_query = base_query.where(Recipe.title.contains(search))
@@ -748,19 +670,33 @@ async def list_recipes(
         )
         base_query = base_query.where(Recipe.id.in_(select(fav_subq.c.recipe_id)))
 
+    base_query = base_query.options(
+        selectinload(Recipe.tags).selectinload(RecipeTag.tag),
+        selectinload(Recipe.favorites),
+        selectinload(Recipe.ingredients).selectinload(
+            RecipeIngredient.ingredient
+        ),
+        selectinload(Recipe.steps),
+    )
+
+    if fts_ids_ranked:
+        result = await db.execute(base_query)
+        recipes = result.unique().scalars().all()
+        rank_index = {rid: idx for idx, rid in enumerate(fts_ids_ranked)}
+
+        def _sort_key(r: Recipe) -> tuple[int, float]:
+            if r.id in rank_index:
+                return (0, float(rank_index[r.id]))
+            return (1, -r.created_at.timestamp())
+
+        recipes_sorted = sorted(recipes, key=_sort_key)
+        return [
+            _build_recipe_list_item(r, current_user.id)
+            for r in recipes_sorted[offset : offset + limit]
+        ]
+
     result = await db.execute(
-        base_query
-        .options(
-            selectinload(Recipe.tags).selectinload(RecipeTag.tag),
-            selectinload(Recipe.favorites),
-            selectinload(Recipe.ingredients).selectinload(
-                RecipeIngredient.ingredient
-            ),
-            selectinload(Recipe.steps),
-        )
-        .order_by(Recipe.created_at.desc())
-        .offset(offset)
-        .limit(limit)
+        base_query.order_by(Recipe.created_at.desc()).offset(offset).limit(limit)
     )
     recipes = result.unique().scalars().all()
     return [_build_recipe_list_item(r, current_user.id) for r in recipes]
@@ -922,7 +858,6 @@ async def update_recipe(
 
     await db.flush()
 
-    from sqlalchemy import text as sqla_text
     fts_reindex = (
         body.title is not None
         or body.description is not None
@@ -933,20 +868,7 @@ async def update_recipe(
         or body.tag_ids is not None
     )
     if fts_reindex:
-        await db.execute(
-            sqla_text("DELETE FROM recipes_fts WHERE rowid = :id"),
-            {"id": recipe_id},
-        )
-        fts_payload = _fts_row_payload(recipe)
-        await db.execute(
-            sqla_text(
-                "INSERT INTO recipes_fts(rowid, title, description, steps, "
-                "ingredients, keywords, author, tags) "
-                "VALUES (:id, :title, :description, :steps, "
-                ":ingredients, :keywords, :author, :tags)"
-            ),
-            fts_payload,
-        )
+        await FTSRebuilder.reindex_one(db, recipe_id)
 
     await db.refresh(
         recipe, ["ingredients", "steps", "tags", "favorites"]
@@ -982,11 +904,7 @@ async def delete_recipe(
 
     recipe.deleted_at = dt.now(UTC)
 
-    from sqlalchemy import text as sqla_text
-    await db.execute(
-        sqla_text("DELETE FROM recipes_fts WHERE rowid = :id"),
-        {"id": recipe_id},
-    )
+    await FTSRebuilder.delete_one(db, recipe_id)
 
 
 # ----- Favorites -----
