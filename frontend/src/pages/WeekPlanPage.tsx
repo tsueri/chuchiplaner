@@ -168,7 +168,20 @@ export default function WeekPlanPage() {
     }
     searchTimer.current = setTimeout(() => {
       api(`/recipes?search=${encodeURIComponent(query.trim())}&limit=20`)
-        .then((data: Recipe[]) => setSearchResults(data))
+        .then((data: { id: number; title: string; ingredients?: { length: number } }[]) =>
+          setSearchResults(
+            data.map((item) => ({
+              recipe_id: item.id,
+              title: item.title,
+              score: 0,
+              matched_ingredients: 0,
+              total_ingredients: item.ingredients?.length ?? 0,
+              missing_ingredients: [],
+              urgency_boost: 0,
+              expiring_ingredients: [],
+            }))
+          )
+        )
         .catch(() => setSearchResults([]))
     }, 250)
   }
