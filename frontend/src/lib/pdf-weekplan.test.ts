@@ -46,16 +46,6 @@ describe("populatePdf", () => {
     expect(raw).toContain("(Spaghetti Bolognese)")
   })
 
-  it("includes portions", () => {
-    const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" })
-    populatePdf(doc, {
-      weekLabel: "KW 23",
-      slots: [makeSlot(0, "lunch", "Spaghetti", 3)],
-    })
-    const raw = pdfText(doc)
-    expect(raw).toContain("(3 Port.)")
-  })
-
   it("truncates long recipe titles at 50 chars", () => {
     const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" })
     const longTitle = "A".repeat(60)

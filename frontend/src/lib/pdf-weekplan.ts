@@ -77,14 +77,7 @@ export function populatePdf(
     doc.text(truncate(slot.recipeTitle), PAGE_WIDTH / 2, y, {
       align: "center",
     })
-    y += 5
-
-    doc.setFont("Times", "Italic")
-    doc.setFontSize(8)
-    doc.text(`${slot.portions} Port.`, PAGE_WIDTH / 2, y, {
-      align: "center",
-    })
-    y += 9
+    y += 10
   }
 
   return y
