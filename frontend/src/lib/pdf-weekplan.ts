@@ -83,23 +83,21 @@ export function populatePdf(
   return y
 }
 
-export async function embedQrCode(
-  doc: jsPDF,
-  url: string,
-  yStart: number,
-): Promise<void> {
-  let y = yStart + 6
+export async function embedQrCode(doc: jsPDF, url: string): Promise<void> {
+  const qrSize = 20
+  const margin = 15
+  const qrX = PAGE_WIDTH - margin - qrSize
+  const qrY = PAGE_HEIGHT - margin - qrSize - 5
+
   const qrDataUrl = await QRCode.toDataURL(url, {
     width: 120,
     margin: 0,
   })
-  const qrSize = 30
-  const qrX = (PAGE_WIDTH - qrSize) / 2
-  doc.addImage(qrDataUrl, "PNG", qrX, y, qrSize, qrSize)
-  y += qrSize + 3
+  doc.addImage(qrDataUrl, "PNG", qrX, qrY, qrSize, qrSize)
+
   doc.setFont("Times", "Italic")
-  doc.setFontSize(8)
-  doc.text("\u00D6ffentlicher Link", PAGE_WIDTH / 2, y, {
+  doc.setFontSize(7)
+  doc.text("\u00D6ffentlicher Link", qrX + qrSize / 2, qrY + qrSize + 3, {
     align: "center",
   })
 }
@@ -109,13 +107,13 @@ export async function generateWeekPlanPdf(
 ): Promise<void> {
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" })
 
-  const yAfterMeals = populatePdf(doc, {
+  populatePdf(doc, {
     weekLabel: options.weekLabel,
     slots: options.slots,
   })
 
   if (options.publicUrl) {
-    await embedQrCode(doc, options.publicUrl, yAfterMeals)
+    await embedQrCode(doc, options.publicUrl)
   }
 
   doc.setFont("Times", "Italic")

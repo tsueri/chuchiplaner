@@ -100,7 +100,7 @@ describe("populatePdf", () => {
 describe("embedQrCode", () => {
   it("embeds QR image and label for a public URL", async () => {
     const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" })
-    await embedQrCode(doc, "https://example.com/plan/test/2025/kw23", 50)
+    await embedQrCode(doc, "https://example.com/plan/test/2025/kw23")
     const raw = pdfText(doc)
     expect(raw).toContain("\u00D6ffentlicher")
   })
