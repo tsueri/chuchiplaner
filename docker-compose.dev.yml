@@ -6,8 +6,8 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./backend:/app
-      - ./data:/app/data
+      - ./backend:/app:Z
+      - ./data:/app/data:Z
     environment:
       - CHUCHI_DATABASE_URL=sqlite+aiosqlite:///./data/chuchiplaner.db
     depends_on:
