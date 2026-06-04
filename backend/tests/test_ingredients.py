@@ -253,3 +253,89 @@ async def test_add_alias_unauthenticated(client: AsyncClient) -> None:
         json={"ingredient_id": 1, "alias_name": "Test"},
     )
     assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_patch_ingredient_rename(client: AsyncClient) -> None:
+    response = await client.post("/api/ingredients", json={"name": "Rüebli"})
+    ingredient_id = response.json()["id"]
+
+    response = await client.patch(
+        f"/api/ingredients/{ingredient_id}",
+        json={"name": "Karotte"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["name"] == "Karotte"
+
+
+@pytest.mark.asyncio
+async def test_patch_ingredient_rename_duplicate(client: AsyncClient) -> None:
+    await client.post("/api/ingredients", json={"name": "Apfel"})
+    response = await client.post("/api/ingredients", json={"name": "Birne"})
+    birne_id = response.json()["id"]
+
+    response = await client.patch(
+        f"/api/ingredients/{birne_id}",
+        json={"name": "Apfel"},
+    )
+    assert response.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_patch_ingredient_rename_not_found(client: AsyncClient) -> None:
+    response = await client.patch(
+        "/api/ingredients/99999",
+        json={"name": "NichtDa"},
+    )
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_delete_ingredient(client: AsyncClient) -> None:
+    response = await client.post("/api/ingredients", json={"name": "Randen"})
+    ingredient_id = response.json()["id"]
+
+    response = await client.delete(f"/api/ingredients/{ingredient_id}")
+    assert response.status_code == 204
+
+    response = await client.get(f"/api/ingredients/{ingredient_id}")
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_delete_ingredient_not_found(client: AsyncClient) -> None:
+    response = await client.delete("/api/ingredients/99999")
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_delete_ingredient_blocked_by_inventory(
+    client: AsyncClient,
+) -> None:
+    reg_resp = await client.post(
+        "/api/auth/register",
+        json={"username": "delblock1", "password": "secret123"},
+    )
+    cookies = reg_resp.cookies
+
+    create_resp = await client.post(
+        "/api/ingredients", json={"name": "Blockiert"}
+    )
+    ingredient_id = create_resp.json()["id"]
+
+    await client.post(
+        "/api/inventory",
+        json={
+            "ingredient_id": ingredient_id,
+            "quantity": 1.0,
+            "unit": "g",
+            "category": "raw",
+        },
+        cookies=cookies,
+    )
+
+    response = await client.delete(f"/api/ingredients/{ingredient_id}")
+    assert response.status_code == 409
+    data = response.json()
+    assert "Inventar" in data["detail"]

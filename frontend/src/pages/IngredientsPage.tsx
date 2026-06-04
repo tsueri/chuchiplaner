@@ -75,6 +75,11 @@ export default function IngredientsPage() {
   const [newIngredientSubmitting, setNewIngredientSubmitting] = useState(false)
   const [newIngredientError, setNewIngredientError] = useState("")
   const [cellError, setCellError] = useState<string | null>(null)
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null)
+  const [deleteError, setDeleteError] = useState("")
+  const [editingNameId, setEditingNameId] = useState<number | null>(null)
+  const [editNameValue, setEditNameValue] = useState("")
+  const [nameError, setNameError] = useState<string | null>(null)
 
   useEffect(() => {
     api("/ingredients")
@@ -173,6 +178,45 @@ export default function IngredientsPage() {
     setCellError(null)
   }
 
+  const handleDelete = async (id: number) => {
+    setDeleteError("")
+    try {
+      await api(`/ingredients/${id}`, { method: "DELETE" })
+      setIngredients((prev) => prev.filter((ing) => ing.id !== id))
+      setConfirmDeleteId(null)
+    } catch (err) {
+      setDeleteError(
+        err instanceof Error ? err.message : "Löschen fehlgeschlagen"
+      )
+    }
+  }
+
+  const commitNameEdit = async () => {
+    if (editingNameId === null) return
+    setNameError(null)
+    const trimmed = editNameValue.trim()
+    if (!trimmed || trimmed === ingredients.find((i) => i.id === editingNameId)?.name) {
+      setEditingNameId(null)
+      setEditNameValue("")
+      return
+    }
+    try {
+      const updated = await api(`/ingredients/${editingNameId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ name: trimmed }),
+      })
+      setIngredients((prev) =>
+        prev.map((ing) => (ing.id === updated.id ? (updated as IngredientConv) : ing))
+      )
+      setEditingNameId(null)
+      setEditNameValue("")
+    } catch (err) {
+      setNameError(
+        err instanceof Error ? err.message : "Umbenennen fehlgeschlagen"
+      )
+    }
+  }
+
   const isEditingCell = (ingredientId: number, spoon: SpoonUnit): boolean => {
     return editingCell !== null && editingCell.ingredientId === ingredientId && editingCell.spoon === spoon
   }
@@ -244,6 +288,20 @@ export default function IngredientsPage() {
         </div>
       )}
 
+      {/* Delete error */}
+      {deleteError && (
+        <div className="mb-4 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+          {deleteError}
+        </div>
+      )}
+
+      {/* Name edit error */}
+      {nameError && (
+        <div className="mb-4 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+          {nameError}
+        </div>
+      )}
+
       {/* Ingredients table */}
       {filteredIngredients.length === 0 ? (
         <div className="rounded-lg border border-dashed p-12 text-center text-muted-foreground">
@@ -262,12 +320,42 @@ export default function IngredientsPage() {
                     {label}
                   </th>
                 ))}
+                <th className="px-2 py-3" />
               </tr>
             </thead>
             <tbody>
               {filteredIngredients.map((ing) => (
-                <tr key={ing.id} className="border-b hover:bg-muted/30">
-                  <td className="px-4 py-2.5 font-medium">{ing.name}</td>
+              <tr key={ing.id} className="border-b hover:bg-muted/30">
+                <td className="px-4 py-2.5 font-medium">
+                  {editingNameId === ing.id ? (
+                    <Input
+                      type="text"
+                      value={editNameValue}
+                      onChange={(e) => setEditNameValue(e.target.value)}
+                      onBlur={commitNameEdit}
+                      onKeyDown={(e) => {
+                        if (e.key === "Escape") {
+                          setEditingNameId(null)
+                          setEditNameValue("")
+                          setNameError(null)
+                        }
+                      }}
+                      autoFocus
+                      className="h-8 text-sm"
+                    />
+                  ) : (
+                    <span
+                      className="cursor-pointer hover:text-primary"
+                      onClick={() => {
+                        setEditingNameId(ing.id)
+                        setEditNameValue(ing.name)
+                        setNameError(null)
+                      }}
+                    >
+                      {ing.name}
+                    </span>
+                  )}
+                </td>
                   {SPOON_COLUMNS.map(({ spoon }) => {
                     const { value, measure } = getValue(ing, spoon)
                     const editing = isEditingCell(ing.id, spoon)
@@ -307,25 +395,62 @@ export default function IngredientsPage() {
                       )
                     }
 
-                    return (
-                      <td
-                        key={spoon}
-                        className="px-4 py-2.5 text-right cursor-pointer hover:bg-muted/50"
-                        onClick={() =>
-                          startEdit(ing, spoon, measure ?? "grams", value)
-                        }
-                      >
-                        {value !== null && measure !== null ? (
-                          <span>
-                            {value} {measure === "grams" ? "g" : "ml"}
-                          </span>
-                        ) : (
-                          <span className="text-muted-foreground">—</span>
-                        )}
-                      </td>
-                    )
-                  })}
-                </tr>
+                return (
+                <td
+                  key={spoon}
+                  className="px-4 py-2.5 text-right cursor-pointer hover:bg-muted/50"
+                  onClick={() =>
+                    startEdit(ing, spoon, measure ?? "grams", value)
+                  }
+                >
+                  {value !== null && measure !== null ? (
+                    <span>
+                      {value} {measure === "grams" ? "g" : "ml"}
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+      )}
+
+      {/* Delete confirmation dialog */}
+      {confirmDeleteId !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="rounded-lg bg-background p-6 shadow-lg max-w-sm w-full">
+            <p className="text-sm mb-4">
+              Zutat wirklich löschen? Gekochte Rezepte sind nicht betroffen.
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setConfirmDeleteId(null)}
+              >
+                Abbrechen
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => handleDelete(confirmDeleteId)}
+              >
+                Bestätigen
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+                </td>
+              )
+            })}
+            <td className="px-2 py-2.5">
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => setConfirmDeleteId(ing.id)}
+              >
+                Löschen
+              </Button>
+            </td>
+          </tr>
               ))}
             </tbody>
           </table>

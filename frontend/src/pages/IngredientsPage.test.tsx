@@ -20,10 +20,25 @@ function buildFetchSpy(listIngredients: unknown, options?: {
   patchStatus?: number
   postResponse?: unknown
   postStatus?: number
+  deleteStatus?: number
+  deleteResponse?: unknown
 }) {
   return vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
     const url = typeof input === "string" ? input : (input as Request).url
-    if (init && (init as RequestInit).method === "POST" && url === "/api/ingredients") {
+    const method = init ? (init as RequestInit).method : undefined
+
+    if (method === "DELETE" && url.startsWith("/api/ingredients/")) {
+      if (options?.deleteStatus && options.deleteStatus !== 204) {
+        return Promise.resolve(
+          mockFetchResponse(
+            options.deleteResponse ?? { detail: "Zutat wird verwendet" },
+            { status: options.deleteStatus }
+          )
+        )
+      }
+      return Promise.resolve(new Response(null, { status: 204 }))
+    }
+    if (method === "POST" && url === "/api/ingredients") {
       return Promise.resolve(
         mockFetchResponse(
           options?.postResponse ?? {},
@@ -31,7 +46,7 @@ function buildFetchSpy(listIngredients: unknown, options?: {
         )
       )
     }
-    if (init && (init as RequestInit).method === "PATCH" && url.startsWith("/api/ingredients/")) {
+    if (method === "PATCH" && url.startsWith("/api/ingredients/")) {
       return Promise.resolve(
         mockFetchResponse(
           options?.patchResponse ?? listIngredients,
@@ -262,6 +277,138 @@ describe("IngredientsPage", () => {
 
     expect(
       await screen.findByText(/grams_per_el and ml_per_el cannot both be set/i)
+    ).toBeInTheDocument()
+  })
+
+  it("each ingredient row has a delete button", async () => {
+    buildFetchSpy([ingredientA, ingredientB])
+
+    renderInShell(<IngredientsPage />)
+
+    await screen.findByText("Mehl")
+
+    const deleteButtons = screen.getAllByText("Löschen")
+    expect(deleteButtons.length).toBe(2)
+  })
+
+  it("clicking delete shows confirmation dialog", async () => {
+    const user = userEvent.setup()
+    buildFetchSpy([ingredientA])
+
+    renderInShell(<IngredientsPage />)
+
+    await screen.findByText("Mehl")
+
+    const deleteButtons = screen.getAllByText("Löschen")
+    await user.click(deleteButtons[0])
+
+    const confirmButtons = screen.getAllByRole("button", { name: "Bestätigen" })
+    expect(confirmButtons.length).toBeGreaterThan(0)
+    const cancelButtons = screen.getAllByRole("button", { name: "Abbrechen" })
+    expect(cancelButtons.length).toBeGreaterThan(0)
+  })
+
+  it("confirming delete removes ingredient from list", async () => {
+    const user = userEvent.setup()
+    buildFetchSpy([ingredientA, ingredientB])
+
+    renderInShell(<IngredientsPage />)
+
+    await screen.findByText("Mehl")
+    expect(screen.getByText("Milch")).toBeInTheDocument()
+
+    const deleteButtons = screen.getAllByText("Löschen")
+    await user.click(deleteButtons[0])
+
+    const confirmButtons = screen.getAllByRole("button", { name: "Bestätigen" })
+    await user.click(confirmButtons[0])
+
+    expect(screen.queryByText("Mehl")).not.toBeInTheDocument()
+    expect(screen.getByText("Milch")).toBeInTheDocument()
+  })
+
+  it("delete blocked by references shows error message", async () => {
+    const user = userEvent.setup()
+    buildFetchSpy([ingredientA], {
+      deleteStatus: 409,
+      deleteResponse: { detail: "Zutat wird verwendet von 3 Inventar-Einträgen" },
+    })
+
+    renderInShell(<IngredientsPage />)
+
+    await screen.findByText("Mehl")
+
+    const deleteButtons = screen.getAllByText("Löschen")
+    await user.click(deleteButtons[0])
+    const confirmButtons = screen.getAllByRole("button", { name: "Bestätigen" })
+    await user.click(confirmButtons[0])
+
+    expect(
+      await screen.findByText(/Inventar-Einträgen/i)
+    ).toBeInTheDocument()
+  })
+
+  it("clicking ingredient name enters edit mode", async () => {
+    const user = userEvent.setup()
+    buildFetchSpy([ingredientA])
+
+    renderInShell(<IngredientsPage />)
+
+    await screen.findByText("Mehl")
+
+    await user.click(screen.getByText("Mehl"))
+
+    const input = screen.getByDisplayValue("Mehl")
+    expect(input).toBeInTheDocument()
+    expect(input.tagName).toBe("INPUT")
+  })
+
+  it("editing name and blurring PATCHes the ingredient", async () => {
+    const user = userEvent.setup()
+    const fetchSpy = buildFetchSpy([ingredientA])
+
+    renderInShell(<IngredientsPage />)
+
+    await screen.findByText("Mehl")
+
+    await user.click(screen.getByText("Mehl"))
+
+    const input = screen.getByDisplayValue("Mehl") as HTMLInputElement
+    await user.clear(input)
+    await user.type(input, "Vollkornmehl")
+    await user.tab()
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/ingredients/1",
+        expect.objectContaining({
+          method: "PATCH",
+          body: expect.stringContaining("Vollkornmehl"),
+        })
+      )
+    })
+  })
+
+  it("renaming to duplicate shows error message", async () => {
+    const user = userEvent.setup()
+    buildFetchSpy([ingredientA], {
+      patchResponse: { detail: "Ingredient already exists" },
+      patchStatus: 409,
+    })
+
+    renderInShell(<IngredientsPage />)
+
+    await screen.findByText("Mehl")
+
+    await user.click(screen.getByText("Mehl"))
+
+    const input = screen.getByDisplayValue("Mehl") as HTMLInputElement
+    await user.clear(input)
+    await user.type(input, "Milch")
+    await user.tab()
+
+    expect(
+      await screen.findByText(/already exists/i)
     ).toBeInTheDocument()
   })
 })

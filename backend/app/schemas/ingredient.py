@@ -23,6 +23,7 @@ class IngredientResponse(BaseModel):
 
 
 class IngredientUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
     grams_per_el: Optional[float] = None
     ml_per_el: Optional[float] = None
     grams_per_tl: Optional[float] = None
