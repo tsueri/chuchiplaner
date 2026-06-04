@@ -37,7 +37,6 @@ const PAGE_HEIGHT = 297
 const MARGIN = 20
 const TRUNCATE_AT = 50
 const TRUNCATE_AT_TWO_COL = 30
-const MAX_MEAL_HEIGHT = 215
 
 const MEAL_ORDER: Record<string, number> = {
   breakfast: 0,
@@ -49,17 +48,6 @@ const MEAL_ORDER: Record<string, number> = {
 function truncate(text: string, max: number): string {
   if (text.length <= max) return text
   return text.substring(0, max) + "\u2026"
-}
-
-function slotColumnHeight(slots: WeekPlanPdfSlot[]): number {
-  let h = 0
-  let prevDay: number | null = null
-  for (const s of slots) {
-    if (prevDay !== null && s.dayOfWeek !== prevDay) h += 6
-    prevDay = s.dayOfWeek
-    h += 17
-  }
-  return h
 }
 
 function renderColumn(
@@ -119,7 +107,7 @@ export function populatePdf(
 
   if (slots.length === 0) return
 
-  const needsTwoCol = slotColumnHeight(slots) > MAX_MEAL_HEIGHT
+  const needsTwoCol = slots.length > 11
 
   if (!needsTwoCol) {
     const colWidth = PAGE_WIDTH - 2 * MARGIN

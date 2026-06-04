@@ -98,27 +98,44 @@ describe("populatePdf", () => {
   it("uses two columns when content exceeds one column", () => {
     const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" })
     const slots: WeekPlanPdfSlot[] = []
-    for (let day = 0; day < 7; day++) {
+    for (let day = 0; day < 6; day++) {
       slots.push(makeSlot(day, "lunch", `Recipe ${day} lunch`, 2))
       slots.push(makeSlot(day, "dinner", `Recipe ${day} dinner`, 2))
     }
     populatePdf(doc, { weekLabel: "KW 23", slots })
     const raw = pdfText(doc)
     expect(raw).toContain("(Recipe 0 lunch)")
-    expect(raw).toContain("(Recipe 6 dinner)")
+    expect(raw).toContain("(Recipe 5 dinner)")
+  })
+
+  it("does not use two columns with 11 or fewer meals", () => {
+    const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" })
+    const slots: WeekPlanPdfSlot[] = []
+    for (let day = 0; day < 6; day++) {
+      slots.push(makeSlot(day, "lunch", `Recipe ${day} lunch`, 2))
+    }
+    // 11 slots = single column
+    slots.push(makeSlot(0, "dinner", "SingleColDinner", 2))
+    slots.push(makeSlot(1, "dinner", "SingleColDinner2", 2))
+    slots.push(makeSlot(2, "dinner", "SingleColDinner3", 2))
+    slots.push(makeSlot(3, "dinner", "SingleColDinner4", 2))
+    slots.push(makeSlot(4, "dinner", "SingleColDinner5", 2))
+    populatePdf(doc, { weekLabel: "KW 23", slots })
+    const raw = pdfText(doc)
+    expect(raw).toContain("(Recipe 0 lunch)")
+    expect(raw).toContain("(SingleColDinner)")
   })
 
   it("truncates shorter in two-column mode", () => {
     const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" })
     const longTitle = "B".repeat(40)
     const slots: WeekPlanPdfSlot[] = []
-    for (let day = 0; day < 7; day++) {
+    for (let day = 0; day < 6; day++) {
       slots.push(makeSlot(day, "lunch", `Recipe ${day}`, 2))
       slots.push(makeSlot(day, "dinner", longTitle, 2))
     }
     populatePdf(doc, { weekLabel: "KW 23", slots })
     const raw = pdfText(doc)
-    // In 2-col mode, truncates at 30 chars + ellipsis
     const match = raw.match(/\(B+[\u2026\u0085]/)
     expect(match).toBeTruthy()
     expect(match![0]).toContain("B".repeat(30))
