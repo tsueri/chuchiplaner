@@ -7,6 +7,12 @@ import {
   defaultEditableIngredientValue,
   type EditableIngredientValue,
 } from "@/components/EditableIngredientRow.types"
+import { EditableStepRow } from "@/components/EditableStepRow"
+import {
+  defaultEditableStepValue,
+  type EditableStepValue,
+} from "@/components/EditableStepRow.types"
+import { LimitedExtendedToggle } from "@/components/LimitedExtendedToggle"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/contexts/useAuth"
 import { PageHeader } from "@/components/PageHeader"
@@ -74,6 +80,11 @@ interface EditState {
   servings: number
   prepTimeText: string
   totalTimeText: string
+  cookTimeText: string
+  performTimeText: string
+  author: string
+  datePublished: string
+  keywords: string
   image_url: string
   source_url: string
   source_domain: string
@@ -81,7 +92,9 @@ interface EditState {
   selectedTagIds: number[]
 }
 
-function buildEditState(recipe: RecipeDetail): EditState {
+function buildEditState(
+  recipe: RecipeDetail
+): EditState {
   const stepsText = recipe.steps
     .sort((a, b) => a.position - b.position)
     .map((s) => s.text)
@@ -99,6 +112,17 @@ function buildEditState(recipe: RecipeDetail): EditState {
       recipe.total_time_minutes !== null
         ? DurationSerializer.formatHuman(recipe.total_time_minutes) ?? ""
         : "",
+    cookTimeText:
+      recipe.cook_time_minutes !== null
+        ? DurationSerializer.formatHuman(recipe.cook_time_minutes) ?? ""
+        : "",
+    performTimeText:
+      recipe.perform_time_minutes !== null
+        ? DurationSerializer.formatHuman(recipe.perform_time_minutes) ?? ""
+        : "",
+    author: recipe.author ?? "",
+    datePublished: recipe.date_published ?? "",
+    keywords: recipe.keywords ?? "",
     image_url: recipe.image_url ?? "",
     source_url: recipe.source_url ?? "",
     source_domain: recipe.source_domain ?? "",
@@ -161,6 +185,8 @@ export default function RecipeDetailPage() {
   const [editState, setEditState] = useState<EditState | null>(null)
   const [editError, setEditError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [editMode, setEditMode] = useState<"simple" | "extended">("simple")
+  const [editSteps, setEditSteps] = useState<EditableStepValue[]>([])
 
   const doFetchRecipe = useCallback(async () => {
     if (!id) throw new Error("No recipe id")
@@ -266,7 +292,17 @@ export default function RecipeDetailPage() {
 
   const enterEditMode = () => {
     if (!recipe) return
+    setEditMode("simple")
     setEditState(buildEditState(recipe))
+    setEditSteps(
+      recipe.steps
+        .sort((a, b) => a.position - b.position)
+        .map((s) => ({
+          key: `existing-step-${s.id}`,
+          name: s.name ?? "",
+          text: s.text,
+        }))
+    )
     setEditError(null)
     setIsEditing(true)
   }
@@ -274,6 +310,8 @@ export default function RecipeDetailPage() {
   const cancelEdit = () => {
     setIsEditing(false)
     setEditState(null)
+    setEditSteps([])
+    setEditMode("simple")
     setEditError(null)
   }
 
@@ -324,9 +362,11 @@ export default function RecipeDetailPage() {
     if (!editState) return false
     if (saving) return false
     if (editState.title.trim() === "") return false
-    if (editState.stepsText.trim() === "") return false
+    if (editMode === "simple" && editState.stepsText.trim() === "") return false
+    if (editMode === "extended" && !editSteps.some((s) => s.text.trim() !== ""))
+      return false
     return true
-  }, [editState, saving])
+  }, [editState, saving, editMode, editSteps])
 
   const saveEdit = async () => {
     if (!editState || !id) return
@@ -340,23 +380,47 @@ export default function RecipeDetailPage() {
         unit: r.unit,
         order_index: idx,
       }))
-    const steps = editState.stepsText
-      .split("\n")
-      .map((line) => line.trim())
-      .filter((line) => line !== "")
-      .map((text, position) => ({ position, text, name: null }))
+    const stepsPayload =
+      editMode === "extended"
+        ? editSteps
+            .filter((s) => s.text.trim() !== "")
+            .map((s, position) => ({
+              position,
+              text: s.text,
+              name: s.name.trim() || null,
+            }))
+        : editState.stepsText
+            .split("\n")
+            .map((line) => line.trim())
+            .filter((line) => line !== "")
+            .map((text, position) => ({ position, text, name: null }))
     const prepMinutes = DurationSerializer.parseHuman(editState.prepTimeText)
     const totalMinutes = DurationSerializer.parseHuman(editState.totalTimeText)
+    const isSimple = editMode === "simple"
+    const cookMinutes = isSimple
+      ? null
+      : DurationSerializer.parseHuman(editState.cookTimeText)
+    const performMinutes = isSimple
+      ? null
+      : DurationSerializer.parseHuman(editState.performTimeText)
+    const authorOut = isSimple ? null : emptyToNull(editState.author)
+    const dateOut = isSimple ? null : emptyToNull(editState.datePublished)
+    const keywordsOut = isSimple ? null : emptyToNull(editState.keywords)
     try {
       const updated = (await api(`/recipes/${id}`, {
         method: "PUT",
         body: JSON.stringify({
           title: editState.title.trim(),
           description: emptyToNull(editState.description),
-          steps,
+          steps: stepsPayload,
           servings: editState.servings,
           prep_time_minutes: prepMinutes,
           total_time_minutes: totalMinutes,
+          cook_time_minutes: cookMinutes,
+          perform_time_minutes: performMinutes,
+          author: authorOut,
+          date_published: dateOut,
+          keywords: keywordsOut,
           image_url: emptyToNull(editState.image_url),
           source_url: emptyToNull(editState.source_url),
           source_domain: emptyToNull(editState.source_domain),
@@ -398,6 +462,34 @@ export default function RecipeDetailPage() {
             {editError}
           </div>
         )}
+
+        <div className="mb-4 flex items-center justify-between">
+          <div></div>
+          <LimitedExtendedToggle
+            mode={editMode}
+            onChange={(newMode) => {
+              if (newMode === "extended" && editMode === "simple") {
+                if (editSteps.length === 0) {
+                  const splitSteps = editState.stepsText
+                    .split("\n")
+                    .map((line) => line.trim())
+                    .filter((line) => line !== "")
+                    .map((text) => ({ ...defaultEditableStepValue(), text }))
+                  setEditSteps(
+                    splitSteps.length > 0 ? splitSteps : [defaultEditableStepValue()]
+                  )
+                }
+              }
+              if (newMode === "simple" && editMode === "extended") {
+                updateEditField(
+                  "stepsText",
+                  editSteps.map((s) => s.text).join("\n")
+                )
+              }
+              setEditMode(newMode)
+            }}
+          />
+        </div>
 
         <form
           onSubmit={(e) => {
@@ -442,14 +534,47 @@ export default function RecipeDetailPage() {
             >
               Zubereitung
             </label>
-            <textarea
-              id="edit-recipe-steps"
-              value={editState.stepsText}
-              onChange={(e) => updateEditField("stepsText", e.target.value)}
-              rows={6}
-              required
-              className="w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-            />
+            {editMode === "simple" ? (
+              <textarea
+                id="edit-recipe-steps"
+                value={editState.stepsText}
+                onChange={(e) => updateEditField("stepsText", e.target.value)}
+                rows={6}
+                required
+                className="w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+              />
+            ) : (
+              <div className="space-y-2">
+                {editSteps.map((step, idx) => (
+                  <EditableStepRow
+                    key={step.key}
+                    value={step}
+                    onChange={(s) =>
+                      setEditSteps((prev) =>
+                        prev.map((r, i) => (i === idx ? s : r))
+                      )
+                    }
+                    onRemove={() =>
+                      setEditSteps((prev) => prev.filter((_, i) => i !== idx))
+                    }
+                    showNameInput={true}
+                  />
+                ))}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    setEditSteps((prev) => [
+                      ...prev,
+                      defaultEditableStepValue(),
+                    ])
+                  }
+                >
+                  + Schritt hinzufügen
+                </Button>
+              </div>
+            )}
           </div>
 
           <div className="space-y-2">
@@ -523,6 +648,112 @@ export default function RecipeDetailPage() {
               />
             </div>
           </div>
+
+          {editMode === "extended" && (
+            <>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label
+                    htmlFor="edit-recipe-cook-time"
+                    className="text-sm font-medium"
+                  >
+                    Kochzeit
+                  </label>
+                  <Input
+                    id="edit-recipe-cook-time"
+                    type="text"
+                    value={editState.cookTimeText}
+                    onChange={(e) =>
+                      updateEditField("cookTimeText", e.target.value)
+                    }
+                    onBlur={() => {
+                      const parsed = DurationSerializer.parseHuman(
+                        editState.cookTimeText
+                      )
+                      if (parsed === null) return
+                      const formatted = DurationSerializer.formatHuman(parsed)
+                      updateEditField("cookTimeText", formatted ?? "")
+                    }}
+                    placeholder="z.B. 45 min"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label
+                    htmlFor="edit-recipe-perform-time"
+                    className="text-sm font-medium"
+                  >
+                    Ruhezeit
+                  </label>
+                  <Input
+                    id="edit-recipe-perform-time"
+                    type="text"
+                    value={editState.performTimeText}
+                    onChange={(e) =>
+                      updateEditField("performTimeText", e.target.value)
+                    }
+                    onBlur={() => {
+                      const parsed = DurationSerializer.parseHuman(
+                        editState.performTimeText
+                      )
+                      if (parsed === null) return
+                      const formatted = DurationSerializer.formatHuman(parsed)
+                      updateEditField("performTimeText", formatted ?? "")
+                    }}
+                    placeholder="z.B. 1h"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label
+                  htmlFor="edit-recipe-author"
+                  className="text-sm font-medium"
+                >
+                  Autor
+                </label>
+                <Input
+                  id="edit-recipe-author"
+                  type="text"
+                  value={editState.author}
+                  onChange={(e) => updateEditField("author", e.target.value)}
+                  placeholder="z.B. Betty Bossi"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label
+                  htmlFor="edit-recipe-date-published"
+                  className="text-sm font-medium"
+                >
+                  Veröffentlicht am
+                </label>
+                <Input
+                  id="edit-recipe-date-published"
+                  type="date"
+                  value={editState.datePublished}
+                  onChange={(e) =>
+                    updateEditField("datePublished", e.target.value)
+                  }
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label
+                  htmlFor="edit-recipe-keywords"
+                  className="text-sm font-medium"
+                >
+                  Schlagwörter
+                </label>
+                <Input
+                  id="edit-recipe-keywords"
+                  type="text"
+                  value={editState.keywords}
+                  onChange={(e) => updateEditField("keywords", e.target.value)}
+                  placeholder="kommagetrennt, z.B. schnell, gesund"
+                />
+              </div>
+            </>
+          )}
 
           <div className="space-y-2">
             <label htmlFor="edit-recipe-image-url" className="text-sm font-medium">
@@ -687,6 +918,79 @@ export default function RecipeDetailPage() {
           ? ` · ${DurationSerializer.formatHuman(recipe.total_time_minutes) ?? ""}`
           : ""}
       </p>
+
+      {(() => {
+        const rows: { label?: string; value: string; chips?: boolean }[] = []
+
+        if (recipe.author) {
+          rows.push({ label: "Autor", value: recipe.author })
+        }
+        if (recipe.date_published) {
+          rows.push({ label: "Veröffentlicht", value: recipe.date_published })
+        }
+        if (recipe.date_published) {
+          rows.push({ label: "Veröffentlicht", value: recipe.date_published })
+        }
+        if (recipe.prep_time_minutes !== null) {
+          rows.push({
+            label: "Vorbereitung",
+            value: DurationSerializer.formatHuman(recipe.prep_time_minutes) ?? "",
+          })
+        }
+        if (recipe.cook_time_minutes !== null) {
+          rows.push({
+            label: "Kochzeit",
+            value: DurationSerializer.formatHuman(recipe.cook_time_minutes) ?? "",
+          })
+        }
+        if (recipe.perform_time_minutes !== null) {
+          rows.push({
+            label: "Ruhezeit",
+            value: DurationSerializer.formatHuman(recipe.perform_time_minutes) ?? "",
+          })
+        }
+        const categoryTag = recipe.tags.find((t) => t.group === "category")
+        if (categoryTag) {
+          rows.push({ label: "Kategorie", value: categoryTag.name })
+        }
+        const cuisineTag = recipe.tags.find((t) => t.group === "cuisine")
+        if (cuisineTag) {
+          rows.push({ label: "Küche", value: cuisineTag.name })
+        }
+        const dietTags = recipe.tags.filter((t) => t.group === "diet")
+        for (const dt of dietTags) {
+          rows.push({ value: dt.name, chips: true })
+        }
+        if (recipe.keywords) {
+          rows.push({ label: "Schlagwörter", value: recipe.keywords, chips: true })
+        }
+
+        if (rows.length === 0) return null
+
+        return (
+          <div className="mt-3 space-y-1 text-sm text-muted-foreground">
+            {rows.map((row, idx) => (
+              <div key={idx} className="flex items-center gap-1.5">
+                {row.label && <span className="font-medium">{row.label}:</span>}
+                {row.chips ? (
+                  <div className="flex flex-wrap gap-1">
+                    {row.value.split(",").map((kw, ki) => (
+                      <span
+                        key={ki}
+                        className="rounded-full bg-muted px-2 py-0.5 text-xs"
+                      >
+                        {kw.trim()}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <span>{row.value}</span>
+                )}
+              </div>
+            ))}
+          </div>
+        )
+      })()}
 
       <div className="mt-4 flex flex-wrap gap-2">
         <span className="text-sm font-medium text-muted-foreground">Tags:</span>

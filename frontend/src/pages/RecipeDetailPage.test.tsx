@@ -446,3 +446,196 @@ describe("RecipeDetailPage description and time display", () => {
     expect(screen.queryByText(/\d+ std\.|\d+ min/i)).toBeNull()
   })
 })
+
+describe("RecipeDetailPage MetadataBlock", () => {
+  beforeEach(() => {
+    cleanup()
+    vi.restoreAllMocks()
+  })
+
+  it("renders author when present", async () => {
+    renderDetail({
+      ...baseRecipe,
+      author: "Betty Bossi",
+    })
+
+    expect(
+      await screen.findByText("Betty Bossi")
+    ).toBeInTheDocument()
+    expect(screen.queryAllByText(/autor/i).length).toBeGreaterThanOrEqual(1)
+  })
+
+  it("renders date_published when present", async () => {
+    renderDetail({
+      ...baseRecipe,
+      date_published: "2024-01-15",
+    })
+
+    const elements = await screen.findAllByText("2024-01-15")
+    expect(elements.length).toBeGreaterThanOrEqual(1)
+  })
+
+  it("renders cook_time and perform_time when present", async () => {
+    renderDetail({
+      ...baseRecipe,
+      cook_time_minutes: 45,
+      perform_time_minutes: 120,
+    })
+
+    expect(await screen.findByText(/kochzeit:/i)).toBeInTheDocument()
+    expect(screen.getByText("45 min")).toBeInTheDocument()
+    expect(screen.getByText(/ruhezeit:/i)).toBeInTheDocument()
+    expect(screen.getByText("2 Std.")).toBeInTheDocument()
+  })
+
+  it("renders category, cuisine, and diet tags as metadata rows", async () => {
+    renderDetail(
+      {
+        ...baseRecipe,
+        tags: [
+          { id: 10, name: "Hauptgericht", group: "category", household_id: null },
+          { id: 11, name: "Italienisch", group: "cuisine", household_id: null },
+          { id: 12, name: "VegetarianDiet", group: "diet", household_id: null },
+          { id: 13, name: "GlutenFreeDiet", group: "diet", household_id: null },
+          { id: 14, name: "Frühling", group: "season", household_id: null },
+        ],
+      },
+      {
+        tags: [
+          { id: 10, name: "Hauptgericht", group: "category", household_id: null },
+          { id: 11, name: "Italienisch", group: "cuisine", household_id: null },
+          { id: 12, name: "VegetarianDiet", group: "diet", household_id: null },
+          { id: 13, name: "GlutenFreeDiet", group: "diet", household_id: null },
+          { id: 14, name: "Frühling", group: "season", household_id: null },
+        ],
+      }
+    )
+
+    expect(
+      await screen.findByText(/kategorie:/i)
+    ).toBeInTheDocument()
+    expect(
+      screen.getAllByText("Hauptgericht").length
+    ).toBeGreaterThanOrEqual(1)
+    expect(screen.getByText(/küche:/i)).toBeInTheDocument()
+    expect(
+      screen.getAllByText("Italienisch").length
+    ).toBeGreaterThanOrEqual(1)
+    expect(screen.getAllByText("VegetarianDiet").length).toBeGreaterThanOrEqual(1)
+    expect(screen.getAllByText("GlutenFreeDiet").length).toBeGreaterThanOrEqual(1)
+  })
+
+  it("renders keywords as inline chips", async () => {
+    renderDetail({
+      ...baseRecipe,
+      keywords: "schnell, gesund, pasta",
+    })
+
+    expect(await screen.findByText("schnell")).toBeInTheDocument()
+    expect(screen.getByText("gesund")).toBeInTheDocument()
+    expect(screen.getByText("pasta")).toBeInTheDocument()
+  })
+
+  it("does not render metadata block when no extended data is present", async () => {
+    renderDetail({ ...baseRecipe })
+
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Pouletgeschnetzeltes" })
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/autor:/i)).toBeNull()
+    expect(screen.queryByText(/veröffentlicht:/i)).toBeNull()
+    expect(screen.queryByText(/kochzeit:/i)).toBeNull()
+    expect(screen.queryByText(/ruhezeit:/i)).toBeNull()
+    expect(screen.queryByText(/kategorie:/i)).toBeNull()
+    expect(screen.queryByText(/küche:/i)).toBeNull()
+    expect(screen.queryByText(/schlagwörter:/i)).toBeNull()
+  })
+})
+
+describe("RecipeDetailPage extended edit mode", () => {
+  beforeEach(() => {
+    cleanup()
+    vi.restoreAllMocks()
+  })
+
+  it("edit form toggle reveals extended fields", async () => {
+    const user = userEvent.setup()
+    const recipe = {
+      ...baseRecipe,
+      steps: [{ id: 1000, position: 0, text: "Anbraten.", name: null }],
+    }
+    renderDetail(recipe)
+
+    await user.click(
+      await screen.findByRole("button", { name: /bearbeiten/i })
+    )
+
+    expect(screen.queryByLabelText(/kochzeit/i)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/^autor$/i)).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole("button", { name: /erweitert/i }))
+
+    expect(screen.getByLabelText(/kochzeit/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/^autor$/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/veröffentlicht/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/schlagwörter/i)).toBeInTheDocument()
+  })
+
+  it("extended edit mode renders EditableStepRow with name inputs", async () => {
+    const user = userEvent.setup()
+    const recipe = {
+      ...baseRecipe,
+      steps: [{ id: 1000, position: 0, text: "Anbraten.", name: "Vorbereiten" }],
+    }
+    renderDetail(recipe)
+
+    await user.click(
+      await screen.findByRole("button", { name: /bearbeiten/i })
+    )
+    await user.click(screen.getByRole("button", { name: /erweitert/i }))
+
+    const nameInput = screen.getByLabelText("Schrittname") as HTMLInputElement
+    expect(nameInput.value).toBe("Vorbereiten")
+    const stepText = screen.getByLabelText("Schritt") as HTMLTextAreaElement
+    expect(stepText.value).toBe("Anbraten.")
+  })
+
+  it("extended edit mode Speichern sends steps with names and extended fields", async () => {
+    const user = userEvent.setup()
+    const recipe = {
+      ...baseRecipe,
+      title: "Original",
+      steps: [{ id: 1000, position: 0, text: "Anbraten.", name: null }],
+    }
+    const { fetchCalls } = renderDetail(recipe, {
+      putResponse: { ...recipe, title: "Bearbeitet" },
+    })
+
+    await user.click(
+      await screen.findByRole("button", { name: /bearbeiten/i })
+    )
+    await user.click(screen.getByRole("button", { name: /erweitert/i }))
+
+    const nameInput = screen.getByLabelText("Schrittname")
+    await user.type(nameInput, "Vorbereiten")
+
+    await user.type(screen.getByLabelText(/kochzeit/i), "45 min")
+    await user.type(screen.getByLabelText(/^autor$/i), "Chef")
+
+    const saveButton = screen.getByRole("button", { name: /speichern/i })
+    await user.click(saveButton)
+
+    await waitFor(() => {
+      const put = fetchCalls.find(
+        (c) => c.method === "PUT" && c.url === "/api/recipes/1"
+      )
+      expect(put).toBeDefined()
+      const body = JSON.parse(put!.body!) as Record<string, unknown>
+      expect(body.steps).toEqual([
+        { position: 0, text: "Anbraten.", name: "Vorbereiten" },
+      ])
+      expect(body.cook_time_minutes).toBe(45)
+      expect(body.author).toBe("Chef")
+    })
+  })
+})

@@ -8,6 +8,12 @@ import {
   defaultEditableIngredientValue,
   type EditableIngredientValue,
 } from "@/components/EditableIngredientRow.types"
+import { EditableStepRow } from "@/components/EditableStepRow"
+import {
+  defaultEditableStepValue,
+  type EditableStepValue,
+} from "@/components/EditableStepRow.types"
+import { LimitedExtendedToggle } from "@/components/LimitedExtendedToggle"
 import { PageHeader } from "@/components/PageHeader"
 import { cn } from "@/lib/utils"
 import { DurationSerializer } from "@/lib/duration-serializer"
@@ -19,6 +25,11 @@ interface FormState {
   servings: number
   prepTimeText: string
   totalTimeText: string
+  cookTimeText: string
+  performTimeText: string
+  author: string
+  datePublished: string
+  keywords: string
   image_url: string
   source_url: string
   source_domain: string
@@ -95,6 +106,11 @@ const INITIAL_STATE: FormState = {
   servings: 4,
   prepTimeText: "",
   totalTimeText: "",
+  cookTimeText: "",
+  performTimeText: "",
+  author: "",
+  datePublished: "",
+  keywords: "",
   image_url: "",
   source_url: "",
   source_domain: "",
@@ -120,6 +136,11 @@ async function postRecipe(body: {
   servings: number
   prep_time_minutes: number | null
   total_time_minutes: number | null
+  cook_time_minutes: number | null
+  perform_time_minutes: number | null
+  author: string | null
+  date_published: string | null
+  keywords: string | null
   image_url: string | null
   source_url: string | null
   source_domain: string | null
@@ -154,6 +175,11 @@ async function putFullRecipe(
     servings: number
     prep_time_minutes: number | null
     total_time_minutes: number | null
+    cook_time_minutes: number | null
+    perform_time_minutes: number | null
+    author: string | null
+    date_published: string | null
+    keywords: string | null
     image_url: string | null
     source_url: string | null
     source_domain: string | null
@@ -226,6 +252,8 @@ export default function RecipeFormPage() {
   const [isPartialImport, setIsPartialImport] = useState(false)
   const [existingRecipeId, setExistingRecipeId] = useState<number | null>(null)
   const [duplicateBlocked, setDuplicateBlocked] = useState(false)
+  const [mode, setMode] = useState<"simple" | "extended">("simple")
+  const [steps, setSteps] = useState<EditableStepValue[]>([])
 
   useEffect(() => {
     let cancelled = false
@@ -264,10 +292,28 @@ export default function RecipeFormPage() {
           totalTimeText: data.total_time_minutes !== null
             ? DurationSerializer.formatHuman(data.total_time_minutes) ?? ""
             : "",
+          cookTimeText: data.cook_time_minutes !== null
+            ? DurationSerializer.formatHuman(data.cook_time_minutes) ?? ""
+            : "",
+          performTimeText: data.perform_time_minutes !== null
+            ? DurationSerializer.formatHuman(data.perform_time_minutes) ?? ""
+            : "",
+          author: data.author ?? "",
+          datePublished: data.date_published ?? "",
+          keywords: data.keywords ?? "",
           image_url: data.image_url ?? "",
           source_url: data.source_url,
           source_domain: data.source_domain,
         })
+        if (data.steps) {
+          setSteps(
+            data.steps.map((s, idx) => ({
+              key: `import-step-${idx}`,
+              name: s.name ?? "",
+              text: s.text,
+            }))
+          )
+        }
         setImportedFrom(data.source_domain)
         setIsPartialImport(data.is_partial)
         setExistingRecipeId(data.existing_recipe_id ?? null)
@@ -320,6 +366,8 @@ export default function RecipeFormPage() {
     setError(null)
     setRows([])
     setSelectedTagIds([])
+    setSteps([])
+    setMode("simple")
     const next = new URLSearchParams(searchParams)
     next.delete("url")
     setSearchParams(next, { replace: true })
@@ -340,7 +388,9 @@ export default function RecipeFormPage() {
 
   const canSubmit =
     form.title.trim() !== "" &&
-    form.stepsText.trim() !== "" &&
+    (mode === "simple"
+      ? form.stepsText.trim() !== ""
+      : steps.some((s) => s.text.trim() !== "")) &&
     !submitting &&
     !duplicateBlocked
 
@@ -369,11 +419,30 @@ export default function RecipeFormPage() {
           unit: r.unit,
           order_index: idx,
         }))
-      const steps: RecipeStepPayload[] = form.stepsText
-        .split("\n")
-        .map((line) => line.trim())
-        .filter((line) => line !== "")
-        .map((text, position) => ({ position, text, name: null }))
+      const stepsPayload: RecipeStepPayload[] =
+        mode === "extended"
+          ? steps
+              .filter((s) => s.text.trim() !== "")
+              .map((s, position) => ({
+                position,
+                text: s.text,
+                name: s.name.trim() || null,
+              }))
+          : form.stepsText
+              .split("\n")
+              .map((line) => line.trim())
+              .filter((line) => line !== "")
+              .map((text, position) => ({ position, text, name: null }))
+      const extendedNull = mode === "simple"
+      const cookMinutes = extendedNull
+        ? null
+        : DurationSerializer.parseHuman(form.cookTimeText)
+      const performMinutes = extendedNull
+        ? null
+        : DurationSerializer.parseHuman(form.performTimeText)
+      const authorOut = extendedNull ? null : toNull(form.author)
+      const dateOut = extendedNull ? null : toNull(form.datePublished)
+      const keywordsOut = extendedNull ? null : toNull(form.keywords)
       const learnedAliases: LearnedAliasPayload[] = rows
         .filter(
           (r) =>
@@ -390,10 +459,15 @@ export default function RecipeFormPage() {
         await putFullRecipe(existingRecipeId, {
           title: form.title.trim(),
           description: toNull(form.description),
-          steps,
+          steps: stepsPayload,
           servings: form.servings,
           prep_time_minutes: DurationSerializer.parseHuman(form.prepTimeText),
           total_time_minutes: DurationSerializer.parseHuman(form.totalTimeText),
+          cook_time_minutes: cookMinutes,
+          perform_time_minutes: performMinutes,
+          author: authorOut,
+          date_published: dateOut,
+          keywords: keywordsOut,
           image_url: toNull(form.image_url),
           source_url: toNull(form.source_url),
           source_domain: toNull(form.source_domain),
@@ -407,10 +481,15 @@ export default function RecipeFormPage() {
       const created = await postRecipe({
         title: form.title.trim(),
         description: toNull(form.description),
-        steps,
+        steps: stepsPayload,
         servings: form.servings,
         prep_time_minutes: DurationSerializer.parseHuman(form.prepTimeText),
         total_time_minutes: DurationSerializer.parseHuman(form.totalTimeText),
+        cook_time_minutes: cookMinutes,
+        perform_time_minutes: performMinutes,
+        author: authorOut,
+        date_published: dateOut,
+        keywords: keywordsOut,
         image_url: toNull(form.image_url),
         source_url: toNull(form.source_url),
         source_domain: toNull(form.source_domain),
@@ -504,6 +583,30 @@ export default function RecipeFormPage() {
           </div>
         )}
 
+        <div className="flex items-center justify-between">
+          <div></div>
+          <LimitedExtendedToggle
+            mode={mode}
+            onChange={(newMode) => {
+              if (newMode === "extended" && mode === "simple") {
+                const splitSteps = form.stepsText
+                  .split("\n")
+                  .map((line) => line.trim())
+                  .filter((line) => line !== "")
+                  .map((text) => ({ ...defaultEditableStepValue(), text }))
+                setSteps(splitSteps.length > 0 ? splitSteps : [defaultEditableStepValue()])
+              }
+              if (newMode === "simple" && mode === "extended") {
+                update(
+                  "stepsText",
+                  steps.map((s) => s.text).join("\n")
+                )
+              }
+              setMode(newMode)
+            }}
+          />
+        </div>
+
         <div className="space-y-2">
           <label htmlFor="recipe-title" className="text-sm font-medium">
             Titel
@@ -537,14 +640,44 @@ export default function RecipeFormPage() {
           <label htmlFor="recipe-steps" className="text-sm font-medium">
             Zubereitung
           </label>
-          <textarea
-            id="recipe-steps"
-            value={form.stepsText}
-            onChange={(e) => update("stepsText", e.target.value)}
-            rows={6}
-            required
-            className="w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-          />
+          {mode === "simple" ? (
+            <textarea
+              id="recipe-steps"
+              value={form.stepsText}
+              onChange={(e) => update("stepsText", e.target.value)}
+              rows={6}
+              required
+              className="w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+            />
+          ) : (
+            <div className="space-y-2">
+              {steps.map((step, idx) => (
+                <EditableStepRow
+                  key={step.key}
+                  value={step}
+                  onChange={(s) =>
+                    setSteps((prev) =>
+                      prev.map((r, i) => (i === idx ? s : r))
+                    )
+                  }
+                  onRemove={() =>
+                    setSteps((prev) => prev.filter((_, i) => i !== idx))
+                  }
+                  showNameInput={true}
+                />
+              ))}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  setSteps((prev) => [...prev, defaultEditableStepValue()])
+                }
+              >
+                + Schritt hinzufügen
+              </Button>
+            </div>
+          )}
         </div>
 
         <div className="space-y-2">
@@ -611,6 +744,103 @@ export default function RecipeFormPage() {
             />
           </div>
         </div>
+
+        {mode === "extended" && (
+          <>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label
+                  htmlFor="recipe-cook-time"
+                  className="text-sm font-medium"
+                >
+                  Kochzeit
+                </label>
+                <Input
+                  id="recipe-cook-time"
+                  type="text"
+                  value={form.cookTimeText}
+                  onChange={(e) => update("cookTimeText", e.target.value)}
+                  onBlur={() => {
+                    const parsed = DurationSerializer.parseHuman(
+                      form.cookTimeText
+                    )
+                    if (parsed === null) return
+                    const formatted = DurationSerializer.formatHuman(parsed)
+                    update("cookTimeText", formatted ?? "")
+                  }}
+                  placeholder="z.B. 45 min"
+                />
+              </div>
+              <div className="space-y-2">
+                <label
+                  htmlFor="recipe-perform-time"
+                  className="text-sm font-medium"
+                >
+                  Ruhezeit
+                </label>
+                <Input
+                  id="recipe-perform-time"
+                  type="text"
+                  value={form.performTimeText}
+                  onChange={(e) => update("performTimeText", e.target.value)}
+                  onBlur={() => {
+                    const parsed = DurationSerializer.parseHuman(
+                      form.performTimeText
+                    )
+                    if (parsed === null) return
+                    const formatted = DurationSerializer.formatHuman(parsed)
+                    update("performTimeText", formatted ?? "")
+                  }}
+                  placeholder="z.B. 1h"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label htmlFor="recipe-author" className="text-sm font-medium">
+                Autor
+              </label>
+              <Input
+                id="recipe-author"
+                type="text"
+                value={form.author}
+                onChange={(e) => update("author", e.target.value)}
+                placeholder="z.B. Betty Bossi"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label
+                htmlFor="recipe-date-published"
+                className="text-sm font-medium"
+              >
+                Veröffentlicht am
+              </label>
+              <Input
+                id="recipe-date-published"
+                type="date"
+                value={form.datePublished}
+                onChange={(e) => update("datePublished", e.target.value)}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label
+                htmlFor="recipe-keywords"
+                className="text-sm font-medium"
+              >
+                Schlagwörter
+              </label>
+              <Input
+                id="recipe-keywords"
+                type="text"
+                value={form.keywords}
+                onChange={(e) => update("keywords", e.target.value)}
+                placeholder="kommagetrennt, z.B. schnell, gesund"
+              />
+            </div>
+          </>
+        )}
 
         <div className="space-y-2">
           <label htmlFor="recipe-image-url" className="text-sm font-medium">

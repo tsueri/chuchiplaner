@@ -151,6 +151,11 @@ describe("RecipeFormPage", () => {
       servings: 4,
       prep_time_minutes: null,
       total_time_minutes: null,
+      cook_time_minutes: null,
+      perform_time_minutes: null,
+      author: null,
+      date_published: null,
+      keywords: null,
       image_url: null,
       source_url: null,
       source_domain: null,
@@ -1822,5 +1827,186 @@ describe("RecipeListPage URL import", () => {
       "data-search",
       expect.stringContaining("url=")
     )
+  })
+})
+
+describe("RecipeFormPage extended mode", () => {
+  beforeEach(() => {
+    cleanup()
+    vi.restoreAllMocks()
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url =
+        typeof input === "string" ? input : (input as Request).url
+      if (url === "/api/tags") {
+        return Promise.resolve(mockFetchResponse([]))
+      }
+      return Promise.reject(new Error(`Unhandled fetch in test: ${url}`))
+    })
+  })
+
+  it("toggle reveals cook/perform time and author/date/keywords fields", async () => {
+    const user = userEvent.setup()
+    renderForm()
+
+    expect(screen.queryByLabelText(/kochzeit/i)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/ruhezeit/i)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/^autor$/i)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/veröffentlicht/i)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/schlagwörter/i)).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole("button", { name: /erweitert/i }))
+
+    expect(screen.getByLabelText(/kochzeit/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/ruhezeit/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/^autor$/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/veröffentlicht/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/schlagwörter/i)).toBeInTheDocument()
+  })
+
+  it("toggle reveals EditableStepRow components instead of the single textarea", async () => {
+    const user = userEvent.setup()
+    renderForm()
+
+    expect(
+      screen.getByRole("textbox", { name: /zubereitung/i })
+    ).toBeInTheDocument()
+    expect(screen.queryByLabelText("Schritt")).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole("button", { name: /erweitert/i }))
+
+    expect(screen.queryByRole("textbox", { name: /zubereitung/i })).not.toBeInTheDocument()
+    expect(screen.getByLabelText("Schritt")).toBeInTheDocument()
+    expect(screen.getByLabelText("Schrittname")).toBeInTheDocument()
+    expect(
+      screen.getByRole("button", { name: /schritt hinzufügen/i })
+    ).toBeInTheDocument()
+  })
+
+  it("does not lose stepsText/title when toggling between modes", async () => {
+    const user = userEvent.setup()
+    renderForm()
+
+    await user.type(screen.getByLabelText(/titel/i), "Pasta")
+    await user.type(
+      screen.getByRole("textbox", { name: /zubereitung/i }),
+      "Erster Schritt.\nZweiter Schritt."
+    )
+
+    await user.click(screen.getByRole("button", { name: /erweitert/i }))
+
+    expect(screen.getByLabelText(/titel/i)).toHaveValue("Pasta")
+    const stepTexts = screen.getAllByLabelText("Schritt")
+    expect(stepTexts).toHaveLength(2)
+    expect((stepTexts[0] as HTMLTextAreaElement).value).toBe("Erster Schritt.")
+    expect((stepTexts[1] as HTMLTextAreaElement).value).toBe("Zweiter Schritt.")
+
+    await user.click(screen.getByRole("button", { name: /einfach/i }))
+
+    expect(
+      screen.getByRole("textbox", { name: /zubereitung/i })
+    ).toBeInTheDocument()
+    expect(
+      (screen.getByRole("textbox", { name: /zubereitung/i }) as HTMLTextAreaElement).value
+    ).toBe("Erster Schritt.\nZweiter Schritt.")
+  })
+
+  it("extended mode sends steps with names and extended fields in the POST body", async () => {
+    const user = userEvent.setup()
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation((input) => {
+        const url =
+          typeof input === "string" ? input : (input as Request).url
+        if (url === "/api/tags") {
+          return Promise.resolve(mockFetchResponse([]))
+        }
+        if (url === "/api/recipes") {
+          return Promise.resolve(
+            mockFetchResponse({ id: 42, title: "Pasta" }, { status: 201 })
+          )
+        }
+        return Promise.resolve(mockFetchResponse([]))
+      })
+
+    renderForm()
+
+    await user.type(screen.getByLabelText(/titel/i), "Pasta")
+    await user.type(
+      screen.getByRole("textbox", { name: /zubereitung/i }),
+      "Erster Schritt.\nZweiter Schritt."
+    )
+    await user.click(screen.getByRole("button", { name: /erweitert/i }))
+
+    const nameInputs = screen.getAllByLabelText("Schrittname")
+    await user.type(nameInputs[0], "Teig")
+    await user.type(nameInputs[1], "Backen")
+
+    await user.type(screen.getByLabelText(/kochzeit/i), "45 min")
+    await user.type(screen.getByLabelText(/ruhezeit/i), "1h")
+    await user.type(screen.getByLabelText(/^autor$/i), "Chef")
+    await user.type(screen.getByLabelText(/veröffentlicht/i), "2024-01-15")
+    await user.type(screen.getByLabelText(/schlagwörter/i), "schnell, gesund")
+
+    await user.click(screen.getByRole("button", { name: /speichern/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText("recipe-detail-stub")).toBeInTheDocument()
+    })
+
+    const recipeCall = fetchSpy.mock.calls.find(
+      ([u]) => u === "/api/recipes"
+    ) as [string, RequestInit]
+    const body = JSON.parse(recipeCall[1].body as string)
+    expect(body.steps).toEqual([
+      { position: 0, text: "Erster Schritt.", name: "Teig" },
+      { position: 1, text: "Zweiter Schritt.", name: "Backen" },
+    ])
+    expect(body.cook_time_minutes).toBe(45)
+    expect(body.perform_time_minutes).toBe(60)
+    expect(body.author).toBe("Chef")
+    expect(body.date_published).toBe("2024-01-15")
+    expect(body.keywords).toBe("schnell, gesund")
+  })
+
+  it("simple mode sends null for extended fields (preserves existing values on update)", async () => {
+    const user = userEvent.setup()
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation((input) => {
+        const url =
+          typeof input === "string" ? input : (input as Request).url
+        if (url === "/api/tags") {
+          return Promise.resolve(mockFetchResponse([]))
+        }
+        if (url === "/api/recipes") {
+          return Promise.resolve(
+            mockFetchResponse({ id: 42, title: "Pasta" }, { status: 201 })
+          )
+        }
+        return Promise.resolve(mockFetchResponse([]))
+      })
+
+    renderForm()
+
+    await user.type(screen.getByLabelText(/titel/i), "Pasta")
+    await user.type(
+      screen.getByRole("textbox", { name: /zubereitung/i }),
+      "Kochen."
+    )
+    await user.click(screen.getByRole("button", { name: /speichern/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText("recipe-detail-stub")).toBeInTheDocument()
+    })
+
+    const recipeCall = fetchSpy.mock.calls.find(
+      ([u]) => u === "/api/recipes"
+    ) as [string, RequestInit]
+    const body = JSON.parse(recipeCall[1].body as string)
+    expect(body.cook_time_minutes).toBeNull()
+    expect(body.perform_time_minutes).toBeNull()
+    expect(body.author).toBeNull()
+    expect(body.date_published).toBeNull()
+    expect(body.keywords).toBeNull()
   })
 })
