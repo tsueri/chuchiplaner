@@ -1,3 +1,5 @@
+import json
+import re
 import threading
 import time
 from dataclasses import dataclass, field
@@ -64,6 +66,130 @@ class _MetaParser(HTMLParser):
         if tag == "title":
             self._in_title = False
             self.title = self._title_data.strip() or None
+
+
+class _JsonLdRecipeParser:
+    @staticmethod
+    def extract(html: str) -> dict | None:
+        pattern = r'<script[^>]*type="application/ld\+json"[^>]*>(.*?)</script>'
+        for match in re.finditer(pattern, html, re.DOTALL):
+            try:
+                data = json.loads(match.group(1))
+            except json.JSONDecodeError:
+                continue
+            recipe = _JsonLdRecipeParser._find_recipe(data)
+            if recipe:
+                return _JsonLdRecipeParser._parse_recipe(recipe)
+        return None
+
+    @staticmethod
+    def _find_recipe(data: Any) -> dict | None:
+        if isinstance(data, dict):
+            if _jsonld_is_type(data, "Recipe"):
+                return data
+            graph = data.get("@graph")
+            if isinstance(graph, list):
+                for item in graph:
+                    if isinstance(item, dict) and _jsonld_is_type(item, "Recipe"):
+                        return item
+            return None
+        if isinstance(data, list):
+            for item in data:
+                if isinstance(item, dict) and _jsonld_is_type(item, "Recipe"):
+                    return item
+        return None
+
+    @staticmethod
+    def _parse_recipe(recipe: dict) -> dict:
+        result: dict[str, Any] = {}
+
+        result["title"] = recipe.get("name", "")
+        result["description"] = recipe.get("description")
+        result["keywords"] = recipe.get("keywords")
+        result["author"] = _jsonld_extract_author(recipe.get("author"))
+
+        date_pub = recipe.get("datePublished")
+        if isinstance(date_pub, str):
+            result["date_published"] = date_pub
+
+        image = recipe.get("image")
+        if isinstance(image, str):
+            result["image_url"] = image
+        elif isinstance(image, list) and image and isinstance(image[0], str):
+            result["image_url"] = image[0]
+
+        result["category"] = recipe.get("recipeCategory")
+        result["cuisine"] = recipe.get("recipeCuisine")
+
+        result["prep_time"] = recipe.get("prepTime")
+        result["cook_time"] = recipe.get("cookTime")
+        result["total_time"] = recipe.get("totalTime")
+
+        yield_val = recipe.get("recipeYield")
+        if isinstance(yield_val, list):
+            yield_val = yield_val[0] if yield_val else None
+        result["servings"] = yield_val
+
+        ingredients = recipe.get("recipeIngredient", [])
+        if isinstance(ingredients, list):
+            result["ingredients"] = [str(i) for i in ingredients]
+        else:
+            result["ingredients"] = []
+
+        instructions = recipe.get("recipeInstructions", [])
+        if isinstance(instructions, list):
+            steps: list[str] = []
+            for step in instructions:
+                if isinstance(step, dict):
+                    steps.append(step.get("text", ""))
+                elif isinstance(step, str):
+                    steps.append(step)
+            result["instructions"] = "\n".join(steps)
+        elif isinstance(instructions, str):
+            result["instructions"] = instructions
+        else:
+            result["instructions"] = ""
+
+        result["nutrients"] = recipe.get("nutrition")
+
+        sfd = recipe.get("suitableForDiet")
+        if isinstance(sfd, str):
+            sfd = [sfd]
+        result["suitable_for_diet"] = sfd if isinstance(sfd, list) else []
+
+        aggr = recipe.get("aggregateRating")
+        if isinstance(aggr, dict):
+            rating = aggr.get("ratingValue")
+            if rating is not None:
+                try:
+                    result["ratings"] = float(rating)
+                except (TypeError, ValueError):
+                    pass
+
+        return result
+
+
+def _jsonld_is_type(data: dict, type_name: str) -> bool:
+    dt = data.get("@type")
+    if isinstance(dt, str):
+        return dt == type_name
+    if isinstance(dt, list):
+        return type_name in dt
+    return False
+
+
+def _jsonld_extract_author(author: Any) -> str | None:
+    if isinstance(author, str):
+        return author
+    if isinstance(author, dict):
+        return str(author.get("name", "")) or None
+    if isinstance(author, list) and author:
+        first = author[0]
+        if isinstance(first, dict):
+            return str(first.get("name", "")) or None
+        if isinstance(first, str):
+            return first
+    return None
 
 
 class RecipeScraper:
@@ -182,6 +308,52 @@ class RecipeScraper:
 
         parser = _MetaParser()
         parser.feed(html)
+
+        jsonld = _JsonLdRecipeParser.extract(html)
+
+        if jsonld:
+            from app.services.duration_serializer import DurationSerializer
+
+            domain = urlparse(url).netloc
+            title = jsonld.get("title") or parser.title or ""
+            image_url = (
+                jsonld.get("image_url") or parser.og_image
+            )
+            description = (
+                jsonld.get("description") or parser.og_description
+            )
+            servings_str = str(jsonld.get("servings", "4"))
+
+            return ScrapedRecipe(
+                title=str(title),
+                ingredients=jsonld.get("ingredients", []),
+                instructions=jsonld.get("instructions", ""),
+                image_url=image_url,
+                servings=cls._parse_servings(servings_str),
+                source_url=url,
+                source_domain=domain,
+                is_partial=False,
+                description=description,
+                prep_time_minutes=DurationSerializer.from_iso_duration(
+                    jsonld.get("prep_time")
+                ),
+                cook_time_minutes=DurationSerializer.from_iso_duration(
+                    jsonld.get("cook_time")
+                ),
+                total_time_minutes=DurationSerializer.from_iso_duration(
+                    jsonld.get("total_time")
+                ),
+                nutrients=jsonld.get("nutrients"),
+                cuisine=jsonld.get("cuisine"),
+                category=jsonld.get("category"),
+                keywords=jsonld.get("keywords"),
+                author=jsonld.get("author"),
+                date_published=cls._parse_date(
+                    jsonld.get("date_published")
+                ),
+                ratings=jsonld.get("ratings"),
+                suitable_for_diet=jsonld.get("suitable_for_diet", []),
+            )
 
         if not parser.title and not parser.og_image:
             return None

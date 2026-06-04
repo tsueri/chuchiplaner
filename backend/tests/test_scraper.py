@@ -1,3 +1,4 @@
+import json
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -302,3 +303,293 @@ def test_partial_scrape_populates_description_from_og_description() -> None:
     assert result.is_partial is True
     assert result.title == "Rezept"
     assert result.description == "Ein schnelles Feierabend-Rezept."
+
+
+# ----- JSON-LD extraction tests -----
+
+
+def _make_jsonld_html(jsonld: dict) -> str:
+    ld_block = json.dumps(jsonld, ensure_ascii=False)
+    return (
+        "<html><head>"
+        f'<script type="application/ld+json">{ld_block}</script>'
+        "</head><body></body></html>"
+    )
+
+
+def _make_response(html: str) -> MagicMock:
+    mock = MagicMock()
+    mock.status_code = 200
+    mock.text = html
+    return mock
+
+
+def test_jsonld_extracts_title_ingredients_steps() -> None:
+    jsonld = {
+        "@type": "Recipe",
+        "name": "Spaghetti Bolognese",
+        "recipeIngredient": ["200g Spaghetti", "100g Hackfleisch"],
+        "recipeInstructions": [
+            {"@type": "HowToStep", "text": "Kochen.", "name": "Step 1"},
+        ],
+    }
+    html = _make_jsonld_html(jsonld)
+
+    with patch(
+        "app.services.scraper.scrape_me", side_effect=Exception("fail")
+    ):
+        with patch("httpx.Client.get", return_value=_make_response(html)):
+            result = RecipeScraper.scrape("https://fooby.ch/rezept")
+
+    assert result is not None
+    assert result.title == "Spaghetti Bolognese"
+    assert result.ingredients == ["200g Spaghetti", "100g Hackfleisch"]
+    assert result.instructions == "Kochen."
+    assert result.is_partial is False
+
+
+def test_jsonld_extracts_all_fields() -> None:
+    jsonld = {
+        "@type": "Recipe",
+        "name": "Test Recipe",
+        "description": "A great dish.",
+        "image": "https://example.com/img.jpg",
+        "recipeCategory": "Hauptgericht",
+        "recipeCuisine": "Italienisch",
+        "keywords": "schnell, pasta",
+        "prepTime": "PT15M",
+        "cookTime": "PT30M",
+        "totalTime": "PT45M",
+        "recipeYield": "4",
+        "datePublished": "2024-01-15",
+        "author": "Chef",
+        "recipeIngredient": ["200g flour"],
+        "recipeInstructions": "Mix and bake.",
+        "nutrition": {
+            "@type": "NutritionInformation",
+            "calories": "240 kcal",
+        },
+        "aggregateRating": {
+            "@type": "AggregateRating",
+            "ratingValue": "4.5",
+        },
+        "suitableForDiet": [
+            "https://schema.org/VegetarianDiet",
+        ],
+    }
+    html = _make_jsonld_html(jsonld)
+
+    with patch(
+        "app.services.scraper.scrape_me", side_effect=Exception("fail")
+    ):
+        with patch("httpx.Client.get", return_value=_make_response(html)):
+            result = RecipeScraper.scrape("https://example.com/rezept")
+
+    assert result is not None
+    assert result.title == "Test Recipe"
+    assert result.description == "A great dish."
+    assert result.image_url == "https://example.com/img.jpg"
+    assert result.category == "Hauptgericht"
+    assert result.cuisine == "Italienisch"
+    assert result.keywords == "schnell, pasta"
+    assert result.prep_time_minutes == 15
+    assert result.cook_time_minutes == 30
+    assert result.total_time_minutes == 45
+    assert result.servings == 4
+    assert result.date_published is not None
+    assert result.date_published.isoformat() == "2024-01-15"
+    assert result.author == "Chef"
+    assert result.ingredients == ["200g flour"]
+    assert result.instructions == "Mix and bake."
+    assert result.nutrients == {
+        "@type": "NutritionInformation",
+        "calories": "240 kcal",
+    }
+    assert result.ratings == 4.5
+    assert result.suitable_for_diet == [
+        "https://schema.org/VegetarianDiet"
+    ]
+    assert result.is_partial is False
+
+
+def test_jsonld_falls_back_to_og_meta_for_missing_fields() -> None:
+    jsonld = {
+        "@type": "Recipe",
+        "name": "Pasta",
+        "recipeIngredient": ["200g flour"],
+        "recipeInstructions": "Kochen.",
+    }
+    html = (
+        "<html><head>"
+        f'<script type="application/ld+json">{json.dumps(jsonld)}</script>'
+        '<meta property="og:image" content="https://example.com/og-img.jpg">'
+        '<meta property="og:description" content="OG description text.">'
+        "</head><body></body></html>"
+    )
+
+    with patch(
+        "app.services.scraper.scrape_me", side_effect=Exception("fail")
+    ):
+        with patch("httpx.Client.get", return_value=_make_response(html)):
+            result = RecipeScraper.scrape("https://example.com/pasta")
+
+    assert result is not None
+    assert result.title == "Pasta"
+    assert result.description == "OG description text."
+    assert result.image_url == "https://example.com/og-img.jpg"
+    assert result.is_partial is False
+
+
+def test_jsonld_in_graph_array() -> None:
+    jsonld = {
+        "@graph": [
+            {"@type": "WebSite", "name": "Site"},
+            {
+                "@type": "Recipe",
+                "name": "Nested Recipe",
+                "recipeIngredient": ["salt"],
+                "recipeInstructions": "Mix.",
+            },
+        ],
+    }
+    html = _make_jsonld_html(jsonld)
+
+    with patch(
+        "app.services.scraper.scrape_me", side_effect=Exception("fail")
+    ):
+        with patch("httpx.Client.get", return_value=_make_response(html)):
+            result = RecipeScraper.scrape("https://example.com/graph")
+
+    assert result is not None
+    assert result.title == "Nested Recipe"
+    assert result.ingredients == ["salt"]
+    assert result.is_partial is False
+
+
+def test_jsonld_no_recipe_falls_through_to_meta() -> None:
+    html = (
+        "<html><head>"
+        "<title>Meta Title</title>"
+        '<script type="application/ld+json">{"@type": "WebSite"}</script>'
+        "</head><body></body></html>"
+    )
+
+    with patch(
+        "app.services.scraper.scrape_me", side_effect=Exception("fail")
+    ):
+        with patch("httpx.Client.get", return_value=_make_response(html)):
+            result = RecipeScraper.scrape(
+                "https://example.com/website-only"
+            )
+
+    assert result is not None
+    assert result.is_partial is True
+    assert result.title == "Meta Title"
+
+
+def test_jsonld_with_empty_instructions_returns_empty_string() -> None:
+    jsonld = {
+        "@type": "Recipe",
+        "name": "Empty Steps",
+        "recipeIngredient": ["1 egg"],
+    }
+    html = _make_jsonld_html(jsonld)
+
+    with patch(
+        "app.services.scraper.scrape_me", side_effect=Exception("fail")
+    ):
+        with patch("httpx.Client.get", return_value=_make_response(html)):
+            result = RecipeScraper.scrape("https://example.com/empty")
+
+    assert result is not None
+    assert result.instructions == ""
+    assert result.ingredients == ["1 egg"]
+    assert result.is_partial is False
+
+
+def test_jsonld_instructions_as_string_list() -> None:
+    jsonld = {
+        "@type": "Recipe",
+        "name": "String Steps",
+        "recipeIngredient": ["1 egg"],
+        "recipeInstructions": [
+            "Step one: crack egg.",
+            "Step two: fry.",
+        ],
+    }
+    html = _make_jsonld_html(jsonld)
+
+    with patch(
+        "app.services.scraper.scrape_me", side_effect=Exception("fail")
+    ):
+        with patch("httpx.Client.get", return_value=_make_response(html)):
+            result = RecipeScraper.scrape("https://example.com/strings")
+
+    assert result is not None
+    assert result.instructions == "Step one: crack egg.\nStep two: fry."
+
+
+def test_jsonld_malformed_skips_to_next_block() -> None:
+    html = (
+        "<html><head>"
+        '<script type="application/ld+json">{bad json}</script>'
+        '<script type="application/ld+json">'
+        '{"@type": "Recipe", "name": "OK", "recipeIngredient": [], '
+        '"recipeInstructions": "Go."}'
+        "</script>"
+        "</head><body></body></html>"
+    )
+
+    with patch(
+        "app.services.scraper.scrape_me", side_effect=Exception("fail")
+    ):
+        with patch("httpx.Client.get", return_value=_make_response(html)):
+            result = RecipeScraper.scrape("https://example.com/ok")
+
+    assert result is not None
+    assert result.title == "OK"
+    assert result.is_partial is False
+
+
+def test_jsonld_extracts_author_name_from_object() -> None:
+    jsonld = {
+        "@type": "Recipe",
+        "name": "Author Test",
+        "author": {
+            "@type": "Person",
+            "name": "Sebastian vom FOOBY-Team",
+        },
+        "recipeIngredient": ["salt"],
+        "recipeInstructions": "Mix.",
+    }
+    html = _make_jsonld_html(jsonld)
+
+    with patch(
+        "app.services.scraper.scrape_me", side_effect=Exception("fail")
+    ):
+        with patch("httpx.Client.get", return_value=_make_response(html)):
+            result = RecipeScraper.scrape("https://fooby.ch/author")
+
+    assert result is not None
+    assert result.author == "Sebastian vom FOOBY-Team"
+    assert result.is_partial is False
+
+
+def test_jsonld_author_string_passed_through() -> None:
+    jsonld = {
+        "@type": "Recipe",
+        "name": "String Author",
+        "author": "Betty Bossi",
+        "recipeIngredient": ["salt"],
+        "recipeInstructions": "Mix.",
+    }
+    html = _make_jsonld_html(jsonld)
+
+    with patch(
+        "app.services.scraper.scrape_me", side_effect=Exception("fail")
+    ):
+        with patch("httpx.Client.get", return_value=_make_response(html)):
+            result = RecipeScraper.scrape("https://example.com/string-author")
+
+    assert result is not None
+    assert result.author == "Betty Bossi"
