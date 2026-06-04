@@ -40,6 +40,13 @@ def make_mock_scraper(**kwargs: Any) -> MagicMock:
     return mock
 
 
+def _make_mock_safe_response(html: str = "<html></html>") -> MagicMock:
+    resp = MagicMock()
+    resp.status_code = 200
+    resp.text = html
+    return resp
+
+
 def test_scrape_supported_url_returns_recipe() -> None:
     mock = make_mock_scraper(
         title="Z\u00fcrcher Geschnetzeltes",
@@ -48,8 +55,13 @@ def test_scrape_supported_url_returns_recipe() -> None:
         image_url="https://example.com/img.jpg",
         yields="4 Portionen",
     )
-    with patch("app.services.scraper.scrape_me", return_value=mock):
-        result = RecipeScraper.scrape("https://www.swissmilk.ch/rezept")
+    mock_response = _make_mock_safe_response()
+    with patch(
+        "app.services.scraper.RecipeScraper._fetch_url_safely",
+        return_value=mock_response,
+    ):
+        with patch("app.services.scraper.scrape_html", return_value=mock):
+            result = RecipeScraper.scrape("https://www.swissmilk.ch/rezept")
     assert result is not None
     assert result.title == "Z\u00fcrcher Geschnetzeltes"
     assert result.ingredients == ["600g Kalbfleisch", "200ml Rahm"]
@@ -61,43 +73,65 @@ def test_scrape_supported_url_returns_recipe() -> None:
 
 
 def test_scrape_unsupported_url_returns_none() -> None:
-    with patch("app.services.scraper.scrape_me", side_effect=Exception("fail")):
+    with patch(
+        "app.services.scraper.RecipeScraper._fetch_url_safely",
+        side_effect=Exception("fail"),
+    ):
         result = RecipeScraper.scrape("https://example.com/recipe")
     assert result is None
 
 
 def test_scrape_caches_result() -> None:
     mock = make_mock_scraper()
-    with patch("app.services.scraper.scrape_me", return_value=mock) as mock_scrape:
-        result1 = RecipeScraper.scrape("https://www.bettybossi.ch/rezept")
-        result2 = RecipeScraper.scrape("https://www.bettybossi.ch/rezept")
+    mock_response = _make_mock_safe_response()
+    with patch(
+        "app.services.scraper.RecipeScraper._fetch_url_safely",
+        return_value=mock_response,
+    ) as mock_fetch:
+        with patch(
+            "app.services.scraper.scrape_html", return_value=mock
+        ) as mock_scrape:
+            result1 = RecipeScraper.scrape("https://www.bettybossi.ch/rezept")
+            result2 = RecipeScraper.scrape("https://www.bettybossi.ch/rezept")
     assert result1 is result2
+    assert mock_fetch.call_count == 1
     assert mock_scrape.call_count == 1
 
 
 def test_scrape_caches_none_result() -> None:
     with patch(
-        "app.services.scraper.scrape_me", side_effect=Exception("fail")
-    ) as mock_scrape:
+        "app.services.scraper.RecipeScraper._fetch_url_safely",
+        side_effect=Exception("fail"),
+    ) as mock_fetch:
         result1 = RecipeScraper.scrape("https://no-recipe.example.com")
         result2 = RecipeScraper.scrape("https://no-recipe.example.com")
     assert result1 is None
     assert result2 is None
-    assert mock_scrape.call_count == 1
+    assert mock_fetch.call_count == 1
 
 
 def test_scrape_parses_servings_from_yields() -> None:
     mock = make_mock_scraper(yields="6 Personen")
-    with patch("app.services.scraper.scrape_me", return_value=mock):
-        result = RecipeScraper.scrape("https://www.migusto.migros.ch/rezept")
+    mock_response = _make_mock_safe_response()
+    with patch(
+        "app.services.scraper.RecipeScraper._fetch_url_safely",
+        return_value=mock_response,
+    ):
+        with patch("app.services.scraper.scrape_html", return_value=mock):
+            result = RecipeScraper.scrape("https://www.migusto.migros.ch/rezept")
     assert result is not None
     assert result.servings == 6
 
 
 def test_scrape_fallback_servings_when_yields_empty() -> None:
     mock = make_mock_scraper(yields="")
-    with patch("app.services.scraper.scrape_me", return_value=mock):
-        result = RecipeScraper.scrape("https://www.swissmilk.ch/rezept")
+    mock_response = _make_mock_safe_response()
+    with patch(
+        "app.services.scraper.RecipeScraper._fetch_url_safely",
+        return_value=mock_response,
+    ):
+        with patch("app.services.scraper.scrape_html", return_value=mock):
+            result = RecipeScraper.scrape("https://www.swissmilk.ch/rezept")
     assert result is not None
     assert result.servings == 4
 
@@ -105,16 +139,26 @@ def test_scrape_fallback_servings_when_yields_empty() -> None:
 def test_scrape_ingredients_failure_returns_none() -> None:
     mock = make_mock_scraper()
     mock.ingredients.side_effect = Exception("fail")
-    with patch("app.services.scraper.scrape_me", return_value=mock):
-        result = RecipeScraper.scrape("https://www.swissmilk.ch/rezept-ingredients-fail")
+    mock_response = _make_mock_safe_response()
+    with patch(
+        "app.services.scraper.RecipeScraper._fetch_url_safely",
+        return_value=mock_response,
+    ):
+        with patch("app.services.scraper.scrape_html", return_value=mock):
+            result = RecipeScraper.scrape("https://www.swissmilk.ch/rezept-ingredients-fail")
     assert result is None
 
 
 def test_scrape_instructions_failure_returns_none() -> None:
     mock = make_mock_scraper()
     mock.instructions.side_effect = Exception("fail")
-    with patch("app.services.scraper.scrape_me", return_value=mock):
-        result = RecipeScraper.scrape("https://www.swissmilk.ch/rezept-instructions-fail")
+    mock_response = _make_mock_safe_response()
+    with patch(
+        "app.services.scraper.RecipeScraper._fetch_url_safely",
+        return_value=mock_response,
+    ):
+        with patch("app.services.scraper.scrape_html", return_value=mock):
+            result = RecipeScraper.scrape("https://www.swissmilk.ch/rezept-instructions-fail")
     assert result is None
 
 
@@ -123,14 +167,16 @@ def test_scrape_instructions_failure_returns_none() -> None:
 
 def test_partial_scrape_title_when_scraper_fails() -> None:
     html = "<html><head><title>Rezept</title></head><body></body></html>"
-    mock_response = MagicMock()
-    mock_response.status_code = 200
-    mock_response.text = html
+    mock_response = _make_mock_safe_response(html)
 
     with patch(
-        "app.services.scraper.scrape_me", side_effect=Exception("fail")
+        "app.services.scraper.RecipeScraper._fetch_url_safely",
+        return_value=mock_response,
     ):
-        with patch("httpx.Client.get", return_value=mock_response):
+        with patch(
+            "app.services.scraper.scrape_html",
+            side_effect=Exception("fail"),
+        ):
             result = RecipeScraper.scrape(
                 "https://example.com/partial-title"
             )
@@ -150,14 +196,16 @@ def test_partial_scrape_extracts_og_image() -> None:
         '<meta property="og:image" content="https://example.com/photo.jpg">'
         "</head><body></body></html>"
     )
-    mock_response = MagicMock()
-    mock_response.status_code = 200
-    mock_response.text = html
+    mock_response = _make_mock_safe_response(html)
 
     with patch(
-        "app.services.scraper.scrape_me", side_effect=Exception("fail")
+        "app.services.scraper.RecipeScraper._fetch_url_safely",
+        return_value=mock_response,
     ):
-        with patch("httpx.Client.get", return_value=mock_response):
+        with patch(
+            "app.services.scraper.scrape_html",
+            side_effect=Exception("fail"),
+        ):
             result = RecipeScraper.scrape(
                 "https://example.com/og-image-recipe"
             )
@@ -169,14 +217,16 @@ def test_partial_scrape_extracts_og_image() -> None:
 
 def test_partial_scrape_empty_page_returns_none() -> None:
     html = "<html><head></head><body></body></html>"
-    mock_response = MagicMock()
-    mock_response.status_code = 200
-    mock_response.text = html
+    mock_response = _make_mock_safe_response(html)
 
     with patch(
-        "app.services.scraper.scrape_me", side_effect=Exception("fail")
+        "app.services.scraper.RecipeScraper._fetch_url_safely",
+        return_value=mock_response,
     ):
-        with patch("httpx.Client.get", return_value=mock_response):
+        with patch(
+            "app.services.scraper.scrape_html",
+            side_effect=Exception("fail"),
+        ):
             result = RecipeScraper.scrape(
                 "https://example.com/empty-page"
             )
@@ -186,22 +236,29 @@ def test_partial_scrape_empty_page_returns_none() -> None:
 
 def test_full_scrape_returns_is_partial_false() -> None:
     mock = make_mock_scraper()
-    with patch("app.services.scraper.scrape_me", return_value=mock):
-        result = RecipeScraper.scrape("https://www.swissmilk.ch/rezept")
+    mock_response = _make_mock_safe_response()
+    with patch(
+        "app.services.scraper.RecipeScraper._fetch_url_safely",
+        return_value=mock_response,
+    ):
+        with patch("app.services.scraper.scrape_html", return_value=mock):
+            result = RecipeScraper.scrape("https://www.swissmilk.ch/rezept")
     assert result is not None
     assert result.is_partial is False
 
 
 def test_partial_scrape_shares_cache() -> None:
     html = "<html><head><title>Rezept</title></head><body></body></html>"
-    mock_response = MagicMock()
-    mock_response.status_code = 200
-    mock_response.text = html
+    mock_response = _make_mock_safe_response(html)
 
     with patch(
-        "app.services.scraper.scrape_me", side_effect=Exception("fail")
-    ) as mock_scrape:
-        with patch("httpx.Client.get", return_value=mock_response) as mock_http:
+        "app.services.scraper.RecipeScraper._fetch_url_safely",
+        return_value=mock_response,
+    ) as mock_fetch:
+        with patch(
+            "app.services.scraper.scrape_html",
+            side_effect=Exception("fail"),
+        ) as mock_scrape:
             result1 = RecipeScraper.scrape(
                 "https://example.com/cached-partial"
             )
@@ -210,21 +267,18 @@ def test_partial_scrape_shares_cache() -> None:
             )
 
     assert result1 is result2
+    assert mock_fetch.call_count == 1
     assert mock_scrape.call_count == 1
-    assert mock_http.call_count == 1
 
 
 def test_partial_scrape_http_error_returns_none() -> None:
     with patch(
-        "app.services.scraper.scrape_me", side_effect=Exception("fail")
+        "app.services.scraper.RecipeScraper._fetch_url_safely",
+        side_effect=Exception("connection error"),
     ):
-        with patch(
-            "httpx.Client.get",
-            side_effect=Exception("connection error"),
-        ):
-            result = RecipeScraper.scrape(
-                "https://example.com/http-error"
-            )
+        result = RecipeScraper.scrape(
+            "https://example.com/http-error"
+        )
 
     assert result is None
 
@@ -248,8 +302,13 @@ def test_scrape_fully_populated_object_exercises_every_new_field() -> None:
         ratings=4.5,
         suitable_for_diet=["https://schema.org/VegetarianDiet"],
     )
-    with patch("app.services.scraper.scrape_me", return_value=mock):
-        result = RecipeScraper.scrape("https://www.swissmilk.ch/rezept-extended")
+    mock_response = _make_mock_safe_response()
+    with patch(
+        "app.services.scraper.RecipeScraper._fetch_url_safely",
+        return_value=mock_response,
+    ):
+        with patch("app.services.scraper.scrape_html", return_value=mock):
+            result = RecipeScraper.scrape("https://www.swissmilk.ch/rezept-extended")
     assert result is not None
     assert result.title == "Test Recipe"
     assert result.description == "A delicious Swiss dish."
@@ -276,8 +335,13 @@ def test_scrape_missing_method_returns_none_for_that_field() -> None:
         cuisine="Italienisch",
     )
     del mock.prep_time  # simulate missing method
-    with patch("app.services.scraper.scrape_me", return_value=mock):
-        result = RecipeScraper.scrape("https://www.swissmilk.ch/missing-method")
+    mock_response = _make_mock_safe_response()
+    with patch(
+        "app.services.scraper.RecipeScraper._fetch_url_safely",
+        return_value=mock_response,
+    ):
+        with patch("app.services.scraper.scrape_html", return_value=mock):
+            result = RecipeScraper.scrape("https://www.swissmilk.ch/missing-method")
     assert result is not None
     assert result.title == "Test Recipe"
     assert result.description == "A dish."
@@ -293,14 +357,16 @@ def test_partial_scrape_populates_description_from_og_description() -> None:
         '<meta property="og:description" content="Ein schnelles Feierabend-Rezept.">'
         "</head><body></body></html>"
     )
-    mock_response = MagicMock()
-    mock_response.status_code = 200
-    mock_response.text = html
+    mock_response = _make_mock_safe_response(html)
 
     with patch(
-        "app.services.scraper.scrape_me", side_effect=Exception("fail")
+        "app.services.scraper.RecipeScraper._fetch_url_safely",
+        return_value=mock_response,
     ):
-        with patch("httpx.Client.get", return_value=mock_response):
+        with patch(
+            "app.services.scraper.scrape_html",
+            side_effect=Exception("fail"),
+        ):
             result = RecipeScraper.scrape(
                 "https://example.com/og-desc-recipe"
             )
@@ -323,13 +389,6 @@ def _make_jsonld_html(jsonld: dict) -> str:
     )
 
 
-def _make_response(html: str) -> MagicMock:
-    mock = MagicMock()
-    mock.status_code = 200
-    mock.text = html
-    return mock
-
-
 def test_jsonld_extracts_title_ingredients_steps() -> None:
     jsonld = {
         "@type": "Recipe",
@@ -340,11 +399,16 @@ def test_jsonld_extracts_title_ingredients_steps() -> None:
         ],
     }
     html = _make_jsonld_html(jsonld)
+    mock_response = _make_mock_safe_response(html)
 
     with patch(
-        "app.services.scraper.scrape_me", side_effect=Exception("fail")
+        "app.services.scraper.RecipeScraper._fetch_url_safely",
+        return_value=mock_response,
     ):
-        with patch("httpx.Client.get", return_value=_make_response(html)):
+        with patch(
+            "app.services.scraper.scrape_html",
+            side_effect=Exception("fail"),
+        ):
             result = RecipeScraper.scrape("https://fooby.ch/rezept")
 
     assert result is not None
@@ -384,11 +448,16 @@ def test_jsonld_extracts_all_fields() -> None:
         ],
     }
     html = _make_jsonld_html(jsonld)
+    mock_response = _make_mock_safe_response(html)
 
     with patch(
-        "app.services.scraper.scrape_me", side_effect=Exception("fail")
+        "app.services.scraper.RecipeScraper._fetch_url_safely",
+        return_value=mock_response,
     ):
-        with patch("httpx.Client.get", return_value=_make_response(html)):
+        with patch(
+            "app.services.scraper.scrape_html",
+            side_effect=Exception("fail"),
+        ):
             result = RecipeScraper.scrape("https://example.com/rezept")
 
     assert result is not None
@@ -432,11 +501,16 @@ def test_jsonld_falls_back_to_og_meta_for_missing_fields() -> None:
         '<meta property="og:description" content="OG description text.">'
         "</head><body></body></html>"
     )
+    mock_response = _make_mock_safe_response(html)
 
     with patch(
-        "app.services.scraper.scrape_me", side_effect=Exception("fail")
+        "app.services.scraper.RecipeScraper._fetch_url_safely",
+        return_value=mock_response,
     ):
-        with patch("httpx.Client.get", return_value=_make_response(html)):
+        with patch(
+            "app.services.scraper.scrape_html",
+            side_effect=Exception("fail"),
+        ):
             result = RecipeScraper.scrape("https://example.com/pasta")
 
     assert result is not None
@@ -459,11 +533,16 @@ def test_jsonld_in_graph_array() -> None:
         ],
     }
     html = _make_jsonld_html(jsonld)
+    mock_response = _make_mock_safe_response(html)
 
     with patch(
-        "app.services.scraper.scrape_me", side_effect=Exception("fail")
+        "app.services.scraper.RecipeScraper._fetch_url_safely",
+        return_value=mock_response,
     ):
-        with patch("httpx.Client.get", return_value=_make_response(html)):
+        with patch(
+            "app.services.scraper.scrape_html",
+            side_effect=Exception("fail"),
+        ):
             result = RecipeScraper.scrape("https://example.com/graph")
 
     assert result is not None
@@ -479,11 +558,16 @@ def test_jsonld_no_recipe_falls_through_to_meta() -> None:
         '<script type="application/ld+json">{"@type": "WebSite"}</script>'
         "</head><body></body></html>"
     )
+    mock_response = _make_mock_safe_response(html)
 
     with patch(
-        "app.services.scraper.scrape_me", side_effect=Exception("fail")
+        "app.services.scraper.RecipeScraper._fetch_url_safely",
+        return_value=mock_response,
     ):
-        with patch("httpx.Client.get", return_value=_make_response(html)):
+        with patch(
+            "app.services.scraper.scrape_html",
+            side_effect=Exception("fail"),
+        ):
             result = RecipeScraper.scrape(
                 "https://example.com/website-only"
             )
@@ -500,11 +584,16 @@ def test_jsonld_with_empty_instructions_returns_empty_string() -> None:
         "recipeIngredient": ["1 egg"],
     }
     html = _make_jsonld_html(jsonld)
+    mock_response = _make_mock_safe_response(html)
 
     with patch(
-        "app.services.scraper.scrape_me", side_effect=Exception("fail")
+        "app.services.scraper.RecipeScraper._fetch_url_safely",
+        return_value=mock_response,
     ):
-        with patch("httpx.Client.get", return_value=_make_response(html)):
+        with patch(
+            "app.services.scraper.scrape_html",
+            side_effect=Exception("fail"),
+        ):
             result = RecipeScraper.scrape("https://example.com/empty")
 
     assert result is not None
@@ -524,11 +613,16 @@ def test_jsonld_instructions_as_string_list() -> None:
         ],
     }
     html = _make_jsonld_html(jsonld)
+    mock_response = _make_mock_safe_response(html)
 
     with patch(
-        "app.services.scraper.scrape_me", side_effect=Exception("fail")
+        "app.services.scraper.RecipeScraper._fetch_url_safely",
+        return_value=mock_response,
     ):
-        with patch("httpx.Client.get", return_value=_make_response(html)):
+        with patch(
+            "app.services.scraper.scrape_html",
+            side_effect=Exception("fail"),
+        ):
             result = RecipeScraper.scrape("https://example.com/strings")
 
     assert result is not None
@@ -545,11 +639,16 @@ def test_jsonld_malformed_skips_to_next_block() -> None:
         "</script>"
         "</head><body></body></html>"
     )
+    mock_response = _make_mock_safe_response(html)
 
     with patch(
-        "app.services.scraper.scrape_me", side_effect=Exception("fail")
+        "app.services.scraper.RecipeScraper._fetch_url_safely",
+        return_value=mock_response,
     ):
-        with patch("httpx.Client.get", return_value=_make_response(html)):
+        with patch(
+            "app.services.scraper.scrape_html",
+            side_effect=Exception("fail"),
+        ):
             result = RecipeScraper.scrape("https://example.com/ok")
 
     assert result is not None
@@ -569,11 +668,16 @@ def test_jsonld_extracts_author_name_from_object() -> None:
         "recipeInstructions": "Mix.",
     }
     html = _make_jsonld_html(jsonld)
+    mock_response = _make_mock_safe_response(html)
 
     with patch(
-        "app.services.scraper.scrape_me", side_effect=Exception("fail")
+        "app.services.scraper.RecipeScraper._fetch_url_safely",
+        return_value=mock_response,
     ):
-        with patch("httpx.Client.get", return_value=_make_response(html)):
+        with patch(
+            "app.services.scraper.scrape_html",
+            side_effect=Exception("fail"),
+        ):
             result = RecipeScraper.scrape("https://fooby.ch/author")
 
     assert result is not None
@@ -590,11 +694,16 @@ def test_jsonld_author_string_passed_through() -> None:
         "recipeInstructions": "Mix.",
     }
     html = _make_jsonld_html(jsonld)
+    mock_response = _make_mock_safe_response(html)
 
     with patch(
-        "app.services.scraper.scrape_me", side_effect=Exception("fail")
+        "app.services.scraper.RecipeScraper._fetch_url_safely",
+        return_value=mock_response,
     ):
-        with patch("httpx.Client.get", return_value=_make_response(html)):
+        with patch(
+            "app.services.scraper.scrape_html",
+            side_effect=Exception("fail"),
+        ):
             result = RecipeScraper.scrape("https://example.com/string-author")
 
     assert result is not None
@@ -620,7 +729,8 @@ def _make_mock_http_response(
 
 def test_fetch_url_safely_normal_fetch() -> None:
     mock_response = _make_mock_http_response()
-    with patch("socket.getaddrinfo", return_value=_make_getaddrinfo_result("93.184.216.34")):
+    addr = _make_getaddrinfo_result("93.184.216.34")
+    with patch("socket.getaddrinfo", return_value=addr):
         with patch("httpx.Client.get", return_value=mock_response) as mock_get:
             result = RecipeScraper._fetch_url_safely("https://example.com")
     assert result.status_code == 200
@@ -648,7 +758,8 @@ def test_fetch_url_safely_single_redirect() -> None:
             return responses[url]
         raise Exception(f"Unexpected URL: {url}")
 
-    with patch("socket.getaddrinfo", return_value=_make_getaddrinfo_result("93.184.216.34")):
+    addr = _make_getaddrinfo_result("93.184.216.34")
+    with patch("socket.getaddrinfo", return_value=addr):
         with patch("httpx.Client.get", side_effect=get_side_effect) as mock_get:
             result = RecipeScraper._fetch_url_safely("https://example.com/start")
     assert result.status_code == 200
@@ -662,7 +773,8 @@ def test_fetch_url_safely_redirect_to_127_0_0_1_raises() -> None:
         url="https://example.com/start",
     )
 
-    with patch("socket.getaddrinfo", return_value=_make_getaddrinfo_result("93.184.216.34")):
+    addr = _make_getaddrinfo_result("93.184.216.34")
+    with patch("socket.getaddrinfo", return_value=addr):
         with patch("httpx.Client.get", return_value=redirect_resp):
             try:
                 RecipeScraper._fetch_url_safely("https://example.com/start")
@@ -678,7 +790,8 @@ def test_fetch_url_safely_redirect_to_10_0_0_1_raises() -> None:
         url="https://example.com/start",
     )
 
-    with patch("socket.getaddrinfo", return_value=_make_getaddrinfo_result("93.184.216.34")):
+    addr = _make_getaddrinfo_result("93.184.216.34")
+    with patch("socket.getaddrinfo", return_value=addr):
         with patch("httpx.Client.get", return_value=redirect_resp):
             try:
                 RecipeScraper._fetch_url_safely("https://example.com/start")
@@ -707,7 +820,8 @@ def test_fetch_url_safely_relative_redirect() -> None:
             return responses[url]
         raise Exception(f"Unexpected URL: {url}")
 
-    with patch("socket.getaddrinfo", return_value=_make_getaddrinfo_result("93.184.216.34")):
+    addr = _make_getaddrinfo_result("93.184.216.34")
+    with patch("socket.getaddrinfo", return_value=addr):
         with patch("httpx.Client.get", side_effect=get_side_effect) as mock_get:
             result = RecipeScraper._fetch_url_safely("https://example.com/start")
     assert result.status_code == 200
@@ -741,7 +855,8 @@ def test_fetch_url_safely_multi_hop_redirect() -> None:
             return responses[url]
         raise Exception(f"Unexpected URL: {url}")
 
-    with patch("socket.getaddrinfo", return_value=_make_getaddrinfo_result("93.184.216.34")):
+    addr = _make_getaddrinfo_result("93.184.216.34")
+    with patch("socket.getaddrinfo", return_value=addr):
         with patch("httpx.Client.get", side_effect=get_side_effect) as mock_get:
             result = RecipeScraper._fetch_url_safely("https://example.com/start")
     assert result.status_code == 200
@@ -755,7 +870,8 @@ def test_fetch_url_safely_max_redirects_exceeded() -> None:
         url="https://example.com/start",
     )
 
-    with patch("socket.getaddrinfo", return_value=_make_getaddrinfo_result("93.184.216.34")):
+    addr = _make_getaddrinfo_result("93.184.216.34")
+    with patch("socket.getaddrinfo", return_value=addr):
         with patch(
             "httpx.Client.get", return_value=redirect_resp
         ) as mock_get:

@@ -11,7 +11,7 @@ from typing import Any
 from urllib.parse import urljoin, urlparse
 
 import httpx
-from recipe_scrapers import scrape_me
+from recipe_scrapers import scrape_html
 
 
 class SSRFBlockedError(Exception):
@@ -302,7 +302,7 @@ class RecipeScraper:
             if elapsed < cls._rate_limit_seconds:
                 time.sleep(cls._rate_limit_seconds - elapsed)
 
-        result = cls._do_scrape(url)
+        result = cls._scrape_with_fetch(url)
         with cls._lock:
             cls._last_request_time = time.monotonic()
 
@@ -310,11 +310,19 @@ class RecipeScraper:
         return result
 
     @classmethod
-    def _do_scrape(cls, url: str) -> ScrapedRecipe | None:
+    def _scrape_with_fetch(cls, url: str) -> ScrapedRecipe | None:
         try:
-            scraper = scrape_me(url)
+            response = cls._fetch_url_safely(url)
+            html = response.text
+        except SSRFBlockedError:
+            raise
         except Exception:
-            return cls._partial_scrape(url)
+            return None
+
+        try:
+            scraper = scrape_html(html, url)
+        except Exception:
+            return cls._extract_recipe_from_html(html, url)
 
         try:
             title = scraper.title()  # type: ignore[no-untyped-call]
@@ -379,19 +387,7 @@ class RecipeScraper:
             return None
 
     @classmethod
-    def _partial_scrape(cls, url: str) -> ScrapedRecipe | None:
-        try:
-            with httpx.Client(
-                timeout=10.0,
-                headers=cls._http_headers,
-                follow_redirects=True,
-            ) as client:
-                response = client.get(url)
-                response.raise_for_status()
-                html = response.text
-        except Exception:
-            return None
-
+    def _extract_recipe_from_html(cls, html: str, url: str) -> ScrapedRecipe | None:
         parser = _MetaParser()
         parser.feed(html)
 
