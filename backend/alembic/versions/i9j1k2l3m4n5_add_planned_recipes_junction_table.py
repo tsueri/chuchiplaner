@@ -23,9 +23,13 @@ def upgrade() -> None:
         sa.Column("id", sa.Integer(), nullable=False),
         sa.Column("meal_slot_id", sa.Integer(), nullable=False),
         sa.Column("recipe_id", sa.Integer(), nullable=False),
-        sa.Column("portions", sa.Integer(), nullable=False, server_default=sa.text("1")),
+        sa.Column(
+            "portions", sa.Integer(), nullable=False, server_default=sa.text("1"),
+        ),
         sa.Column("cooked", sa.Boolean(), nullable=False, server_default=sa.text("0")),
-        sa.Column("order_index", sa.Integer(), nullable=False, server_default=sa.text("0")),
+        sa.Column(
+            "order_index", sa.Integer(), nullable=False, server_default=sa.text("0"),
+        ),
         sa.Column(
             "created_at",
             sa.DateTime(),
@@ -52,7 +56,8 @@ def upgrade() -> None:
     op.execute(
         sa.text(
             "INSERT INTO planned_recipes "
-            "(meal_slot_id, recipe_id, portions, cooked, order_index, created_at, updated_at) "
+            "(meal_slot_id, recipe_id, portions, cooked, order_index, "
+            "created_at, updated_at) "
             "SELECT id, recipe_id, portions, cooked, 0, "
             "COALESCE(created_at, CURRENT_TIMESTAMP), "
             "COALESCE(updated_at, CURRENT_TIMESTAMP) "

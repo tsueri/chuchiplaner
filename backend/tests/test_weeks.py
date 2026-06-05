@@ -761,7 +761,9 @@ async def test_cook_slot_deducts_inventory(
     )
 
     get_resp = await client.get(f"/api/weeks/{year}/{week}", cookies=cookies)
-    slot_data = next(s for s in get_resp.json()["slots"] if s["id"] == sunday_dinner["id"])
+    slot_data = next(
+        s for s in get_resp.json()["slots"] if s["id"] == sunday_dinner["id"]
+    )
     pr = slot_data["planned_recipes"][0]
 
     cook_resp = await client.post(
@@ -1729,13 +1731,11 @@ async def test_remove_one_planned_recipe_from_multi_slot(
     )
 
     get_resp = await client.get(f"/api/weeks/{year}/{week}", cookies=cookies)
-    slot = next(
+    _ = next(
         s
         for s in get_resp.json()["slots"]
         if s["day_of_week"] == 0 and s["meal_type"] == "dinner"
     )
-    pr0 = slot["planned_recipes"][0]
-
     resp = await client.put(
         f"/api/weeks/{year}/{week}/slots",
         json={
@@ -2208,7 +2208,6 @@ async def test_cook_multiple_recipes_in_slot_only_one_cooked(
         s for s in get_resp.json()["slots"]
         if s["id"] == slot["id"]
     )
-    pr1 = slot_data["planned_recipes"][0]
     pr2 = slot_data["planned_recipes"][1]
 
     # Cook only the second PlannedRecipe
@@ -2228,8 +2227,14 @@ async def test_cook_multiple_recipes_in_slot_only_one_cooked(
         s for s in get_resp2.json()["slots"]
         if s["id"] == slot["id"]
     )
-    pr1_after = next(p for p in slot_data2["planned_recipes"] if p["recipe_id"] == recipe1_id)
-    pr2_after = next(p for p in slot_data2["planned_recipes"] if p["recipe_id"] == recipe2_id)
+    pr1_after = next(
+        p for p in slot_data2["planned_recipes"]
+        if p["recipe_id"] == recipe1_id
+    )
+    pr2_after = next(
+        p for p in slot_data2["planned_recipes"]
+        if p["recipe_id"] == recipe2_id
+    )
     assert pr1_after["cooked"] is False
     assert pr2_after["cooked"] is True
 
