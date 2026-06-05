@@ -395,6 +395,8 @@ class RecipeScraper:
         cuisine = cls._safe_call(scraper, "cuisine")
         category = cls._safe_call(scraper, "category")
         keywords = cls._safe_call(scraper, "keywords")
+        if isinstance(keywords, list):
+            keywords = ", ".join(keywords)
         author = cls._safe_call(scraper, "author")
         date_pub = cls._safe_call(scraper, "date_published")
         ratings_val = cls._safe_call(scraper, "ratings")
