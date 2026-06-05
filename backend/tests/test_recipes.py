@@ -1921,14 +1921,14 @@ async def test_create_recipe_alias_conflict_409(
         },
         cookies=cookies,
     )
-    assert resp.status_code == 409
-    assert "detail" in resp.json()
+    assert resp.status_code == 201  # duplicate alias is silently skipped
+    assert resp.json()["title"] == "Rahmsosse"
 
-    await db_session.rollback()
+    # Recipe was created successfully despite pre-existing alias.
     list_resp = await client.get("/api/recipes", cookies=cookies)
     recipes = list_resp.json()
     titles = [r["title"] for r in recipes]
-    assert "Rahmsosse" not in titles
+    assert "Rahmsosse" in titles
 
 
 @pytest.mark.asyncio

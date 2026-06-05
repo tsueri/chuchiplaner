@@ -376,7 +376,21 @@ async def _persist_recipe_aliases(
     household_id: int | None,
 ) -> None:
     with db.no_autoflush:
+        # Fetch existing aliases for this household so we can skip duplicates.
+        existing_result = await db.execute(
+            select(IngredientAlias).where(
+                IngredientAlias.household_id == household_id,
+            )
+        )
+        existing_names_lower = {
+            a.alias_name.lower() for a in existing_result.scalars().all()
+        }
+
+        added = False
         for alias_item in body.learned_aliases:
+            if alias_item.alias_name.lower() in existing_names_lower:
+                continue
+
             ing_result = await db.execute(
                 select(Ingredient).where(Ingredient.id == alias_item.ingredient_id)
             )
@@ -394,16 +408,11 @@ async def _persist_recipe_aliases(
                 ingredient_id=alias_item.ingredient_id,
             )
             db.add(alias)
-        try:
+            existing_names_lower.add(alias_item.alias_name.lower())
+            added = True
+
+        if added:
             await db.flush()
-        except IntegrityError:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=(
-                    "Ein Alias mit diesem Namen existiert bereits "
-                    "in diesem Haushalt."
-                ),
-            )
 
 
 async def _upsert_recipe(
