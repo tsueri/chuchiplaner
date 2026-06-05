@@ -5,7 +5,11 @@ from httpx import AsyncClient
 async def _register(client: AsyncClient, username: str = "testuser") -> dict:
     resp = await client.post(
         "/api/auth/register",
-        json={"username": username, "password": "secret123"},
+        json={
+            "username": username,
+            "password": "secret123",
+            "admin_signup_code": "test-secret",
+        },
     )
     return {"cookies": resp.cookies, "data": resp.json()}
 
@@ -36,9 +40,7 @@ async def test_user_favorites_with_items(client: AsyncClient) -> None:
     recipe = await _create_recipe(client, cookies, title="Favorite Dish")
     recipe_id = recipe["id"]
 
-    await client.post(
-        f"/api/recipes/{recipe_id}/favorite", cookies=cookies
-    )
+    await client.post(f"/api/recipes/{recipe_id}/favorite", cookies=cookies)
 
     resp = await client.get("/api/auth/user/favorites", cookies=cookies)
     assert resp.status_code == 200

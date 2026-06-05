@@ -3,6 +3,7 @@
 Verifies that the new migration creates the standard controlled-vocabulary
 tags as global (household_id IS NULL) and that the downgrade removes them.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -161,9 +162,9 @@ async def test_migration_seeded_tags_remain_global(
         rows = (
             await session.execute(
                 text(
-                    "SELECT \"group\", COUNT(*) FROM tags "
+                    'SELECT "group", COUNT(*) FROM tags '
                     f"WHERE name IN ({in_clause}) "
-                    "GROUP BY \"group\""
+                    'GROUP BY "group"'
                 )
             )
         ).all()
@@ -189,7 +190,7 @@ async def test_migration_seed_downgrade_removes_only_seeded_tags(
         rows = (
             await session.execute(
                 text(
-                    "SELECT name FROM tags WHERE \"group\" IN "
+                    'SELECT name FROM tags WHERE "group" IN '
                     "('category', 'cuisine', 'diet')"
                 )
             )

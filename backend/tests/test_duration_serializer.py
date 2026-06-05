@@ -99,6 +99,9 @@ def test_parse_human_none_returns_none() -> None:
 
 def test_to_iso_and_from_iso_round_trip() -> None:
     for minutes in [0, 30, 60, 90, 125, 240]:
-        assert DurationSerializer.from_iso_duration(
-            DurationSerializer.to_iso_duration(minutes)
-        ) == minutes
+        assert (
+            DurationSerializer.from_iso_duration(
+                DurationSerializer.to_iso_duration(minutes)
+            )
+            == minutes
+        )

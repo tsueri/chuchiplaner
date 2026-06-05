@@ -1,3 +1,4 @@
+import hmac
 import secrets
 from datetime import UTC, datetime, timedelta
 
@@ -6,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.config import settings
 from app.models.user import Session as SessionModel
 from app.models.user import User
 from app.services.household import (
@@ -91,3 +93,12 @@ async def delete_session(db: AsyncSession, token: str) -> None:
     if session:
         await db.delete(session)
         await db.flush()
+
+
+def verify_admin_signup_code(submitted: str | None) -> bool:
+    if not submitted:
+        return False
+    configured = settings.admin_signup_code.strip()
+    if not configured:
+        return False
+    return hmac.compare_digest(submitted.strip(), configured)

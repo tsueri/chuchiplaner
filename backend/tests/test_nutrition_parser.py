@@ -126,20 +126,22 @@ def test_parse_trans_fat_content_with_unit() -> None:
 
 
 def test_parse_all_twelve_fields() -> None:
-    result = NutritionParser.parse({
-        "calories": "240 kcal",
-        "carbohydrateContent": "30 g",
-        "proteinContent": "15 g",
-        "fatContent": "8 g",
-        "saturatedFatContent": "3 g",
-        "unsaturatedFatContent": "4.5 g",
-        "fiberContent": "2 g",
-        "sugarContent": "5 g",
-        "sodiumContent": "500 mg",
-        "cholesterolContent": "30 mg",
-        "servingSize": "100 g",
-        "transFatContent": "0.1 g",
-    })
+    result = NutritionParser.parse(
+        {
+            "calories": "240 kcal",
+            "carbohydrateContent": "30 g",
+            "proteinContent": "15 g",
+            "fatContent": "8 g",
+            "saturatedFatContent": "3 g",
+            "unsaturatedFatContent": "4.5 g",
+            "fiberContent": "2 g",
+            "sugarContent": "5 g",
+            "sodiumContent": "500 mg",
+            "cholesterolContent": "30 mg",
+            "servingSize": "100 g",
+            "transFatContent": "0.1 g",
+        }
+    )
     assert result is not None
     assert result.calories.value == 240.0
     assert result.carbohydrate_content.value == 30.0

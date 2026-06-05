@@ -196,14 +196,16 @@ async def test_add_alias(
     # First register to get a session
     reg_resp = await client.post(
         "/api/auth/register",
-        json={"username": "aliasuser", "password": "secret123"},
+        json={
+            "username": "aliasuser",
+            "password": "secret123",
+            "admin_signup_code": "test-secret",
+        },
     )
     cookies = reg_resp.cookies
 
     # Create an ingredient
-    create_resp = await client.post(
-        "/api/ingredients", json={"name": "Pouletbrust"}
-    )
+    create_resp = await client.post("/api/ingredients", json={"name": "Pouletbrust"})
     ingredient_id = create_resp.json()["id"]
 
     # Add an alias
@@ -223,13 +225,15 @@ async def test_add_alias(
 async def test_list_aliases(client: AsyncClient) -> None:
     reg_resp = await client.post(
         "/api/auth/register",
-        json={"username": "aliaslistuser", "password": "secret123"},
+        json={
+            "username": "aliaslistuser",
+            "password": "secret123",
+            "admin_signup_code": "test-secret",
+        },
     )
     cookies = reg_resp.cookies
 
-    create_resp = await client.post(
-        "/api/ingredients", json={"name": "Rahm"}
-    )
+    create_resp = await client.post("/api/ingredients", json={"name": "Rahm"})
     ingredient_id = create_resp.json()["id"]
 
     await client.post(
@@ -315,13 +319,15 @@ async def test_delete_ingredient_blocked_by_inventory(
 ) -> None:
     reg_resp = await client.post(
         "/api/auth/register",
-        json={"username": "delblock1", "password": "secret123"},
+        json={
+            "username": "delblock1",
+            "password": "secret123",
+            "admin_signup_code": "test-secret",
+        },
     )
     cookies = reg_resp.cookies
 
-    create_resp = await client.post(
-        "/api/ingredients", json={"name": "Blockiert"}
-    )
+    create_resp = await client.post("/api/ingredients", json={"name": "Blockiert"})
     ingredient_id = create_resp.json()["id"]
 
     await client.post(

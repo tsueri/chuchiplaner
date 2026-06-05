@@ -1,15 +1,72 @@
+import hmac
 import logging
 from unittest.mock import patch
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.config import settings
+
+
+def test_verify_admin_signup_code_correct() -> None:
+    from app.services.auth import verify_admin_signup_code
+
+    original = settings.admin_signup_code
+    settings.admin_signup_code = "correct"
+    try:
+        assert verify_admin_signup_code("correct") is True
+    finally:
+        settings.admin_signup_code = original
+
+
+def test_verify_admin_signup_code_wrong() -> None:
+    from app.services.auth import verify_admin_signup_code
+
+    original = settings.admin_signup_code
+    settings.admin_signup_code = "correct"
+    try:
+        assert verify_admin_signup_code("wrong") is False
+        assert verify_admin_signup_code("") is False
+        assert verify_admin_signup_code(None) is False
+    finally:
+        settings.admin_signup_code = original
+
+
+def test_verify_admin_signup_code_empty_config() -> None:
+    from app.services.auth import verify_admin_signup_code
+
+    original = settings.admin_signup_code
+    settings.admin_signup_code = ""
+    try:
+        assert verify_admin_signup_code("correct") is False
+        assert verify_admin_signup_code("") is False
+    finally:
+        settings.admin_signup_code = original
+
+
+def test_verify_admin_signup_code_uses_compare_digest() -> None:
+    from app.services import auth as auth_services
+
+    original = settings.admin_signup_code
+    settings.admin_signup_code = "secret"
+    try:
+        with patch.object(hmac, "compare_digest", wraps=hmac.compare_digest) as mock_cd:
+            auth_services.verify_admin_signup_code("secret")
+            mock_cd.assert_called_once_with("secret", "secret")
+    finally:
+        settings.admin_signup_code = original
 
 
 @pytest.mark.asyncio
 async def test_register_success(client: AsyncClient) -> None:
     response = await client.post(
         "/api/auth/register",
-        json={"username": "testuser", "password": "secret123"},
+        json={
+            "username": "testuser",
+            "password": "secret123",
+            "admin_signup_code": "test-secret",
+        },
     )
     assert response.status_code == 200
     data = response.json()
@@ -62,11 +119,19 @@ async def test_login_cookie_default_attributes(client: AsyncClient) -> None:
 async def test_register_duplicate_username(client: AsyncClient) -> None:
     await client.post(
         "/api/auth/register",
-        json={"username": "dupuser", "password": "secret123"},
+        json={
+            "username": "dupuser",
+            "password": "secret123",
+            "admin_signup_code": "test-secret",
+        },
     )
     response = await client.post(
         "/api/auth/register",
-        json={"username": "dupuser", "password": "another456"},
+        json={
+            "username": "dupuser",
+            "password": "another456",
+            "admin_signup_code": "test-secret",
+        },
     )
     assert response.status_code == 409
     data = response.json()
@@ -86,7 +151,11 @@ async def test_register_missing_fields(client: AsyncClient) -> None:
 async def test_login_success(client: AsyncClient) -> None:
     await client.post(
         "/api/auth/register",
-        json={"username": "loginuser", "password": "secret123"},
+        json={
+            "username": "loginuser",
+            "password": "secret123",
+            "admin_signup_code": "test-secret",
+        },
     )
     response = await client.post(
         "/api/auth/login",
@@ -105,7 +174,11 @@ async def test_login_success(client: AsyncClient) -> None:
 async def test_login_invalid_password(client: AsyncClient) -> None:
     await client.post(
         "/api/auth/register",
-        json={"username": "badpwuser", "password": "secret123"},
+        json={
+            "username": "badpwuser",
+            "password": "secret123",
+            "admin_signup_code": "test-secret",
+        },
     )
     response = await client.post(
         "/api/auth/login",
@@ -131,7 +204,11 @@ async def test_login_nonexistent_user(client: AsyncClient) -> None:
 async def test_me_authenticated(client: AsyncClient) -> None:
     register_resp = await client.post(
         "/api/auth/register",
-        json={"username": "meuser", "password": "secret123"},
+        json={
+            "username": "meuser",
+            "password": "secret123",
+            "admin_signup_code": "test-secret",
+        },
     )
     cookies = register_resp.cookies
 
@@ -151,7 +228,11 @@ async def test_me_unauthenticated(client: AsyncClient) -> None:
 async def test_logout(client: AsyncClient) -> None:
     register_resp = await client.post(
         "/api/auth/register",
-        json={"username": "logoutuser", "password": "secret123"},
+        json={
+            "username": "logoutuser",
+            "password": "secret123",
+            "admin_signup_code": "test-secret",
+        },
     )
     cookies = register_resp.cookies
 
@@ -169,7 +250,11 @@ async def test_logout(client: AsyncClient) -> None:
 async def test_session_persists_across_requests(client: AsyncClient) -> None:
     login_resp = await client.post(
         "/api/auth/register",
-        json={"username": "persistuser", "password": "secret123"},
+        json={
+            "username": "persistuser",
+            "password": "secret123",
+            "admin_signup_code": "test-secret",
+        },
     )
     cookies = login_resp.cookies
 
@@ -183,7 +268,11 @@ async def test_session_persists_across_requests(client: AsyncClient) -> None:
 async def test_change_password_success(client: AsyncClient) -> None:
     register_resp = await client.post(
         "/api/auth/register",
-        json={"username": "pwuser", "password": "secret123"},
+        json={
+            "username": "pwuser",
+            "password": "secret123",
+            "admin_signup_code": "test-secret",
+        },
     )
     cookies = register_resp.cookies
 
@@ -208,7 +297,11 @@ async def test_change_password_success(client: AsyncClient) -> None:
 async def test_change_password_wrong_current(client: AsyncClient) -> None:
     register_resp = await client.post(
         "/api/auth/register",
-        json={"username": "pwuser2", "password": "secret123"},
+        json={
+            "username": "pwuser2",
+            "password": "secret123",
+            "admin_signup_code": "test-secret",
+        },
     )
     cookies = register_resp.cookies
 
@@ -225,7 +318,11 @@ async def test_change_password_wrong_current(client: AsyncClient) -> None:
 async def test_change_password_same_as_current(client: AsyncClient) -> None:
     register_resp = await client.post(
         "/api/auth/register",
-        json={"username": "pwuser3", "password": "secret123"},
+        json={
+            "username": "pwuser3",
+            "password": "secret123",
+            "admin_signup_code": "test-secret",
+        },
     )
     cookies = register_resp.cookies
 
@@ -242,7 +339,11 @@ async def test_change_password_same_as_current(client: AsyncClient) -> None:
 async def test_change_password_too_short(client: AsyncClient) -> None:
     register_resp = await client.post(
         "/api/auth/register",
-        json={"username": "pwuser4", "password": "secret123"},
+        json={
+            "username": "pwuser4",
+            "password": "secret123",
+            "admin_signup_code": "test-secret",
+        },
     )
     cookies = register_resp.cookies
 
@@ -419,3 +520,128 @@ async def test_session_middleware_does_not_log_cookies(
         assert "set-cookie" not in msg.lower(), (
             f"Log record at {record.levelname} contains set-cookie: {msg}"
         )
+
+
+@pytest.mark.asyncio
+async def test_register_admin_signup_code_success(client: AsyncClient) -> None:
+    response = await client.post(
+        "/api/auth/register",
+        json={
+            "username": "adminsignup1",
+            "password": "secret123",
+            "admin_signup_code": "test-secret",
+        },
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["username"] == "adminsignup1"
+    assert data["role"] == "admin"
+
+
+@pytest.mark.asyncio
+async def test_register_admin_signup_code_wrong(client: AsyncClient) -> None:
+    response = await client.post(
+        "/api/auth/register",
+        json={
+            "username": "adminsignup2",
+            "password": "secret123",
+            "admin_signup_code": "wrong-code",
+        },
+    )
+    assert response.status_code == 403
+    data = response.json()
+    assert "detail" in data
+
+
+@pytest.mark.asyncio
+async def test_register_no_code_when_configured(client: AsyncClient) -> None:
+    response = await client.post(
+        "/api/auth/register",
+        json={"username": "noruser", "password": "secret123"},
+    )
+    assert response.status_code == 403
+    data = response.json()
+    assert "detail" in data
+
+
+@pytest.mark.asyncio
+async def test_register_invite_code_still_works(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    from app.services.household import create_household
+
+    household = await create_household(db_session, "Test Household")
+    invite = household.invite_code
+
+    response = await client.post(
+        "/api/auth/register",
+        json={
+            "username": "inviteduser",
+            "password": "secret123",
+            "invite_code": invite,
+        },
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["username"] == "inviteduser"
+    assert data["role"] == "member"
+
+
+@pytest.mark.asyncio
+async def test_register_invite_code_invalid(client: AsyncClient) -> None:
+    response = await client.post(
+        "/api/auth/register",
+        json={
+            "username": "badinvite",
+            "password": "secret123",
+            "invite_code": "invalid-code",
+        },
+    )
+    assert response.status_code == 403
+    data = response.json()
+    assert "detail" in data
+
+
+@pytest.mark.asyncio
+async def test_register_no_code_unconfigured(client: AsyncClient) -> None:
+    original = settings.admin_signup_code
+    settings.admin_signup_code = ""
+    try:
+        response = await client.post(
+            "/api/auth/register",
+            json={
+                "username": "noconfiguser",
+                "password": "secret123",
+            },
+        )
+        assert response.status_code == 403
+        data = response.json()
+        assert "detail" in data
+    finally:
+        settings.admin_signup_code = original
+
+
+@pytest.mark.asyncio
+async def test_register_wrong_code_does_not_reveal_username_taken(
+    client: AsyncClient,
+) -> None:
+    await client.post(
+        "/api/auth/register",
+        json={
+            "username": "existing2",
+            "password": "secret123",
+            "admin_signup_code": "test-secret",
+        },
+    )
+    response = await client.post(
+        "/api/auth/register",
+        json={
+            "username": "existing2",
+            "password": "secret123",
+            "admin_signup_code": "wrong-code",
+        },
+    )
+    assert response.status_code == 403
+    data = response.json()
+    assert "detail" in data
+    assert "username" not in data.get("detail", "").lower()

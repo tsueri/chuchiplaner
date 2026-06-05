@@ -1,6 +1,7 @@
 """FTSRebuilder: drops and recreates recipes_fts and repopulates from the
 joined recipe / recipe_steps / recipe_ingredients / tags state.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -79,19 +80,14 @@ async def test_rebuild_populates_columns_from_joined_state(
     )
     await db_session.execute(
         text(
-            "INSERT INTO tags (id, name, \"group\", household_id) "
+            'INSERT INTO tags (id, name, "group", household_id) '
             "VALUES (901, 'Mediterran', 'cuisine', NULL)"
         )
     )
     await db_session.execute(
-        text(
-            "INSERT INTO recipe_tags (recipe_id, tag_id) "
-            "VALUES (901, 901)"
-        )
+        text("INSERT INTO recipe_tags (recipe_id, tag_id) VALUES (901, 901)")
     )
-    await db_session.execute(
-        text("DELETE FROM recipes_fts WHERE rowid = 901")
-    )
+    await db_session.execute(text("DELETE FROM recipes_fts WHERE rowid = 901"))
 
     await FTSRebuilder.rebuild(db_session)
 
@@ -138,10 +134,7 @@ async def test_rebuild_ingredient_search_finds_recipe_absent_from_title(
         )
     )
     await db_session.execute(
-        text(
-            "INSERT INTO ingredients (id, name) "
-            "VALUES (903, 'Tomatenkonzentrat')"
-        )
+        text("INSERT INTO ingredients (id, name) VALUES (903, 'Tomatenkonzentrat')")
     )
     await db_session.execute(
         text(
@@ -155,9 +148,7 @@ async def test_rebuild_ingredient_search_finds_recipe_absent_from_title(
 
     hits = (
         await db_session.execute(
-            text(
-                "SELECT rowid FROM recipes_fts WHERE recipes_fts MATCH :q"
-            ),
+            text("SELECT rowid FROM recipes_fts WHERE recipes_fts MATCH :q"),
             {"q": "Tomatenkonzentrat"},
         )
     ).fetchall()
@@ -215,9 +206,7 @@ async def test_reindex_one_replaces_existing_fts_row(
     )
     await FTSRebuilder.reindex_one(db_session, 905)
 
-    await db_session.execute(
-        text("UPDATE recipes SET title = 'V2' WHERE id = 905")
-    )
+    await db_session.execute(text("UPDATE recipes SET title = 'V2' WHERE id = 905"))
     await FTSRebuilder.reindex_one(db_session, 905)
 
     rows = (

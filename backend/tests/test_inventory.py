@@ -1,4 +1,3 @@
-
 import pytest
 from httpx import AsyncClient
 
@@ -7,13 +6,15 @@ from httpx import AsyncClient
 async def test_create_inventory_item(client: AsyncClient) -> None:
     reg_resp = await client.post(
         "/api/auth/register",
-        json={"username": "invuser1", "password": "secret123"},
+        json={
+            "username": "invuser1",
+            "password": "secret123",
+            "admin_signup_code": "test-secret",
+        },
     )
     cookies = reg_resp.cookies
 
-    create_resp = await client.post(
-        "/api/ingredients", json={"name": "Pouletbrust"}
-    )
+    create_resp = await client.post("/api/ingredients", json={"name": "Pouletbrust"})
     ingredient_id = create_resp.json()["id"]
 
     response = await client.post(
@@ -42,7 +43,11 @@ async def test_create_inventory_item(client: AsyncClient) -> None:
 async def test_list_inventory_sorted_by_expiry(client: AsyncClient) -> None:
     reg_resp = await client.post(
         "/api/auth/register",
-        json={"username": "invuser2", "password": "secret123"},
+        json={
+            "username": "invuser2",
+            "password": "secret123",
+            "admin_signup_code": "test-secret",
+        },
     )
     cookies = reg_resp.cookies
 
@@ -100,7 +105,11 @@ async def test_list_inventory_sorted_by_expiry(client: AsyncClient) -> None:
 async def test_update_inventory_item(client: AsyncClient) -> None:
     reg_resp = await client.post(
         "/api/auth/register",
-        json={"username": "invuser3", "password": "secret123"},
+        json={
+            "username": "invuser3",
+            "password": "secret123",
+            "admin_signup_code": "test-secret",
+        },
     )
     cookies = reg_resp.cookies
 
@@ -142,7 +151,11 @@ async def test_update_inventory_item(client: AsyncClient) -> None:
 async def test_delete_inventory_item(client: AsyncClient) -> None:
     reg_resp = await client.post(
         "/api/auth/register",
-        json={"username": "invuser4", "password": "secret123"},
+        json={
+            "username": "invuser4",
+            "password": "secret123",
+            "admin_signup_code": "test-secret",
+        },
     )
     cookies = reg_resp.cookies
 
@@ -161,9 +174,7 @@ async def test_delete_inventory_item(client: AsyncClient) -> None:
     )
     item_id = create_resp.json()["id"]
 
-    del_resp = await client.delete(
-        f"/api/inventory/{item_id}", cookies=cookies
-    )
+    del_resp = await client.delete(f"/api/inventory/{item_id}", cookies=cookies)
     assert del_resp.status_code == 204
 
     list_resp = await client.get("/api/inventory", cookies=cookies)
@@ -175,7 +186,11 @@ async def test_delete_inventory_item(client: AsyncClient) -> None:
 async def test_inventory_expiry_optional(client: AsyncClient) -> None:
     reg_resp = await client.post(
         "/api/auth/register",
-        json={"username": "invuser5", "password": "secret123"},
+        json={
+            "username": "invuser5",
+            "password": "secret123",
+            "admin_signup_code": "test-secret",
+        },
     )
     cookies = reg_resp.cookies
 
@@ -201,7 +216,11 @@ async def test_inventory_expiry_optional(client: AsyncClient) -> None:
 async def test_inventory_category_filter(client: AsyncClient) -> None:
     reg_resp = await client.post(
         "/api/auth/register",
-        json={"username": "invuser6", "password": "secret123"},
+        json={
+            "username": "invuser6",
+            "password": "secret123",
+            "admin_signup_code": "test-secret",
+        },
     )
     cookies = reg_resp.cookies
 
@@ -286,7 +305,11 @@ async def test_inventory_requires_auth(client: AsyncClient) -> None:
 async def test_list_inventory_empty(client: AsyncClient) -> None:
     reg_resp = await client.post(
         "/api/auth/register",
-        json={"username": "invuser7", "password": "secret123"},
+        json={
+            "username": "invuser7",
+            "password": "secret123",
+            "admin_signup_code": "test-secret",
+        },
     )
     cookies = reg_resp.cookies
 
@@ -299,7 +322,11 @@ async def test_list_inventory_empty(client: AsyncClient) -> None:
 async def test_update_nonexistent_inventory_item(client: AsyncClient) -> None:
     reg_resp = await client.post(
         "/api/auth/register",
-        json={"username": "invuser8", "password": "secret123"},
+        json={
+            "username": "invuser8",
+            "password": "secret123",
+            "admin_signup_code": "test-secret",
+        },
     )
     cookies = reg_resp.cookies
 
@@ -319,7 +346,11 @@ async def test_update_nonexistent_inventory_item(client: AsyncClient) -> None:
 async def test_delete_nonexistent_inventory_item(client: AsyncClient) -> None:
     reg_resp = await client.post(
         "/api/auth/register",
-        json={"username": "invuser9", "password": "secret123"},
+        json={
+            "username": "invuser9",
+            "password": "secret123",
+            "admin_signup_code": "test-secret",
+        },
     )
     cookies = reg_resp.cookies
 

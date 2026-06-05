@@ -9,7 +9,11 @@ from app.models.ingredient import Ingredient
 async def _register(client: AsyncClient, username: str = "testuser") -> dict:
     resp = await client.post(
         "/api/auth/register",
-        json={"username": username, "password": "secret123"},
+        json={
+            "username": username,
+            "password": "secret123",
+            "admin_signup_code": "test-secret",
+        },
     )
     return {"cookies": resp.cookies, "data": resp.json()}
 
@@ -17,9 +21,7 @@ async def _register(client: AsyncClient, username: str = "testuser") -> dict:
 async def _create_ingredient(
     client: AsyncClient, cookies, name: str = "Zwiebel"
 ) -> dict:
-    resp = await client.post(
-        "/api/ingredients", json={"name": name}, cookies=cookies
-    )
+    resp = await client.post("/api/ingredients", json={"name": name}, cookies=cookies)
     return resp.json()
 
 
@@ -41,9 +43,7 @@ async def _create_recipe(
     return resp.json()
 
 
-async def _create_plan(
-    client: AsyncClient, cookies, year, week
-) -> dict:
+async def _create_plan(client: AsyncClient, cookies, year, week) -> dict:
     resp = await client.post(
         "/api/weeks",
         json={"year": year, "iso_week": week},
@@ -57,16 +57,14 @@ async def _plan_recipe(
 ) -> None:
     await client.put(
         f"/api/weeks/{year}/{week}/slots",
-        json={"slots": [
-            {"day_of_week": day, "meal_type": meal, "recipe_id": recipe_id}
-        ]},
+        json={
+            "slots": [{"day_of_week": day, "meal_type": meal, "recipe_id": recipe_id}]
+        },
         cookies=cookies,
     )
 
 
-async def _get_grocery_list(
-    client: AsyncClient, cookies, plan_id: int
-) -> dict:
+async def _get_grocery_list(client: AsyncClient, cookies, plan_id: int) -> dict:
     resp = await client.get(
         "/api/grocery-list", params={"week_plan_id": plan_id}, cookies=cookies
     )
@@ -76,6 +74,7 @@ async def _get_grocery_list(
 async def _get_current_iso() -> tuple[int, int]:
     from datetime import datetime
     from zoneinfo import ZoneInfo
+
     now = datetime.now(ZoneInfo("Europe/Zurich"))
     iso = now.isocalendar()
     return (iso[0], iso[1])
@@ -110,7 +109,9 @@ async def test_grocery_list_generates_from_planned_recipes(
 
     ing = await _create_ingredient(client, cookies, "Tomate")
     recipe = await _create_recipe(
-        client, cookies, "Tomatensuppe",
+        client,
+        cookies,
+        "Tomatensuppe",
         ingredients=[
             {"ingredient_id": ing["id"], "quantity": 500, "unit": "g", "order_index": 0}
         ],
@@ -140,7 +141,9 @@ async def test_grocery_list_deducts_inventory(
 
     ing = await _create_ingredient(client, cookies, "Mehl")
     recipe = await _create_recipe(
-        client, cookies, "Pfannkuchen",
+        client,
+        cookies,
+        "Pfannkuchen",
         ingredients=[
             {"ingredient_id": ing["id"], "quantity": 300, "unit": "g", "order_index": 0}
         ],
@@ -176,7 +179,9 @@ async def test_grocery_list_item_fully_covered_not_included(
 
     ing = await _create_ingredient(client, cookies, "Zucker")
     recipe = await _create_recipe(
-        client, cookies, "Kuchen",
+        client,
+        cookies,
+        "Kuchen",
         ingredients=[
             {"ingredient_id": ing["id"], "quantity": 200, "unit": "g", "order_index": 0}
         ],
@@ -213,10 +218,16 @@ async def test_update_grocery_list_item(
 
     ing = await _create_ingredient(client, cookies, "Eier")
     recipe = await _create_recipe(
-        client, cookies, "Omelett",
+        client,
+        cookies,
+        "Omelett",
         ingredients=[
-            {"ingredient_id": ing["id"], "quantity": 6, "unit": "St\u00fcck",
-             "order_index": 0}
+            {
+                "ingredient_id": ing["id"],
+                "quantity": 6,
+                "unit": "St\u00fcck",
+                "order_index": 0,
+            }
         ],
     )
 
@@ -271,7 +282,9 @@ async def test_delete_item(
 
     ing = await _create_ingredient(client, cookies, "K\u00e4se")
     recipe = await _create_recipe(
-        client, cookies, "K\u00e4seplatte",
+        client,
+        cookies,
+        "K\u00e4seplatte",
         ingredients=[
             {"ingredient_id": ing["id"], "quantity": 200, "unit": "g", "order_index": 0}
         ],
@@ -305,7 +318,9 @@ async def test_complete_transfers_to_inventory(
 
     ing = await _create_ingredient(client, cookies, "Butter")
     recipe = await _create_recipe(
-        client, cookies, "Guetzli",
+        client,
+        cookies,
+        "Guetzli",
         ingredients=[
             {"ingredient_id": ing["id"], "quantity": 250, "unit": "g", "order_index": 0}
         ],
@@ -358,12 +373,22 @@ async def test_checked_items_transferred(
     ing1 = await _create_ingredient(client, cookies, "Mehl")
     ing2 = await _create_ingredient(client, cookies, "Eier")
     recipe = await _create_recipe(
-        client, cookies, "Pasta",
+        client,
+        cookies,
+        "Pasta",
         ingredients=[
-            {"ingredient_id": ing1["id"], "quantity": 500, "unit": "g",
-             "order_index": 0},
-            {"ingredient_id": ing2["id"], "quantity": 3, "unit": "St\u00fcck",
-             "order_index": 1},
+            {
+                "ingredient_id": ing1["id"],
+                "quantity": 500,
+                "unit": "g",
+                "order_index": 0,
+            },
+            {
+                "ingredient_id": ing2["id"],
+                "quantity": 3,
+                "unit": "St\u00fcck",
+                "order_index": 1,
+            },
         ],
     )
 
@@ -410,10 +435,16 @@ async def test_regenerate_updates_items(
 
     ing = await _create_ingredient(client, cookies, "Kartoffel")
     recipe = await _create_recipe(
-        client, cookies, "Stocki",
+        client,
+        cookies,
+        "Stocki",
         ingredients=[
-            {"ingredient_id": ing["id"], "quantity": 1000, "unit": "g",
-             "order_index": 0}
+            {
+                "ingredient_id": ing["id"],
+                "quantity": 1000,
+                "unit": "g",
+                "order_index": 0,
+            }
         ],
     )
 
@@ -459,9 +490,7 @@ async def test_get_share_token_creates_token(
     data = await _get_grocery_list(client, cookies, plan["id"])
     list_id = data["id"]
 
-    share_resp = await client.get(
-        f"/api/grocery-list/{list_id}/share", cookies=cookies
-    )
+    share_resp = await client.get(f"/api/grocery-list/{list_id}/share", cookies=cookies)
     assert share_resp.status_code == 200
     token = share_resp.json()["token"]
     assert len(token) > 0
@@ -477,7 +506,9 @@ async def test_shared_list_accessible_without_auth(
 
     ing = await _create_ingredient(client, cookies, "Salat")
     recipe = await _create_recipe(
-        client, cookies, "Salatteller",
+        client,
+        cookies,
+        "Salatteller",
         ingredients=[
             {"ingredient_id": ing["id"], "quantity": 300, "unit": "g", "order_index": 0}
         ],
@@ -489,14 +520,10 @@ async def test_shared_list_accessible_without_auth(
     data = await _get_grocery_list(client, cookies, plan["id"])
     list_id = data["id"]
 
-    share_resp = await client.get(
-        f"/api/grocery-list/{list_id}/share", cookies=cookies
-    )
+    share_resp = await client.get(f"/api/grocery-list/{list_id}/share", cookies=cookies)
     token = share_resp.json()["token"]
 
-    pub_resp = await client.get(
-        f"/api/grocery-list/share/{token}"
-    )
+    pub_resp = await client.get(f"/api/grocery-list/share/{token}")
     assert pub_resp.status_code == 200
     pub_data = pub_resp.json()
     assert pub_data["household_name"] is not None
@@ -554,13 +581,17 @@ async def test_multiple_recipes_aggregate_ingredients(
 
     ing = await _create_ingredient(client, cookies, "Zwiebel")
     recipe1 = await _create_recipe(
-        client, cookies, "Suppe",
+        client,
+        cookies,
+        "Suppe",
         ingredients=[
             {"ingredient_id": ing["id"], "quantity": 200, "unit": "g", "order_index": 0}
         ],
     )
     recipe2 = await _create_recipe(
-        client, cookies, "Salat",
+        client,
+        cookies,
+        "Salat",
         ingredients=[
             {"ingredient_id": ing["id"], "quantity": 100, "unit": "g", "order_index": 0}
         ],
@@ -585,9 +616,7 @@ async def test_delete_nonexistent_item_returns_404(
     reg = await _register(client, "grocery17")
     cookies = reg["cookies"]
 
-    resp = await client.delete(
-        "/api/grocery-list/items/99999", cookies=cookies
-    )
+    resp = await client.delete("/api/grocery-list/items/99999", cookies=cookies)
     assert resp.status_code == 404
 
 
@@ -638,7 +667,9 @@ async def test_el_to_grams_deducts_inventory_cross_dimension(
     await db_session.flush()
 
     recipe = await _create_recipe(
-        client, cookies, "Pfannkuchen",
+        client,
+        cookies,
+        "Pfannkuchen",
         ingredients=[
             {"ingredient_id": ing["id"], "quantity": 500, "unit": "g", "order_index": 0}
         ],
@@ -682,7 +713,9 @@ async def test_tl_to_grams_cross_dimension_deduction(
     await db_session.flush()
 
     recipe = await _create_recipe(
-        client, cookies, "Brot",
+        client,
+        cookies,
+        "Brot",
         ingredients=[
             {"ingredient_id": ing["id"], "quantity": 10, "unit": "TL", "order_index": 0}
         ],
@@ -719,7 +752,9 @@ async def test_no_conversion_preserves_old_el_ml_behavior(
 
     ing = await _create_ingredient(client, cookies, "Öl")
     recipe = await _create_recipe(
-        client, cookies, "Dressing",
+        client,
+        cookies,
+        "Dressing",
         ingredients=[
             {"ingredient_id": ing["id"], "quantity": 2, "unit": "EL", "order_index": 0}
         ],
@@ -751,7 +786,9 @@ async def test_recipe_breakdown_shows_g_unit_when_el_converted_to_g(
     await db_session.flush()
 
     recipe = await _create_recipe(
-        client, cookies, "Honigkuchen",
+        client,
+        cookies,
+        "Honigkuchen",
         ingredients=[
             {"ingredient_id": ing["id"], "quantity": 3, "unit": "EL", "order_index": 0}
         ],
@@ -787,13 +824,17 @@ async def test_mixed_units_aggregate_correctly(
     await db_session.flush()
 
     recipe1 = await _create_recipe(
-        client, cookies, "Kuchen",
+        client,
+        cookies,
+        "Kuchen",
         ingredients=[
             {"ingredient_id": ing["id"], "quantity": 200, "unit": "g", "order_index": 0}
         ],
     )
     recipe2 = await _create_recipe(
-        client, cookies, "Pfannkuchen",
+        client,
+        cookies,
+        "Pfannkuchen",
         ingredients=[
             {"ingredient_id": ing["id"], "quantity": 3, "unit": "EL", "order_index": 0}
         ],

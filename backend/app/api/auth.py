@@ -26,8 +26,10 @@ from app.services.auth import (
     get_session_by_token,
     get_user_by_username,
     hash_password,
+    verify_admin_signup_code,
     verify_password,
 )
+from app.services.household import get_household_by_invite_code
 
 logger = logging.getLogger(__name__)
 
@@ -82,19 +84,18 @@ async def register(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Signup is disabled",
         )
-    if settings.admin_signup_code:
-        if not body.invite_code:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Invite code is required",
-            )
-        from app.services.household import get_household_by_invite_code
+    if body.invite_code:
         household = await get_household_by_invite_code(db, body.invite_code)
         if household is None:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Invalid invite code",
             )
+    elif not verify_admin_signup_code(body.admin_signup_code):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invite code or admin signup code required",
+        )
     existing = await get_user_by_username(db, body.username)
     if existing:
         raise HTTPException(

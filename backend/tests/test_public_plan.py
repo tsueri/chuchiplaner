@@ -7,7 +7,11 @@ async def _register(
     username: str = "testuser",
     invite_code: str | None = None,
 ) -> dict:
-    body = {"username": username, "password": "secret123"}
+    body = {
+        "username": username,
+        "password": "secret123",
+        "admin_signup_code": "test-secret",
+    }
     if invite_code is not None:
         body["invite_code"] = invite_code
     resp = await client.post(
@@ -40,6 +44,7 @@ async def _create_recipe(
 async def _get_current_iso() -> tuple[int, int]:
     from datetime import datetime
     from zoneinfo import ZoneInfo
+
     now = datetime.now(ZoneInfo("Europe/Zurich"))
     iso = now.isocalendar()
     return (iso[0], iso[1])
@@ -64,9 +69,7 @@ async def test_public_plan_returns_404_for_private_week(
 
     household = (await client.get("/api/household", cookies=cookies)).json()
 
-    resp = await client.get(
-        f"/api/public/plan/{household['slug']}/{year}/{week}"
-    )
+    resp = await client.get(f"/api/public/plan/{household['slug']}/{year}/{week}")
     assert resp.status_code == 404
 
 
@@ -90,12 +93,14 @@ async def test_public_plan_returns_plan_when_public(
     await client.put(
         f"/api/weeks/{year}/{week}/slots",
         json={
-            "slots": [{
-                "day_of_week": 0,
-                "meal_type": "lunch",
-                "recipe_id": recipe["id"],
-                "portions": 4,
-            }]
+            "slots": [
+                {
+                    "day_of_week": 0,
+                    "meal_type": "lunch",
+                    "recipe_id": recipe["id"],
+                    "portions": 4,
+                }
+            ]
         },
         cookies=cookies,
     )
@@ -108,9 +113,7 @@ async def test_public_plan_returns_plan_when_public(
 
     household = (await client.get("/api/household", cookies=cookies)).json()
 
-    resp = await client.get(
-        f"/api/public/plan/{household['slug']}/{year}/{week}"
-    )
+    resp = await client.get(f"/api/public/plan/{household['slug']}/{year}/{week}")
     assert resp.status_code == 200
     data = resp.json()
     assert data["household_name"] == household["name"]
@@ -119,8 +122,7 @@ async def test_public_plan_returns_plan_when_public(
     assert len(data["slots"]) == 28
 
     monday_lunch = next(
-        s for s in data["slots"]
-        if s["day_of_week"] == 0 and s["meal_type"] == "lunch"
+        s for s in data["slots"] if s["day_of_week"] == 0 and s["meal_type"] == "lunch"
     )
     assert monday_lunch["recipe"] is not None
     assert monday_lunch["recipe"]["title"] == "Pasta"
@@ -158,9 +160,7 @@ async def test_public_plan_returns_404_when_toggled_back_to_private(
 
     household = (await client.get("/api/household", cookies=cookies)).json()
 
-    resp1 = await client.get(
-        f"/api/public/plan/{household['slug']}/{year}/{week}"
-    )
+    resp1 = await client.get(f"/api/public/plan/{household['slug']}/{year}/{week}")
     assert resp1.status_code == 200
 
     await client.put(
@@ -169,9 +169,7 @@ async def test_public_plan_returns_404_when_toggled_back_to_private(
         cookies=cookies,
     )
 
-    resp2 = await client.get(
-        f"/api/public/plan/{household['slug']}/{year}/{week}"
-    )
+    resp2 = await client.get(f"/api/public/plan/{household['slug']}/{year}/{week}")
     assert resp2.status_code == 404
 
 
@@ -212,7 +210,9 @@ async def test_public_plan_source_attribution(
     year, week = await _get_current_iso()
 
     recipe = await _create_recipe(
-        client, cookies, "Gulasch",
+        client,
+        cookies,
+        "Gulasch",
         source_url="https://fooby.ch/gulasch",
         source_domain="fooby.ch",
     )
@@ -225,11 +225,13 @@ async def test_public_plan_source_attribution(
     await client.put(
         f"/api/weeks/{year}/{week}/slots",
         json={
-            "slots": [{
-                "day_of_week": 0,
-                "meal_type": "dinner",
-                "recipe_id": recipe["id"],
-            }]
+            "slots": [
+                {
+                    "day_of_week": 0,
+                    "meal_type": "dinner",
+                    "recipe_id": recipe["id"],
+                }
+            ]
         },
         cookies=cookies,
     )
@@ -241,15 +243,12 @@ async def test_public_plan_source_attribution(
 
     household = (await client.get("/api/household", cookies=cookies)).json()
 
-    resp = await client.get(
-        f"/api/public/plan/{household['slug']}/{year}/{week}"
-    )
+    resp = await client.get(f"/api/public/plan/{household['slug']}/{year}/{week}")
     assert resp.status_code == 200
     data = resp.json()
 
     monday_dinner = next(
-        s for s in data["slots"]
-        if s["day_of_week"] == 0 and s["meal_type"] == "dinner"
+        s for s in data["slots"] if s["day_of_week"] == 0 and s["meal_type"] == "dinner"
     )
     assert monday_dinner["recipe"]["title"] == "Gulasch"
     assert monday_dinner["recipe"]["source_domain"] == "fooby.ch"
@@ -277,14 +276,13 @@ async def test_public_plan_slot_without_recipe_has_null_recipe(
 
     household = (await client.get("/api/household", cookies=cookies)).json()
 
-    resp = await client.get(
-        f"/api/public/plan/{household['slug']}/{year}/{week}"
-    )
+    resp = await client.get(f"/api/public/plan/{household['slug']}/{year}/{week}")
     assert resp.status_code == 200
     data = resp.json()
 
     monday_breakfast = next(
-        s for s in data["slots"]
+        s
+        for s in data["slots"]
         if s["day_of_week"] == 0 and s["meal_type"] == "breakfast"
     )
     assert monday_breakfast["recipe"] is None
@@ -305,22 +303,23 @@ async def test_public_plan_cooked_slot_shows_cooked(
         json={"year": year, "iso_week": week},
         cookies=cookies,
     )
-    plan_resp = await client.get(
-        f"/api/weeks/{year}/{week}", cookies=cookies
-    )
+    plan_resp = await client.get(f"/api/weeks/{year}/{week}", cookies=cookies)
     slot = next(
-        s for s in plan_resp.json()["slots"]
+        s
+        for s in plan_resp.json()["slots"]
         if s["day_of_week"] == 0 and s["meal_type"] == "dinner"
     )
 
     await client.put(
         f"/api/weeks/{year}/{week}/slots",
         json={
-            "slots": [{
-                "day_of_week": 0,
-                "meal_type": "dinner",
-                "recipe_id": recipe["id"],
-            }]
+            "slots": [
+                {
+                    "day_of_week": 0,
+                    "meal_type": "dinner",
+                    "recipe_id": recipe["id"],
+                }
+            ]
         },
         cookies=cookies,
     )
@@ -336,15 +335,12 @@ async def test_public_plan_cooked_slot_shows_cooked(
 
     household = (await client.get("/api/household", cookies=cookies)).json()
 
-    resp = await client.get(
-        f"/api/public/plan/{household['slug']}/{year}/{week}"
-    )
+    resp = await client.get(f"/api/public/plan/{household['slug']}/{year}/{week}")
     assert resp.status_code == 200
     data = resp.json()
 
     dinner = next(
-        s for s in data["slots"]
-        if s["day_of_week"] == 0 and s["meal_type"] == "dinner"
+        s for s in data["slots"] if s["day_of_week"] == 0 and s["meal_type"] == "dinner"
     )
     assert dinner["cooked"] is True
 
@@ -374,9 +370,7 @@ async def test_visibility_toggle_set_public(
     assert resp.status_code == 200
     assert resp.json()["is_public"] is True
 
-    get_resp = await client.get(
-        f"/api/weeks/{year}/{week}", cookies=cookies
-    )
+    get_resp = await client.get(f"/api/weeks/{year}/{week}", cookies=cookies)
     assert get_resp.json()["is_public"] is True
 
 
@@ -407,9 +401,7 @@ async def test_visibility_toggle_set_private(
     assert resp.status_code == 200
     assert resp.json()["is_public"] is False
 
-    get_resp = await client.get(
-        f"/api/weeks/{year}/{week}", cookies=cookies
-    )
+    get_resp = await client.get(f"/api/weeks/{year}/{week}", cookies=cookies)
     assert get_resp.json()["is_public"] is False
 
 
@@ -419,9 +411,9 @@ async def test_visibility_toggle_requires_admin(
 ) -> None:
     admin_reg = await _register(client, "vistadmin")
     admin_cookies = admin_reg["cookies"]
-    invite_code = (
-        await client.get("/api/household", cookies=admin_cookies)
-    ).json()["invite_code"]
+    invite_code = (await client.get("/api/household", cookies=admin_cookies)).json()[
+        "invite_code"
+    ]
 
     member_reg = await _register(client, "vistmember", invite_code)
     member_cookies = member_reg["cookies"]

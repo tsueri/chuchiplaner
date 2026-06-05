@@ -10,6 +10,7 @@ export default function RegisterPage() {
   const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
   const [inviteCode, setInviteCode] = useState(searchParams.get("invite_code") || "")
+  const [adminSignupCode, setAdminSignupCode] = useState(searchParams.get("admin_signup_code") || "")
   const [error, setError] = useState("")
   const [submitting, setSubmitting] = useState(false)
 
@@ -18,7 +19,7 @@ export default function RegisterPage() {
     setError("")
     setSubmitting(true)
     try {
-      await register(username, password, inviteCode || undefined)
+      await register(username, password, inviteCode || undefined, adminSignupCode || undefined)
       navigate("/")
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed")
@@ -72,6 +73,23 @@ export default function RegisterPage() {
             onChange={(e) => setInviteCode(e.target.value)}
             className="w-full rounded-md border px-3 py-2 text-sm"
             placeholder="Von Admin erhalten"
+          />
+        </div>
+
+        <div className="space-y-2">
+          <label
+            htmlFor="adminSignupCode"
+            className="text-sm font-medium"
+          >
+            Admin-Signup-Code (optional)
+          </label>
+          <input
+            id="adminSignupCode"
+            type="text"
+            value={adminSignupCode}
+            onChange={(e) => setAdminSignupCode(e.target.value)}
+            className="w-full rounded-md border px-3 py-2 text-sm"
+            placeholder="Vom Betreiber erhalten"
           />
         </div>
 

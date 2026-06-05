@@ -5,7 +5,11 @@ from httpx import AsyncClient
 async def _register(client: AsyncClient, username: str = "testuser") -> dict:
     resp = await client.post(
         "/api/auth/register",
-        json={"username": username, "password": "secret123"},
+        json={
+            "username": username,
+            "password": "secret123",
+            "admin_signup_code": "test-secret",
+        },
     )
     return {"cookies": resp.cookies, "data": resp.json()}
 
@@ -15,15 +19,14 @@ async def _create_ingredient(
     cookies,
     name: str = "Zwiebel",
 ) -> dict:
-    resp = await client.post(
-        "/api/ingredients", json={"name": name}, cookies=cookies
-    )
+    resp = await client.post("/api/ingredients", json={"name": name}, cookies=cookies)
     return resp.json()
 
 
 async def _get_current_iso() -> tuple[int, int]:
     from datetime import datetime
     from zoneinfo import ZoneInfo
+
     now = datetime.now(ZoneInfo("Europe/Zurich"))
     iso = now.isocalendar()
     return (iso[0], iso[1])
@@ -60,11 +63,13 @@ async def test_cook_recipe_deducts_inventory(
             "title": "Brot",
             "instructions": "Backen.",
             "servings": 4,
-            "ingredients": [{
-                "ingredient_id": ingredient_id,
-                "quantity": 400,
-                "unit": "g",
-            }],
+            "ingredients": [
+                {
+                    "ingredient_id": ingredient_id,
+                    "quantity": 400,
+                    "unit": "g",
+                }
+            ],
         },
         cookies=cookies,
     )
@@ -119,11 +124,13 @@ async def test_cook_recipe_with_slot_context_marks_slot_cooked(
             "title": "Pasta",
             "instructions": "Kochen.",
             "servings": 2,
-            "ingredients": [{
-                "ingredient_id": ingredient_id,
-                "quantity": 100,
-                "unit": "g",
-            }],
+            "ingredients": [
+                {
+                    "ingredient_id": ingredient_id,
+                    "quantity": 100,
+                    "unit": "g",
+                }
+            ],
         },
         cookies=cookies,
     )
@@ -136,19 +143,22 @@ async def test_cook_recipe_with_slot_context_marks_slot_cooked(
     )
     plan_data = create_resp.json()
     slot = next(
-        s for s in plan_data["slots"]
+        s
+        for s in plan_data["slots"]
         if s["day_of_week"] == 0 and s["meal_type"] == "lunch"
     )
 
     await client.put(
         f"/api/weeks/{year}/{week}/slots",
         json={
-            "slots": [{
-                "day_of_week": 0,
-                "meal_type": "lunch",
-                "recipe_id": recipe_id,
-                "portions": 2,
-            }]
+            "slots": [
+                {
+                    "day_of_week": 0,
+                    "meal_type": "lunch",
+                    "recipe_id": recipe_id,
+                    "portions": 2,
+                }
+            ]
         },
         cookies=cookies,
     )
@@ -200,11 +210,13 @@ async def test_cook_recipe_insufficient_inventory_partial_deduction(
             "title": "Butterbrot",
             "instructions": "Schmieren.",
             "servings": 1,
-            "ingredients": [{
-                "ingredient_id": ingredient_id,
-                "quantity": 100,
-                "unit": "g",
-            }],
+            "ingredients": [
+                {
+                    "ingredient_id": ingredient_id,
+                    "quantity": 100,
+                    "unit": "g",
+                }
+            ],
         },
         cookies=cookies,
     )
@@ -240,11 +252,13 @@ async def test_save_leftovers_creates_cooked_inventory_item(
             "title": "Eintopf",
             "instructions": "Kochen.",
             "servings": 4,
-            "ingredients": [{
-                "ingredient_id": ingredient_id,
-                "quantity": 500,
-                "unit": "g",
-            }],
+            "ingredients": [
+                {
+                    "ingredient_id": ingredient_id,
+                    "quantity": 500,
+                    "unit": "g",
+                }
+            ],
         },
         cookies=cookies,
     )

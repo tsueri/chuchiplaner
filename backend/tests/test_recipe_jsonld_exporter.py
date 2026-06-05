@@ -57,9 +57,7 @@ def _make_ingredient(ing_id: int, name: str) -> Ingredient:
     return ing
 
 
-def _make_step(
-    position: int, text: str, name: str | None = None
-) -> RecipeStep:
+def _make_step(position: int, text: str, name: str | None = None) -> RecipeStep:
     s = RecipeStep()
     s.id = position + 100
     s.position = position
@@ -132,9 +130,7 @@ class TestRecipeJSONLDExporter:
         assert result["author"] == {"@type": "Person", "name": "Jane Cook"}
 
     def test_date_published(self) -> None:
-        recipe = _make_recipe(
-            title="Pasta", date_published=date(2025, 3, 15)
-        )
+        recipe = _make_recipe(title="Pasta", date_published=date(2025, 3, 15))
         result = RecipeJSONLDExporter.to_jsonld(recipe)
         assert result["datePublished"] == "2025-03-15"
 
@@ -170,9 +166,7 @@ class TestRecipeJSONLDExporter:
         assert result["aggregateRating"] == aggregate_rating
 
     def test_keywords(self) -> None:
-        recipe = _make_recipe(
-            title="Pasta", keywords="schnell, einfach, vegetarisch"
-        )
+        recipe = _make_recipe(title="Pasta", keywords="schnell, einfach, vegetarisch")
         result = RecipeJSONLDExporter.to_jsonld(recipe)
         assert result["keywords"] == "schnell, einfach, vegetarisch"
 
@@ -258,9 +252,7 @@ class TestRecipeJSONLDExporter:
         result = RecipeJSONLDExporter.to_jsonld(recipe)
         assert result["recipeCategory"] == "Hauptgericht"
         assert result["recipeCuisine"] == "Italienisch"
-        assert result["suitableForDiet"] == [
-            "https://schema.org/VegetarianDiet"
-        ]
+        assert result["suitableForDiet"] == ["https://schema.org/VegetarianDiet"]
 
     def test_season_tags_ignored(self) -> None:
         recipe = _make_recipe(title="Pasta")
@@ -352,7 +344,5 @@ class TestRecipeJSONLDExporter:
         }
         assert result["recipeCategory"] == "Hauptgericht"
         assert result["recipeCuisine"] == "Italienisch"
-        assert result["suitableForDiet"] == [
-            "https://schema.org/LowFatDiet"
-        ]
+        assert result["suitableForDiet"] == ["https://schema.org/LowFatDiet"]
         assert result["identifier"] == 42

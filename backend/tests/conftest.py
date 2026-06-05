@@ -6,8 +6,17 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.core.config import settings
 from app.db.base import Base
 from app.main import create_app
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _set_admin_signup_code() -> None:
+    original = settings.admin_signup_code
+    settings.admin_signup_code = "test-secret"
+    yield
+    settings.admin_signup_code = original
 
 
 @pytest.fixture(scope="session")
@@ -25,6 +34,7 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
 
         def _setup_fts_and_seeds(connection):
             from sqlalchemy import text
+
             connection.execute(
                 text(
                     "CREATE VIRTUAL TABLE IF NOT EXISTS recipes_fts USING fts5("
@@ -34,42 +44,55 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
             )
             season_tags = ["Frühling", "Sommer", "Herbst", "Winter", "Ganzjährig"]
             category_tags = [
-                "Vorspeise", "Hauptgericht", "Dessert", "Snack", "Beilage",
+                "Vorspeise",
+                "Hauptgericht",
+                "Dessert",
+                "Snack",
+                "Beilage",
             ]
             cuisine_tags = [
-                "Italienisch", "Asiatisch", "Schweizerisch",
-                "Mexikanisch", "Indisch", "Französisch",
+                "Italienisch",
+                "Asiatisch",
+                "Schweizerisch",
+                "Mexikanisch",
+                "Indisch",
+                "Französisch",
             ]
             diet_tags = [
-                "VegetarianDiet", "VeganDiet", "GlutenFreeDiet",
-                "LowFatDiet", "LowLactoseDiet", "DiabeticDiet",
-                "HalalDiet", "KosherDiet",
+                "VegetarianDiet",
+                "VeganDiet",
+                "GlutenFreeDiet",
+                "LowFatDiet",
+                "LowLactoseDiet",
+                "DiabeticDiet",
+                "HalalDiet",
+                "KosherDiet",
             ]
             for name in season_tags:
                 connection.execute(
                     text(
-                        "INSERT OR IGNORE INTO tags (name, \"group\", household_id) "
+                        'INSERT OR IGNORE INTO tags (name, "group", household_id) '
                         f"VALUES ('{name}', 'season', NULL)"
                     )
                 )
             for name in category_tags:
                 connection.execute(
                     text(
-                        "INSERT OR IGNORE INTO tags (name, \"group\", household_id) "
+                        'INSERT OR IGNORE INTO tags (name, "group", household_id) '
                         f"VALUES ('{name}', 'category', NULL)"
                     )
                 )
             for name in cuisine_tags:
                 connection.execute(
                     text(
-                        "INSERT OR IGNORE INTO tags (name, \"group\", household_id) "
+                        'INSERT OR IGNORE INTO tags (name, "group", household_id) '
                         f"VALUES ('{name}', 'cuisine', NULL)"
                     )
                 )
             for name in diet_tags:
                 connection.execute(
                     text(
-                        "INSERT OR IGNORE INTO tags (name, \"group\", household_id) "
+                        'INSERT OR IGNORE INTO tags (name, "group", household_id) '
                         f"VALUES ('{name}', 'diet', NULL)"
                     )
                 )

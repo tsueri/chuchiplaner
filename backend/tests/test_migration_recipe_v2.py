@@ -1,6 +1,7 @@
 """Migration b2c3d4e5f6a7: recipe model v2 — instructions → recipe_steps,
 9 nullable Recipe columns, recipes_fts multi-column rebuild, tags.group expansion.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -98,9 +99,7 @@ async def test_migration_forward_seeds_recipe_steps_from_instructions(
     )
 
     async with session_factory() as session:  # type: AsyncSession
-        result = await session.execute(
-            text("PRAGMA table_info(recipes)")
-        )
+        result = await session.execute(text("PRAGMA table_info(recipes)"))
         columns = {row[1] for row in result.fetchall()}
         assert "instructions" not in columns
         assert "description" in columns
@@ -131,10 +130,7 @@ async def test_migration_forward_seeds_recipe_steps_from_instructions(
 
         fts_row = (
             await session.execute(
-                text(
-                    "SELECT title, steps FROM recipes_fts "
-                    "WHERE rowid = 1"
-                )
+                text("SELECT title, steps FROM recipes_fts WHERE rowid = 1")
             )
         ).first()
         assert fts_row is not None
@@ -154,7 +150,7 @@ async def test_migration_forward_creates_tag_with_new_group(
         for group in ("season", "ingredient", "category", "cuisine", "diet"):
             await conn.execute(
                 text(
-                    "INSERT INTO tags (name, \"group\", household_id) "
+                    'INSERT INTO tags (name, "group", household_id) '
                     f"VALUES ('T-{group}', '{group}', NULL)"
                 )
             )
@@ -163,9 +159,7 @@ async def test_migration_forward_creates_tag_with_new_group(
         seen = {
             row[0]: row[1]
             for row in (
-                await session.execute(
-                    text("SELECT name, \"group\" FROM tags")
-                )
+                await session.execute(text('SELECT name, "group" FROM tags'))
             ).all()
         }
         assert seen["T-season"] == "season"
@@ -205,15 +199,11 @@ async def test_migration_back_recreates_instructions_from_steps(
 
     await asyncio.get_running_loop().run_in_executor(
         None,
-        lambda: command.downgrade(
-            _alembic_config(post_migration_db), "a7b8c9d0e1f2"
-        ),
+        lambda: command.downgrade(_alembic_config(post_migration_db), "a7b8c9d0e1f2"),
     )
 
     async with session_factory() as session:
-        result = await session.execute(
-            text("PRAGMA table_info(recipes)")
-        )
+        result = await session.execute(text("PRAGMA table_info(recipes)"))
         columns = {row[1] for row in result.fetchall()}
         assert "instructions" in columns
         assert "description" not in columns
@@ -222,18 +212,13 @@ async def test_migration_back_recreates_instructions_from_steps(
         assert "date_published" not in columns
 
         instructions = (
-            await session.execute(
-                text("SELECT instructions FROM recipes WHERE id = 1")
-            )
+            await session.execute(text("SELECT instructions FROM recipes WHERE id = 1"))
         ).scalar_one()
         assert instructions == "Schritt 1"
 
         fts_row = (
             await session.execute(
-                text(
-                    "SELECT title, instructions FROM recipes_fts "
-                    "WHERE rowid = 1"
-                )
+                text("SELECT title, instructions FROM recipes_fts WHERE rowid = 1")
             )
         ).first()
         assert fts_row is not None

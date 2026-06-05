@@ -5,7 +5,11 @@ from app.services.household import generate_invite_code
 
 
 async def _register(client: AsyncClient, username: str, invite_code: str | None = None):
-    body = {"username": username, "password": "secret123"}
+    body: dict[str, str] = {
+        "username": username,
+        "password": "secret123",
+        "admin_signup_code": "test-secret",
+    }
     if invite_code is not None:
         body["invite_code"] = invite_code
     return await client.post("/api/auth/register", json=body)
@@ -53,9 +57,10 @@ async def test_register_with_invite_code_joins_household(
     member_household = (
         await client.get("/api/household", cookies=member_cookies)
     ).json()
-    assert member_household["slug"] == (
-        await client.get("/api/household", cookies=admin_cookies)
-    ).json()["slug"]
+    assert (
+        member_household["slug"]
+        == (await client.get("/api/household", cookies=admin_cookies)).json()["slug"]
+    )
     assert len(member_household["members"]) == 2
     usernames = [m["username"] for m in member_household["members"]]
     assert "admin2" in usernames
@@ -70,7 +75,7 @@ async def test_register_with_invalid_invite_code(
     client: AsyncClient,
 ) -> None:
     response = await _register(client, "badinvite", "NOT-REAL")
-    assert response.status_code == 400
+    assert response.status_code == 403
     assert "detail" in response.json()
 
 
@@ -83,9 +88,7 @@ async def test_get_household_member_list(client: AsyncClient) -> None:
     await _register(client, "member3a", invite_code)
     await _register(client, "member3b", invite_code)
 
-    household = (
-        await client.get("/api/household", cookies=admin_cookies)
-    ).json()
+    household = (await client.get("/api/household", cookies=admin_cookies)).json()
     assert len(household["members"]) == 3
 
 
@@ -111,15 +114,13 @@ async def test_regenerate_invite_code_admin_only(
     admin_cookies = admin_resp.cookies
     old_code = await _get_invite_code(client, admin_cookies)
 
-    resp = await client.post(
-        "/api/household/invite-code", cookies=admin_cookies
-    )
+    resp = await client.post("/api/household/invite-code", cookies=admin_cookies)
     assert resp.status_code == 200
     new_code = resp.json()["invite_code"]
     assert new_code != old_code
 
     join_resp = await _register(client, "staleinvite", old_code)
-    assert join_resp.status_code == 400
+    assert join_resp.status_code == 403
 
     join_resp2 = await _register(client, "newinvite", new_code)
     assert join_resp2.status_code == 200
@@ -136,9 +137,7 @@ async def test_member_cannot_regenerate_invite_code(
     member_resp = await _register(client, "member6", invite_code)
     member_cookies = member_resp.cookies
 
-    resp = await client.post(
-        "/api/household/invite-code", cookies=member_cookies
-    )
+    resp = await client.post("/api/household/invite-code", cookies=member_cookies)
     assert resp.status_code == 403
 
 
@@ -164,9 +163,7 @@ async def test_admin_can_remove_member(client: AsyncClient) -> None:
     post_resp = await client.get("/api/household", cookies=member_cookies)
     assert post_resp.status_code == 401
 
-    admin_household = (
-        await client.get("/api/household", cookies=admin_cookies)
-    ).json()
+    admin_household = (await client.get("/api/household", cookies=admin_cookies)).json()
     assert len(admin_household["members"]) == 1
 
 
@@ -221,9 +218,7 @@ async def test_slug_generated_from_household_name(
     admin_resp = await _register(client, "sluguser")
     admin_cookies = admin_resp.cookies
 
-    household = (
-        await client.get("/api/household", cookies=admin_cookies)
-    ).json()
+    household = (await client.get("/api/household", cookies=admin_cookies)).json()
     assert household["name"] == "sluguser's Household"
     assert household["slug"] == "sluguser-s-household"
 
@@ -308,11 +303,13 @@ async def test_deactivate_saturday_breakfast(client: AsyncClient) -> None:
     resp = await client.put(
         "/api/household/meal-template",
         json={
-            "slots": [{
-                "day_of_week": 5,
-                "meal_type": "breakfast",
-                "active": False,
-            }]
+            "slots": [
+                {
+                    "day_of_week": 5,
+                    "meal_type": "breakfast",
+                    "active": False,
+                }
+            ]
         },
         cookies=cookies,
     )
@@ -333,11 +330,14 @@ async def test_change_default_portions_for_dinner(client: AsyncClient) -> None:
     resp = await client.put(
         "/api/household/meal-template",
         json={
-            "slots": [{
-                "day_of_week": day,
-                "meal_type": "dinner",
-                "default_portions": 6,
-            } for day in range(7)]
+            "slots": [
+                {
+                    "day_of_week": day,
+                    "meal_type": "dinner",
+                    "default_portions": 6,
+                }
+                for day in range(7)
+            ]
         },
         cookies=cookies,
     )
@@ -358,11 +358,14 @@ async def test_cannot_deactivate_all_slots(client: AsyncClient) -> None:
     resp = await client.put(
         "/api/household/meal-template",
         json={
-            "slots": [{
-                "day_of_week": s["day_of_week"],
-                "meal_type": s["meal_type"],
-                "active": False,
-            } for s in slots]
+            "slots": [
+                {
+                    "day_of_week": s["day_of_week"],
+                    "meal_type": s["meal_type"],
+                    "active": False,
+                }
+                for s in slots
+            ]
         },
         cookies=cookies,
     )
@@ -384,11 +387,13 @@ async def test_member_cannot_update_meal_template(
     resp = await client.put(
         "/api/household/meal-template",
         json={
-            "slots": [{
-                "day_of_week": 0,
-                "meal_type": "breakfast",
-                "active": False,
-            }]
+            "slots": [
+                {
+                    "day_of_week": 0,
+                    "meal_type": "breakfast",
+                    "active": False,
+                }
+            ]
         },
         cookies=member_cookies,
     )
@@ -415,11 +420,14 @@ async def test_default_size_does_not_overwrite_template_portions(
     await client.put(
         "/api/household/meal-template",
         json={
-            "slots": [{
-                "day_of_week": day,
-                "meal_type": "dinner",
-                "default_portions": 6,
-            } for day in range(7)]
+            "slots": [
+                {
+                    "day_of_week": day,
+                    "meal_type": "dinner",
+                    "default_portions": 6,
+                }
+                for day in range(7)
+            ]
         },
         cookies=cookies,
     )
@@ -486,6 +494,7 @@ async def test_export_no_password_hashes(client: AsyncClient) -> None:
     assert export_resp.status_code == 200
 
     import json
+
     raw = export_resp.text
     data = json.loads(raw)
     raw_lower = raw.lower()
@@ -655,9 +664,7 @@ async def test_export_jsonld_full_recipe(client: AsyncClient) -> None:
             }
         ],
     }
-    create_resp = await client.post(
-        "/api/recipes", json=recipe_body, cookies=cookies
-    )
+    create_resp = await client.post("/api/recipes", json=recipe_body, cookies=cookies)
     assert create_resp.status_code == 201
     recipe_id = create_resp.json()["id"]
 
@@ -710,9 +717,7 @@ async def test_export_jsonld_full_recipe(client: AsyncClient) -> None:
     }
     assert recipe_node["recipeCategory"] == "Hauptgericht"
     assert recipe_node["recipeCuisine"] == "Italienisch"
-    assert recipe_node["suitableForDiet"] == [
-        "https://schema.org/VegetarianDiet"
-    ]
+    assert recipe_node["suitableForDiet"] == ["https://schema.org/VegetarianDiet"]
     assert recipe_node["identifier"] == recipe_id
     assert "season" not in recipe_node
 

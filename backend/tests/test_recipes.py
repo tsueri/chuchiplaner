@@ -10,7 +10,11 @@ from app.services.scraper import ScrapedRecipe
 async def _register(client: AsyncClient, username: str = "testuser") -> dict:
     resp = await client.post(
         "/api/auth/register",
-        json={"username": username, "password": "secret123"},
+        json={
+            "username": username,
+            "password": "secret123",
+            "admin_signup_code": "test-secret",
+        },
     )
     return {"cookies": resp.cookies, "data": resp.json()}
 
@@ -23,11 +27,16 @@ async def _register_and_set_role(
 ) -> dict:
     await client.post(
         "/api/auth/register",
-        json={"username": username, "password": "secret123"},
+        json={
+            "username": username,
+            "password": "secret123",
+            "admin_signup_code": "test-secret",
+        },
     )
     from sqlalchemy import update
 
     from app.models.user import User
+
     await db_session.execute(
         update(User).where(User.username == username).values(role=role)
     )
@@ -35,7 +44,11 @@ async def _register_and_set_role(
     # Re-login to get fresh session with admin role
     login_resp = await client.post(
         "/api/auth/login",
-        json={"username": username, "password": "secret123"},
+        json={
+            "username": username,
+            "password": "secret123",
+            "admin_signup_code": "test-secret",
+        },
     )
     return {"cookies": login_resp.cookies, "data": login_resp.json()}
 
@@ -60,7 +73,11 @@ async def _create_recipe(
 async def test_import_recipe_supported_url(client: AsyncClient) -> None:
     reg_resp = await client.post(
         "/api/auth/register",
-        json={"username": "importuser", "password": "secret123"},
+        json={
+            "username": "importuser",
+            "password": "secret123",
+            "admin_signup_code": "test-secret",
+        },
     )
     cookies = reg_resp.cookies
 
@@ -73,9 +90,7 @@ async def test_import_recipe_supported_url(client: AsyncClient) -> None:
         source_url="https://www.swissmilk.ch/recipe",
         source_domain="www.swissmilk.ch",
     )
-    with patch(
-        "app.api.recipes.RecipeScraper.scrape", return_value=mock_recipe
-    ):
+    with patch("app.api.recipes.RecipeScraper.scrape", return_value=mock_recipe):
         response = await client.post(
             "/api/recipes/import",
             json={"url": "https://www.swissmilk.ch/recipe"},
@@ -103,7 +118,11 @@ async def test_import_recipe_supported_url(client: AsyncClient) -> None:
 async def test_import_recipe_unsupported_url(client: AsyncClient) -> None:
     reg_resp = await client.post(
         "/api/auth/register",
-        json={"username": "importfail", "password": "secret123"},
+        json={
+            "username": "importfail",
+            "password": "secret123",
+            "admin_signup_code": "test-secret",
+        },
     )
     cookies = reg_resp.cookies
 
@@ -120,7 +139,11 @@ async def test_import_recipe_unsupported_url(client: AsyncClient) -> None:
 async def test_import_recipe_invalid_url(client: AsyncClient) -> None:
     reg_resp = await client.post(
         "/api/auth/register",
-        json={"username": "urluser", "password": "secret123"},
+        json={
+            "username": "urluser",
+            "password": "secret123",
+            "admin_signup_code": "test-secret",
+        },
     )
     cookies = reg_resp.cookies
 
@@ -137,7 +160,11 @@ async def test_import_recipe_invalid_url(client: AsyncClient) -> None:
 async def test_import_recipe_localhost_rejected(client: AsyncClient) -> None:
     reg_resp = await client.post(
         "/api/auth/register",
-        json={"username": "localhuser", "password": "secret123"},
+        json={
+            "username": "localhuser",
+            "password": "secret123",
+            "admin_signup_code": "test-secret",
+        },
     )
     cookies = reg_resp.cookies
 
@@ -154,7 +181,11 @@ async def test_import_recipe_localhost_rejected(client: AsyncClient) -> None:
 async def test_import_recipe_private_ip_rejected(client: AsyncClient) -> None:
     reg_resp = await client.post(
         "/api/auth/register",
-        json={"username": "privipuser", "password": "secret123"},
+        json={
+            "username": "privipuser",
+            "password": "secret123",
+            "admin_signup_code": "test-secret",
+        },
     )
     cookies = reg_resp.cookies
 
@@ -180,7 +211,11 @@ async def test_import_recipe_requires_auth(client: AsyncClient) -> None:
 async def test_check_url_not_yet_imported(client: AsyncClient) -> None:
     reg_resp = await client.post(
         "/api/auth/register",
-        json={"username": "checkuser", "password": "secret123"},
+        json={
+            "username": "checkuser",
+            "password": "secret123",
+            "admin_signup_code": "test-secret",
+        },
     )
     cookies = reg_resp.cookies
 
@@ -197,7 +232,11 @@ async def test_check_url_not_yet_imported(client: AsyncClient) -> None:
 async def test_check_url_already_imported(client: AsyncClient) -> None:
     reg_resp = await client.post(
         "/api/auth/register",
-        json={"username": "dupcheck", "password": "secret123"},
+        json={
+            "username": "dupcheck",
+            "password": "secret123",
+            "admin_signup_code": "test-secret",
+        },
     )
     cookies = reg_resp.cookies
 
@@ -210,9 +249,7 @@ async def test_check_url_already_imported(client: AsyncClient) -> None:
         source_domain="www.swissmilk.ch",
     )
 
-    with patch(
-        "app.api.recipes.RecipeScraper.scrape", return_value=mock_recipe
-    ):
+    with patch("app.api.recipes.RecipeScraper.scrape", return_value=mock_recipe):
         import_resp = await client.post(
             "/api/recipes/import",
             json={"url": "https://www.swissmilk.ch/dup"},
@@ -262,8 +299,12 @@ async def test_create_and_list_recipes(client: AsyncClient) -> None:
     assert data["title"] == "Pasta"
     assert data["servings"] == 3
     assert data["steps"] == [
-        {"id": data["steps"][0]["id"], "position": 0,
-         "text": "Cook pasta.\nAdd sauce.", "name": None}
+        {
+            "id": data["steps"][0]["id"],
+            "position": 0,
+            "text": "Cook pasta.\nAdd sauce.",
+            "name": None,
+        }
     ]
     assert data["source_url"] == "https://example.com/pasta"
 
@@ -280,7 +321,11 @@ async def test_import_twice_shows_existing(
 ) -> None:
     reg_resp = await client.post(
         "/api/auth/register",
-        json={"username": "twiceuser", "password": "secret123"},
+        json={
+            "username": "twiceuser",
+            "password": "secret123",
+            "admin_signup_code": "test-secret",
+        },
     )
     cookies = reg_resp.cookies
 
@@ -293,9 +338,7 @@ async def test_import_twice_shows_existing(
         source_domain="www.swissmilk.ch",
     )
 
-    with patch(
-        "app.api.recipes.RecipeScraper.scrape", return_value=mock_recipe
-    ):
+    with patch("app.api.recipes.RecipeScraper.scrape", return_value=mock_recipe):
         import1 = await client.post(
             "/api/recipes/import",
             json={"url": "https://www.swissmilk.ch/exist"},
@@ -315,9 +358,7 @@ async def test_import_twice_shows_existing(
         cookies=cookies,
     )
 
-    with patch(
-        "app.api.recipes.RecipeScraper.scrape", return_value=mock_recipe
-    ):
+    with patch("app.api.recipes.RecipeScraper.scrape", return_value=mock_recipe):
         import2 = await client.post(
             "/api/recipes/import",
             json={"url": "https://www.swissmilk.ch/exist"},
@@ -354,9 +395,7 @@ async def test_create_tag(client: AsyncClient) -> None:
     auth = await _register(client, "tagcreateuser")
     cookies = auth["cookies"]
 
-    resp = await client.post(
-        "/api/tags", json={"name": "Grillen"}, cookies=cookies
-    )
+    resp = await client.post("/api/tags", json={"name": "Grillen"}, cookies=cookies)
     assert resp.status_code == 200
     data = resp.json()
     assert data["name"] == "Grillen"
@@ -507,9 +546,7 @@ async def test_create_tag_default_group_is_ingredient(
     auth = await _register(client, "defaultgroupuser")
     cookies = auth["cookies"]
 
-    resp = await client.post(
-        "/api/tags", json={"name": "MyStuff"}, cookies=cookies
-    )
+    resp = await client.post("/api/tags", json={"name": "MyStuff"}, cookies=cookies)
     assert resp.status_code == 200
     data = resp.json()
     assert data["group"] == "ingredient"
@@ -605,9 +642,7 @@ async def test_update_recipe_diet_allows_multiple(
         cookies=cookies,
     )
     assert resp.status_code == 200
-    diet_tags = {
-        t["name"] for t in resp.json()["tags"] if t["group"] == "diet"
-    }
+    diet_tags = {t["name"] for t in resp.json()["tags"] if t["group"] == "diet"}
     assert diet_tags == {"VegetarianDiet", "GlutenFreeDiet", "LowLactoseDiet"}
 
 
@@ -689,9 +724,7 @@ async def test_season_tag_still_multi_value(client: AsyncClient) -> None:
         cookies=cookies,
     )
     assert resp.status_code == 200
-    season_tags = {
-        t["name"] for t in resp.json()["tags"] if t["group"] == "season"
-    }
+    season_tags = {t["name"] for t in resp.json()["tags"] if t["group"] == "season"}
     assert season_tags == {"Frühling", "Sommer"}
 
 
@@ -717,8 +750,12 @@ async def test_get_recipe_detail(client: AsyncClient) -> None:
     data = resp.json()
     assert data["title"] == "Detail Recipe"
     assert data["steps"] == [
-        {"id": data["steps"][0]["id"], "position": 0,
-         "text": "Step 1. Step 2.", "name": None}
+        {
+            "id": data["steps"][0]["id"],
+            "position": 0,
+            "text": "Step 1. Step 2.",
+            "name": None,
+        }
     ]
     assert data["servings"] == 3
     assert data["source_url"] == "https://example.com/detail"
@@ -852,9 +889,7 @@ async def test_list_favorite_recipes_includes_ingredient_name(
         client, cookies, title="FavB", ingredient_names=["Zwiebeln"]
     )
 
-    await client.post(
-        f"/api/recipes/{fav_recipe['id']}/favorite", cookies=cookies
-    )
+    await client.post(f"/api/recipes/{fav_recipe['id']}/favorite", cookies=cookies)
 
     resp = await client.get("/api/recipes/favorites", cookies=cookies)
     assert resp.status_code == 200
@@ -907,9 +942,7 @@ async def test_list_recipes_no_n_plus_one(
 
     event.listen(sync_engine, "before_cursor_execute", before_cursor_execute)
     try:
-        resp = await client.get(
-            "/api/recipes", params={"limit": 100}, cookies=cookies
-        )
+        resp = await client.get("/api/recipes", params={"limit": 100}, cookies=cookies)
     finally:
         event.remove(sync_engine, "before_cursor_execute", before_cursor_execute)
 
@@ -955,8 +988,12 @@ async def test_update_recipe(client: AsyncClient) -> None:
     data = resp.json()
     assert data["title"] == "New Title"
     assert data["steps"] == [
-        {"id": data["steps"][0]["id"], "position": 0,
-         "text": "New instr.", "name": None}
+        {
+            "id": data["steps"][0]["id"],
+            "position": 0,
+            "text": "New instr.",
+            "name": None,
+        }
     ]
     assert data["servings"] == 5
 
@@ -966,12 +1003,8 @@ async def test_update_recipe_tags(client: AsyncClient) -> None:
     auth = await _register(client, "tagupdateuser")
     cookies = auth["cookies"]
 
-    tag1 = await client.post(
-        "/api/tags", json={"name": "Vegetarisch"}, cookies=cookies
-    )
-    tag2 = await client.post(
-        "/api/tags", json={"name": "Schnell"}, cookies=cookies
-    )
+    tag1 = await client.post("/api/tags", json={"name": "Vegetarisch"}, cookies=cookies)
+    tag2 = await client.post("/api/tags", json={"name": "Schnell"}, cookies=cookies)
     tag1_id = tag1.json()["id"]
     tag2_id = tag2.json()["id"]
 
@@ -1077,9 +1110,7 @@ async def test_update_recipe_ingredients_null_preserves_existing(
     )
     assert resp_omitted.status_code == 200
     data2 = resp_omitted.json()
-    returned_ingredient_ids2 = {
-        i["ingredient_id"] for i in data2["ingredients"]
-    }
+    returned_ingredient_ids2 = {i["ingredient_id"] for i in data2["ingredients"]}
     assert returned_ingredient_ids2 == original_ingredient_ids
 
 
@@ -1090,9 +1121,7 @@ async def test_update_recipe_missing_ingredient_id_returns_400(
     auth = await _register(client, "missinging")
     cookies = auth["cookies"]
 
-    recipe = await _create_recipe(
-        client, cookies, title="Has No Ingredients"
-    )
+    recipe = await _create_recipe(client, cookies, title="Has No Ingredients")
     recipe_id = recipe["id"]
 
     resp = await client.put(
@@ -1144,14 +1173,10 @@ async def test_update_recipe_member_can_edit(
     household_id = auth_admin["data"]["household_id"]
     admin_cookies = auth_admin["cookies"]
 
-    auth_member = await _join_household(
-        client, db_session, "editmember", household_id
-    )
+    auth_member = await _join_household(client, db_session, "editmember", household_id)
     member_cookies = auth_member["cookies"]
 
-    recipe = await _create_recipe(
-        client, admin_cookies, title="Member Editable"
-    )
+    recipe = await _create_recipe(client, admin_cookies, title="Member Editable")
     recipe_id = recipe["id"]
 
     resp = await client.put(
@@ -1245,9 +1270,7 @@ async def test_update_recipe_does_not_create_aliases(
     auth = await _register(client, "noeditaliases")
     cookies = auth["cookies"]
 
-    ing = await client.post(
-        "/api/ingredients", json={"name": "Rahm"}, cookies=cookies
-    )
+    ing = await client.post("/api/ingredients", json={"name": "Rahm"}, cookies=cookies)
     ingredient_id = ing.json()["id"]
 
     recipe = await _create_recipe(client, cookies, title="No Alias Edit")
@@ -1269,9 +1292,7 @@ async def test_update_recipe_does_not_create_aliases(
     )
     assert resp.status_code == 200
 
-    alias_resp = await client.get(
-        "/api/household/aliases", cookies=cookies
-    )
+    alias_resp = await client.get("/api/household/aliases", cookies=cookies)
     assert alias_resp.status_code == 200
     assert alias_resp.json() == []
 
@@ -1376,9 +1397,7 @@ async def test_update_recipe_empty_ingredients_clears_set(
 async def test_admin_can_soft_delete_recipe(
     client: AsyncClient, db_session: AsyncSession
 ) -> None:
-    auth = await _register_and_set_role(
-        client, db_session, "deladmin", role="admin"
-    )
+    auth = await _register_and_set_role(client, db_session, "deladmin", role="admin")
     cookies = auth["cookies"]
 
     recipe = await _create_recipe(client, cookies, title="To Delete")
@@ -1400,17 +1419,13 @@ async def test_member_cannot_delete_recipe(
     auth_admin = await _register(client, "deladmin2")
     household_id = auth_admin["data"]["household_id"]
 
-    auth_member = await _join_household(
-        client, db_session, "delmember2", household_id
-    )
+    auth_member = await _join_household(client, db_session, "delmember2", household_id)
     member_cookies = auth_member["cookies"]
 
     recipe = await _create_recipe(client, member_cookies, title="No Delete")
     recipe_id = recipe["id"]
 
-    resp = await client.delete(
-        f"/api/recipes/{recipe_id}", cookies=member_cookies
-    )
+    resp = await client.delete(f"/api/recipes/{recipe_id}", cookies=member_cookies)
     assert resp.status_code == 403
 
 
@@ -1425,9 +1440,7 @@ async def test_toggle_favorite(client: AsyncClient) -> None:
     recipe = await _create_recipe(client, cookies, title="Fav Recipe")
     recipe_id = recipe["id"]
 
-    resp = await client.post(
-        f"/api/recipes/{recipe_id}/favorite", cookies=cookies
-    )
+    resp = await client.post(f"/api/recipes/{recipe_id}/favorite", cookies=cookies)
     assert resp.status_code == 200
     data = resp.json()
     assert data["recipe_id"] == recipe_id
@@ -1435,9 +1448,7 @@ async def test_toggle_favorite(client: AsyncClient) -> None:
     detail = await client.get(f"/api/recipes/{recipe_id}", cookies=cookies)
     assert detail.json()["is_favorited"] is True
 
-    resp2 = await client.post(
-        f"/api/recipes/{recipe_id}/favorite", cookies=cookies
-    )
+    resp2 = await client.post(f"/api/recipes/{recipe_id}/favorite", cookies=cookies)
     assert resp2.status_code == 200
 
     detail2 = await client.get(f"/api/recipes/{recipe_id}", cookies=cookies)
@@ -1594,9 +1605,7 @@ async def test_search_reweighting_ingredients_above_steps_above_title(
     assert pos_ing < pos_step, (
         f"ingredient hit must rank above steps hit; got order {ids}"
     )
-    assert pos_step < pos_title, (
-        f"steps hit must rank above title hit; got order {ids}"
-    )
+    assert pos_step < pos_title, f"steps hit must rank above title hit; got order {ids}"
 
 
 @pytest.mark.asyncio
@@ -1608,9 +1617,7 @@ async def test_search_like_fallback_when_fts_returns_nothing(
 
     await _create_recipe(client, cookies, title="Plain Spaghetti")
 
-    resp = await client.get(
-        "/api/recipes", params={"search": "Spagh"}, cookies=cookies
-    )
+    resp = await client.get("/api/recipes", params={"search": "Spagh"}, cookies=cookies)
     assert resp.status_code == 200
     data = resp.json()
     titles = [r["title"] for r in data]
@@ -1652,9 +1659,7 @@ async def test_filter_recipes_by_tag(client: AsyncClient) -> None:
     auth = await _register(client, "tagfilteruser")
     cookies = auth["cookies"]
 
-    tag = await client.post(
-        "/api/tags", json={"name": "Vegan"}, cookies=cookies
-    )
+    tag = await client.post("/api/tags", json={"name": "Vegan"}, cookies=cookies)
     tag_id = tag.json()["id"]
 
     r1 = await _create_recipe(client, cookies, title="Salad")
@@ -1666,9 +1671,7 @@ async def test_filter_recipes_by_tag(client: AsyncClient) -> None:
         cookies=cookies,
     )
 
-    resp = await client.get(
-        "/api/recipes", params={"tag_id": tag_id}, cookies=cookies
-    )
+    resp = await client.get("/api/recipes", params={"tag_id": tag_id}, cookies=cookies)
     assert resp.status_code == 200
     data = resp.json()
     titles = [r["title"] for r in data]
@@ -1698,9 +1701,7 @@ async def test_create_and_list_notes(client: AsyncClient) -> None:
     assert data["visibility"] == "private"
     assert data["username"] == "noteuser"
 
-    list_resp = await client.get(
-        f"/api/recipes/{recipe_id}/notes", cookies=cookies
-    )
+    list_resp = await client.get(f"/api/recipes/{recipe_id}/notes", cookies=cookies)
     assert list_resp.status_code == 200
     notes = list_resp.json()
     assert len(notes) == 1
@@ -1750,14 +1751,10 @@ async def test_private_notes_not_visible_to_others(
         cookies=cookies1,
     )
 
-    auth2 = await _join_household(
-        client, db_session, "noteuser2", household_id
-    )
+    auth2 = await _join_household(client, db_session, "noteuser2", household_id)
     cookies2 = auth2["cookies"]
 
-    list_resp = await client.get(
-        f"/api/recipes/{recipe_id}/notes", cookies=cookies2
-    )
+    list_resp = await client.get(f"/api/recipes/{recipe_id}/notes", cookies=cookies2)
     assert list_resp.status_code == 200
     notes = list_resp.json()
     assert len(notes) == 0
@@ -1780,14 +1777,10 @@ async def test_household_note_visible_to_members(
         cookies=cookies1,
     )
 
-    auth2 = await _join_household(
-        client, db_session, "hnoteuser2", household_id
-    )
+    auth2 = await _join_household(client, db_session, "hnoteuser2", household_id)
     cookies2 = auth2["cookies"]
 
-    list_resp = await client.get(
-        f"/api/recipes/{recipe_id}/notes", cookies=cookies2
-    )
+    list_resp = await client.get(f"/api/recipes/{recipe_id}/notes", cookies=cookies2)
     assert list_resp.status_code == 200
     notes = list_resp.json()
     assert len(notes) == 1
@@ -1841,9 +1834,7 @@ async def test_delete_note(client: AsyncClient) -> None:
     )
     assert del_resp.status_code == 204
 
-    list_resp = await client.get(
-        f"/api/recipes/{recipe_id}/notes", cookies=cookies
-    )
+    list_resp = await client.get(f"/api/recipes/{recipe_id}/notes", cookies=cookies)
     assert list_resp.status_code == 200
     assert len(list_resp.json()) == 0
 
@@ -1908,9 +1899,7 @@ async def test_create_recipe_alias_conflict_409(
     auth = await _register(client, "aliasconflict")
     cookies = auth["cookies"]
 
-    ing = await client.post(
-        "/api/ingredients", json={"name": "Rahm"}, cookies=cookies
-    )
+    ing = await client.post("/api/ingredients", json={"name": "Rahm"}, cookies=cookies)
     ingredient_id = ing.json()["id"]
 
     await client.post(
@@ -1961,9 +1950,7 @@ async def test_create_recipe_empty_learned_aliases_noop(
     )
     assert resp.status_code == 201
 
-    alias_resp = await client.get(
-        "/api/household/aliases", cookies=cookies
-    )
+    alias_resp = await client.get("/api/household/aliases", cookies=cookies)
     assert alias_resp.status_code == 200
     assert len(alias_resp.json()) == 0
 
@@ -2035,9 +2022,7 @@ async def test_create_recipe_persists_learned_aliases(client: AsyncClient) -> No
     )
     assert resp.status_code == 201
 
-    alias_resp = await client.get(
-        "/api/household/aliases", cookies=cookies
-    )
+    alias_resp = await client.get("/api/household/aliases", cookies=cookies)
     assert alias_resp.status_code == 200
     aliases = alias_resp.json()
     assert len(aliases) == 1
@@ -2120,9 +2105,7 @@ async def test_create_recipe_no_409_cross_household_source_url(
 async def test_create_recipe_201_after_soft_delete_source_url(
     client: AsyncClient, db_session: AsyncSession
 ) -> None:
-    auth = await _register_and_set_role(
-        client, db_session, "softdeldup", role="admin"
-    )
+    auth = await _register_and_set_role(client, db_session, "softdeldup", role="admin")
     cookies = auth["cookies"]
 
     recipe = await _create_recipe(
@@ -2133,9 +2116,7 @@ async def test_create_recipe_201_after_soft_delete_source_url(
     )
     recipe_id = recipe["id"]
 
-    del_resp = await client.delete(
-        f"/api/recipes/{recipe_id}", cookies=cookies
-    )
+    del_resp = await client.delete(f"/api/recipes/{recipe_id}", cookies=cookies)
     assert del_resp.status_code == 204
 
     resp = await client.post(
@@ -2188,9 +2169,7 @@ async def test_reimport_colliding_url_upserts_existing_row(
     auth = await _register(client, "reimportuser")
     cookies = auth["cookies"]
 
-    ing = await client.post(
-        "/api/ingredients", json={"name": "Rahm"}, cookies=cookies
-    )
+    ing = await client.post("/api/ingredients", json={"name": "Rahm"}, cookies=cookies)
     ingredient_id = ing.json()["id"]
 
     original = await _create_recipe(
@@ -2379,9 +2358,7 @@ async def test_import_existing_lookup_filters_by_household(
     auth1 = await _register(client, "imph1")
     cookies1 = auth1["cookies"]
 
-    with patch(
-        "app.api.recipes.RecipeScraper.scrape", return_value=mock_recipe
-    ):
+    with patch("app.api.recipes.RecipeScraper.scrape", return_value=mock_recipe):
         import1 = await client.post(
             "/api/recipes/import",
             json={"url": "https://www.swissmilk.ch/crosshouse-import"},
@@ -2404,9 +2381,7 @@ async def test_import_existing_lookup_filters_by_household(
     auth2 = await _register(client, "imph2")
     cookies2 = auth2["cookies"]
 
-    with patch(
-        "app.api.recipes.RecipeScraper.scrape", return_value=mock_recipe
-    ):
+    with patch("app.api.recipes.RecipeScraper.scrape", return_value=mock_recipe):
         import2 = await client.post(
             "/api/recipes/import",
             json={"url": "https://www.swissmilk.ch/crosshouse-import"},
@@ -2513,9 +2488,7 @@ async def test_update_recipe_null_steps_preserves_existing(
     )
     assert create.status_code == 201
     recipe_id = create.json()["id"]
-    original_step_texts = sorted(
-        s["text"] for s in create.json()["steps"]
-    )
+    original_step_texts = sorted(s["text"] for s in create.json()["steps"])
 
     resp = await client.put(
         f"/api/recipes/{recipe_id}",
@@ -2541,9 +2514,7 @@ async def test_update_recipe_null_steps_preserves_existing(
 async def test_recipe_step_cascade_delete(
     client: AsyncClient, db_session: AsyncSession
 ) -> None:
-    auth = await _register_and_set_role(
-        client, db_session, "stepcascade", role="admin"
-    )
+    auth = await _register_and_set_role(client, db_session, "stepcascade", role="admin")
     cookies = auth["cookies"]
 
     from sqlalchemy import select
@@ -2565,25 +2536,31 @@ async def test_recipe_step_cascade_delete(
     recipe_id = create.json()["id"]
 
     pre_count = (
-        await db_session.execute(
-            select(RecipeStep).where(RecipeStep.recipe_id == recipe_id)
+        (
+            await db_session.execute(
+                select(RecipeStep).where(RecipeStep.recipe_id == recipe_id)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(pre_count) == 2
 
     recipe_obj = (
-        await db_session.execute(
-            select(Recipe).where(Recipe.id == recipe_id)
-        )
+        await db_session.execute(select(Recipe).where(Recipe.id == recipe_id))
     ).scalar_one()
     await db_session.delete(recipe_obj)
     await db_session.commit()
 
     post_count = (
-        await db_session.execute(
-            select(RecipeStep).where(RecipeStep.recipe_id == recipe_id)
+        (
+            await db_session.execute(
+                select(RecipeStep).where(RecipeStep.recipe_id == recipe_id)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(post_count) == 0
 
 
@@ -2671,9 +2648,7 @@ async def test_create_recipe_with_new_fields_round_trips(
     assert data["author"] == "Anna"
     assert data["date_published"] == "2026-01-15"
 
-    detail = await client.get(
-        f"/api/recipes/{data['id']}", cookies=cookies
-    )
+    detail = await client.get(f"/api/recipes/{data['id']}", cookies=cookies)
     assert detail.status_code == 200
     d = detail.json()
     assert d["description"] == "Kurze Zusammenfassung"
@@ -2761,9 +2736,7 @@ async def test_import_recipe_returns_steps(client: AsyncClient) -> None:
         source_url="https://www.example.com/import-steps",
         source_domain="www.example.com",
     )
-    with patch(
-        "app.api.recipes.RecipeScraper.scrape", return_value=mock_recipe
-    ):
+    with patch("app.api.recipes.RecipeScraper.scrape", return_value=mock_recipe):
         resp = await client.post(
             "/api/recipes/import",
             json={"url": "https://www.example.com/import-steps"},
@@ -2788,6 +2761,7 @@ async def test_import_recipe_returns_extended_fields_and_diet_tags(
 
     # Find a diet tag id for resolution
     from sqlalchemy import text
+
     veg_result = await db_session.execute(
         text("SELECT id FROM tags WHERE name = 'VegetarianDiet'")
     )
@@ -2817,9 +2791,7 @@ async def test_import_recipe_returns_extended_fields_and_diet_tags(
         ratings=4.5,
         suitable_for_diet=["https://schema.org/VegetarianDiet"],
     )
-    with patch(
-        "app.api.recipes.RecipeScraper.scrape", return_value=mock_recipe
-    ):
+    with patch("app.api.recipes.RecipeScraper.scrape", return_value=mock_recipe):
         resp = await client.post(
             "/api/recipes/import",
             json={"url": "https://www.example.com/extended"},
@@ -2866,9 +2838,7 @@ async def test_import_recipe_partial_scrape_populates_description(
         is_partial=True,
         description="Eine kurze Beschreibung.",
     )
-    with patch(
-        "app.api.recipes.RecipeScraper.scrape", return_value=mock_recipe
-    ):
+    with patch("app.api.recipes.RecipeScraper.scrape", return_value=mock_recipe):
         resp = await client.post(
             "/api/recipes/import",
             json={"url": "https://www.example.com/partial"},

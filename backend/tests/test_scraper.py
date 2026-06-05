@@ -145,7 +145,9 @@ def test_scrape_ingredients_failure_returns_none() -> None:
         return_value=mock_response,
     ):
         with patch("app.services.scraper.scrape_html", return_value=mock):
-            result = RecipeScraper.scrape("https://www.swissmilk.ch/rezept-ingredients-fail")
+            result = RecipeScraper.scrape(
+                "https://www.swissmilk.ch/rezept-ingredients-fail"
+            )
     assert result is None
 
 
@@ -158,7 +160,9 @@ def test_scrape_instructions_failure_returns_none() -> None:
         return_value=mock_response,
     ):
         with patch("app.services.scraper.scrape_html", return_value=mock):
-            result = RecipeScraper.scrape("https://www.swissmilk.ch/rezept-instructions-fail")
+            result = RecipeScraper.scrape(
+                "https://www.swissmilk.ch/rezept-instructions-fail"
+            )
     assert result is None
 
 
@@ -177,9 +181,7 @@ def test_partial_scrape_title_when_scraper_fails() -> None:
             "app.services.scraper.scrape_html",
             side_effect=Exception("fail"),
         ):
-            result = RecipeScraper.scrape(
-                "https://example.com/partial-title"
-            )
+            result = RecipeScraper.scrape("https://example.com/partial-title")
 
     assert result is not None
     assert result.is_partial is True
@@ -206,9 +208,7 @@ def test_partial_scrape_extracts_og_image() -> None:
             "app.services.scraper.scrape_html",
             side_effect=Exception("fail"),
         ):
-            result = RecipeScraper.scrape(
-                "https://example.com/og-image-recipe"
-            )
+            result = RecipeScraper.scrape("https://example.com/og-image-recipe")
 
     assert result is not None
     assert result.is_partial is True
@@ -227,9 +227,7 @@ def test_partial_scrape_empty_page_returns_none() -> None:
             "app.services.scraper.scrape_html",
             side_effect=Exception("fail"),
         ):
-            result = RecipeScraper.scrape(
-                "https://example.com/empty-page"
-            )
+            result = RecipeScraper.scrape("https://example.com/empty-page")
 
     assert result is None
 
@@ -259,12 +257,8 @@ def test_partial_scrape_shares_cache() -> None:
             "app.services.scraper.scrape_html",
             side_effect=Exception("fail"),
         ) as mock_scrape:
-            result1 = RecipeScraper.scrape(
-                "https://example.com/cached-partial"
-            )
-            result2 = RecipeScraper.scrape(
-                "https://example.com/cached-partial"
-            )
+            result1 = RecipeScraper.scrape("https://example.com/cached-partial")
+            result2 = RecipeScraper.scrape("https://example.com/cached-partial")
 
     assert result1 is result2
     assert mock_fetch.call_count == 1
@@ -276,9 +270,7 @@ def test_partial_scrape_http_error_returns_none() -> None:
         "app.services.scraper.RecipeScraper._fetch_url_safely",
         side_effect=Exception("connection error"),
     ):
-        result = RecipeScraper.scrape(
-            "https://example.com/http-error"
-        )
+        result = RecipeScraper.scrape("https://example.com/http-error")
 
     assert result is None
 
@@ -367,9 +359,7 @@ def test_partial_scrape_populates_description_from_og_description() -> None:
             "app.services.scraper.scrape_html",
             side_effect=Exception("fail"),
         ):
-            result = RecipeScraper.scrape(
-                "https://example.com/og-desc-recipe"
-            )
+            result = RecipeScraper.scrape("https://example.com/og-desc-recipe")
 
     assert result is not None
     assert result.is_partial is True
@@ -481,9 +471,7 @@ def test_jsonld_extracts_all_fields() -> None:
         "calories": "240 kcal",
     }
     assert result.ratings == 4.5
-    assert result.suitable_for_diet == [
-        "https://schema.org/VegetarianDiet"
-    ]
+    assert result.suitable_for_diet == ["https://schema.org/VegetarianDiet"]
     assert result.is_partial is False
 
 
@@ -568,9 +556,7 @@ def test_jsonld_no_recipe_falls_through_to_meta() -> None:
             "app.services.scraper.scrape_html",
             side_effect=Exception("fail"),
         ):
-            result = RecipeScraper.scrape(
-                "https://example.com/website-only"
-            )
+            result = RecipeScraper.scrape("https://example.com/website-only")
 
     assert result is not None
     assert result.is_partial is True
@@ -872,9 +858,7 @@ def test_fetch_url_safely_max_redirects_exceeded() -> None:
 
     addr = _make_getaddrinfo_result("93.184.216.34")
     with patch("socket.getaddrinfo", return_value=addr):
-        with patch(
-            "httpx.Client.get", return_value=redirect_resp
-        ) as mock_get:
+        with patch("httpx.Client.get", return_value=redirect_resp) as mock_get:
             try:
                 RecipeScraper._fetch_url_safely("https://example.com/start")
                 assert False, "should have raised"

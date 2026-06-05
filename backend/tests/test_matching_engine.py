@@ -29,7 +29,9 @@ def _make_inventory(
 
 
 def _make_recipe(
-    recipe_id: int, title: str, **ingredients: tuple[float, float, float],
+    recipe_id: int,
+    title: str,
+    **ingredients: tuple[float, float, float],
 ) -> RecipeInfo:
     needs: list[RecipeIngredientNeed] = []
     for key, (grams, ml, pcs) in ingredients.items():
@@ -57,11 +59,13 @@ class TestMatchingEngineExact:
             },
         )
         r1 = _make_recipe(
-            1, "Pasta Sauce",
+            1,
+            "Pasta Sauce",
             **{"1:Tomato": (200, 0, 0), "2:Pasta": (100, 0, 0)},
         )
         r2 = _make_recipe(
-            2, "Salad",
+            2,
+            "Salad",
             **{"1:Tomato": (100, 0, 0), "3:Lettuce": (50, 0, 0)},
         )
 
@@ -78,7 +82,9 @@ class TestMatchingEngineExact:
     def test_no_exact_matches_when_ingredient_missing(self) -> None:
         inv = _make_inventory(**{"1:Onion": (100, 0, 0, False)})
         r1 = _make_recipe(
-            1, "Soup", **{"1:Onion": (50, 0, 0), "2:Carrot": (50, 0, 0)},
+            1,
+            "Soup",
+            **{"1:Onion": (50, 0, 0), "2:Carrot": (50, 0, 0)},
         )
         results = MatchingEngine.suggest(inv, [r1], mode="exact")
         assert results == []
@@ -99,11 +105,13 @@ class TestMatchingEnginePartial:
             },
         )
         r1 = _make_recipe(
-            1, "Pasta Sauce",
+            1,
+            "Pasta Sauce",
             **{"1:Tomato": (200, 0, 0), "2:Pasta": (100, 0, 0)},
         )
         r2 = _make_recipe(
-            2, "Salad",
+            2,
+            "Salad",
             **{"1:Tomato": (100, 0, 0), "3:Lettuce": (50, 0, 0)},
         )
 
@@ -132,7 +140,8 @@ class TestMatchingEnginePartial:
             },
         )
         r1 = _make_recipe(
-            1, "Recipe",
+            1,
+            "Recipe",
             **{"1:A": (50, 0, 0), "2:B": (50, 0, 0), "3:C": (50, 0, 0)},
         )
         results = MatchingEngine.suggest(inv, [r1], mode="partial")
@@ -156,7 +165,8 @@ class TestMatchingEngineUrgencyBoost:
             },
         )
         r = _make_recipe(
-            1, "Chicken Rice",
+            1,
+            "Chicken Rice",
             **{"1:Chicken": (200, 0, 0), "2:Rice": (100, 0, 0)},
         )
 
@@ -175,7 +185,8 @@ class TestMatchingEngineUrgencyBoost:
             },
         )
         r = _make_recipe(
-            1, "Chicken Rice",
+            1,
+            "Chicken Rice",
             **{"1:Chicken": (200, 0, 0), "2:Rice": (100, 0, 0)},
         )
         results = MatchingEngine.suggest(inv, [r], mode="partial")
@@ -184,7 +195,8 @@ class TestMatchingEngineUrgencyBoost:
     def test_missing_ingredients_listed(self) -> None:
         inv = _make_inventory(**{"1:Tomato": (100, 0, 0, False)})
         r = _make_recipe(
-            1, "Salad",
+            1,
+            "Salad",
             **{"1:Tomato": (50, 0, 0), "2:Lettuce": (50, 0, 0)},
         )
         results = MatchingEngine.suggest(inv, [r], mode="partial")
@@ -200,13 +212,17 @@ class TestMatchingEngineIngredientFirst:
             },
         )
         r1 = _make_recipe(
-            1, "Zucchini Pasta",
+            1,
+            "Zucchini Pasta",
             **{"1:Zucchini": (200, 0, 0), "2:Pasta": (100, 0, 0)},
         )
         r2 = _make_recipe(2, "Plain Pasta", **{"2:Pasta": (100, 0, 0)})
 
         results = MatchingEngine.suggest(
-            inv, [r1, r2], mode="ingredient_first", ingredient_filter=1,
+            inv,
+            [r1, r2],
+            mode="ingredient_first",
+            ingredient_filter=1,
         )
 
         assert len(results) == 1
@@ -220,16 +236,21 @@ class TestMatchingEngineIngredientFirst:
             },
         )
         r1 = _make_recipe(
-            1, "Cheese Toast",
+            1,
+            "Cheese Toast",
             **{"1:Cheese": (100, 0, 0), "2:Bread": (50, 0, 0)},
         )
         r2 = _make_recipe(
-            2, "Cheese Soup",
+            2,
+            "Cheese Soup",
             **{"1:Cheese": (100, 0, 0), "3:Water": (100, 0, 0)},
         )
 
         results = MatchingEngine.suggest(
-            inv, [r1, r2], mode="ingredient_first", ingredient_filter=1,
+            inv,
+            [r1, r2],
+            mode="ingredient_first",
+            ingredient_filter=1,
         )
 
         assert len(results) == 2
@@ -248,7 +269,9 @@ class TestMatchingEngineReservations:
         reservations = {1: (200, 0, 0)}
 
         results = MatchingEngine.suggest(
-            inv, [r1, r2], mode="exact",
+            inv,
+            [r1, r2],
+            mode="exact",
             current_plan_reservations=reservations,
         )
 
@@ -263,14 +286,17 @@ class TestMatchingEngineReservations:
             },
         )
         r = _make_recipe(
-            1, "Fried Bread",
+            1,
+            "Fried Bread",
             **{"1:Flour": (300, 0, 0), "2:Oil": (0, 50, 0)},
         )
 
         reservations = {1: (200, 0, 0)}
 
         results = MatchingEngine.suggest(
-            inv, [r], mode="exact",
+            inv,
+            [r],
+            mode="exact",
             current_plan_reservations=reservations,
         )
         assert len(results) == 1
@@ -286,26 +312,35 @@ class TestMatchingEngineDietaryFilter:
             },
         )
         r1 = RecipeInfo(
-            id=1, title="Tomato Soup",
+            id=1,
+            title="Tomato Soup",
             ingredients=[
                 RecipeIngredientNeed(
-                    ingredient_id=1, name="Tomato", grams=200,
+                    ingredient_id=1,
+                    name="Tomato",
+                    grams=200,
                 ),
             ],
             tag_names=["Vegetarisch"],
         )
         r2 = RecipeInfo(
-            id=2, title="Beef Stew",
+            id=2,
+            title="Beef Stew",
             ingredients=[
                 RecipeIngredientNeed(
-                    ingredient_id=2, name="Beef", grams=200,
+                    ingredient_id=2,
+                    name="Beef",
+                    grams=200,
                 ),
             ],
             tag_names=["Fleisch"],
         )
 
         results = MatchingEngine.suggest(
-            inv, [r1, r2], mode="partial", dietary_filter="Vegetarisch",
+            inv,
+            [r1, r2],
+            mode="partial",
+            dietary_filter="Vegetarisch",
         )
 
         assert len(results) == 1
@@ -314,17 +349,23 @@ class TestMatchingEngineDietaryFilter:
     def test_case_insensitive(self) -> None:
         inv = _make_inventory(**{"1:Tomato": (500, 0, 0, False)})
         r1 = RecipeInfo(
-            id=1, title="Soup",
+            id=1,
+            title="Soup",
             ingredients=[
                 RecipeIngredientNeed(
-                    ingredient_id=1, name="Tomato", grams=200,
+                    ingredient_id=1,
+                    name="Tomato",
+                    grams=200,
                 ),
             ],
             tag_names=["Vegetarisch"],
         )
 
         results = MatchingEngine.suggest(
-            inv, [r1], mode="partial", dietary_filter="vegetarisch",
+            inv,
+            [r1],
+            mode="partial",
+            dietary_filter="vegetarisch",
         )
         assert len(results) == 1
 
@@ -341,7 +382,11 @@ async def _setup_match_data(
 
     resp = await client.post(
         "/api/auth/register",
-        json={"username": username, "password": "secret123"},
+        json={
+            "username": username,
+            "password": "secret123",
+            "admin_signup_code": "test-secret",
+        },
     )
     cookies = resp.cookies
 
@@ -445,15 +490,17 @@ async def _setup_match_data(
 
 
 @pytest.mark.asyncio
-async def test_match_exact_mode(
-    client: AsyncClient, db_session: AsyncSession
-) -> None:
+async def test_match_exact_mode(client: AsyncClient, db_session: AsyncSession) -> None:
     cookies, _, _, r_full, _ = await _setup_match_data(
-        client, db_session, "exactuser",
+        client,
+        db_session,
+        "exactuser",
     )
 
     resp = await client.post(
-        "/api/match", json={"mode": "exact"}, cookies=cookies,
+        "/api/match",
+        json={"mode": "exact"},
+        cookies=cookies,
     )
     assert resp.status_code == 200
     suggestions = resp.json()["suggestions"]
@@ -467,11 +514,15 @@ async def test_match_partial_mode(
     client: AsyncClient, db_session: AsyncSession
 ) -> None:
     cookies, _, _, r_full, r_partial = await _setup_match_data(
-        client, db_session, "partialuser",
+        client,
+        db_session,
+        "partialuser",
     )
 
     resp = await client.post(
-        "/api/match", json={"mode": "partial"}, cookies=cookies,
+        "/api/match",
+        json={"mode": "partial"},
+        cookies=cookies,
     )
     assert resp.status_code == 200
     suggestions = resp.json()["suggestions"]
@@ -487,7 +538,9 @@ async def test_match_ingredient_first(
     client: AsyncClient, db_session: AsyncSession
 ) -> None:
     cookies, _, ing_pasta, r_full, _ = await _setup_match_data(
-        client, db_session, "ingfirstuser",
+        client,
+        db_session,
+        "ingfirstuser",
     )
 
     resp = await client.post(
@@ -513,12 +566,18 @@ async def test_match_empty_inventory(
 ) -> None:
     resp = await client.post(
         "/api/auth/register",
-        json={"username": "emptyuser", "password": "secret123"},
+        json={
+            "username": "emptyuser",
+            "password": "secret123",
+            "admin_signup_code": "test-secret",
+        },
     )
     cookies = resp.cookies
 
     resp2 = await client.post(
-        "/api/match", json={"mode": "exact"}, cookies=cookies,
+        "/api/match",
+        json={"mode": "exact"},
+        cookies=cookies,
     )
     assert resp2.status_code == 200
     assert resp2.json()["suggestions"] == []
@@ -529,21 +588,20 @@ async def test_match_with_dietary_filter(
     client: AsyncClient, db_session: AsyncSession
 ) -> None:
     cookies, _, _, r_full, _ = await _setup_match_data(
-        client, db_session, "dietuser",
+        client,
+        db_session,
+        "dietuser",
     )
     from sqlalchemy import text
 
     await db_session.execute(
         text(
-            "INSERT INTO tags (id, name, \"group\", household_id) "
+            'INSERT INTO tags (id, name, "group", household_id) '
             "VALUES (3001, 'Pasta-Liebe', 'ingredient', NULL)"
         )
     )
     await db_session.execute(
-        text(
-            "INSERT INTO recipe_tags (recipe_id, tag_id) "
-            "VALUES (2001, 3001)"
-        )
+        text("INSERT INTO recipe_tags (recipe_id, tag_id) VALUES (2001, 3001)")
     )
     await db_session.commit()
 
@@ -563,16 +621,18 @@ async def test_match_score_fields(
     client: AsyncClient, db_session: AsyncSession
 ) -> None:
     cookies, _, _, _, r_partial = await _setup_match_data(
-        client, db_session, "scoreuser",
+        client,
+        db_session,
+        "scoreuser",
     )
 
     resp = await client.post(
-        "/api/match", json={"mode": "partial"}, cookies=cookies,
+        "/api/match",
+        json={"mode": "partial"},
+        cookies=cookies,
     )
     data = resp.json()
-    salad = [
-        s for s in data["suggestions"] if s["recipe_id"] == r_partial
-    ][0]
+    salad = [s for s in data["suggestions"] if s["recipe_id"] == r_partial][0]
     assert salad["score"] == 0.5
     assert salad["matched_ingredients"] == 1
     assert salad["total_ingredients"] == 2
@@ -585,7 +645,9 @@ async def test_match_dietary_filter_with_seeded_diet_tag(
     client: AsyncClient, db_session: AsyncSession
 ) -> None:
     cookies, _, _, r_full, _ = await _setup_match_data(
-        client, db_session, "dietenduser",
+        client,
+        db_session,
+        "dietenduser",
     )
     from sqlalchemy import text
 
@@ -635,22 +697,22 @@ async def _setup_cross_dim_data(
 
     resp = await client.post(
         "/api/auth/register",
-        json={"username": username, "password": "secret123"},
+        json={
+            "username": username,
+            "password": "secret123",
+            "admin_signup_code": "test-secret",
+        },
     )
     cookies = resp.cookies
     household_id = resp.json()["household_id"]
 
     await db_session.execute(
         text(
-            "INSERT INTO ingredients (id, name, grams_per_el) "
-            "VALUES (2001, 'Mehl', 10)"
+            "INSERT INTO ingredients (id, name, grams_per_el) VALUES (2001, 'Mehl', 10)"
         )
     )
     await db_session.execute(
-        text(
-            "INSERT INTO ingredients (id, name) "
-            "VALUES (2002, 'Milch')"
-        )
+        text("INSERT INTO ingredients (id, name) VALUES (2002, 'Milch')")
     )
 
     await db_session.execute(
@@ -759,11 +821,15 @@ async def test_cross_dimension_el_to_g_matches(
 ) -> None:
     """Recipe with 1 EL Mehl (10g after conversion) matches 100g inventory."""
     cookies, _, _, r_pasta, _ = await _setup_cross_dim_data(
-        client, db_session, "xdimuser1",
+        client,
+        db_session,
+        "xdimuser1",
     )
 
     resp = await client.post(
-        "/api/match", json={"mode": "exact"}, cookies=cookies,
+        "/api/match",
+        json={"mode": "exact"},
+        cookies=cookies,
     )
     assert resp.status_code == 200
     suggestions = resp.json()["suggestions"]
@@ -782,11 +848,15 @@ async def test_cross_dimension_el_to_g_insufficient(
 ) -> None:
     """Recipe with 11 EL Mehl (110g) is UNSATISFIED against 100g inventory."""
     cookies, _, _, _, r_brot = await _setup_cross_dim_data(
-        client, db_session, "xdimuser2",
+        client,
+        db_session,
+        "xdimuser2",
     )
 
     resp = await client.post(
-        "/api/match", json={"mode": "exact"}, cookies=cookies,
+        "/api/match",
+        json={"mode": "exact"},
+        cookies=cookies,
     )
     assert resp.status_code == 200
     suggestions = resp.json()["suggestions"]
@@ -802,7 +872,9 @@ async def test_cross_dimension_expiring_urgency(
     from sqlalchemy import text
 
     cookies, _, _, r_pasta, _ = await _setup_cross_dim_data(
-        client, db_session, "xdimuser3",
+        client,
+        db_session,
+        "xdimuser3",
     )
 
     household_id_result = await db_session.execute(
@@ -820,7 +892,9 @@ async def test_cross_dimension_expiring_urgency(
     await db_session.commit()
 
     resp = await client.post(
-        "/api/match", json={"mode": "partial"}, cookies=cookies,
+        "/api/match",
+        json={"mode": "partial"},
+        cookies=cookies,
     )
     assert resp.status_code == 200
     suggestions = resp.json()["suggestions"]
@@ -835,11 +909,15 @@ async def test_cross_dimension_no_conversion_fallback(
 ) -> None:
     """Ingredient without conversion: EL falls back to 15ml."""
     cookies, _, _, _, _ = await _setup_cross_dim_data(
-        client, db_session, "xdimuser4",
+        client,
+        db_session,
+        "xdimuser4",
     )
 
     resp = await client.post(
-        "/api/match", json={"mode": "exact"}, cookies=cookies,
+        "/api/match",
+        json={"mode": "exact"},
+        cookies=cookies,
     )
     assert resp.status_code == 200
     suggestions = resp.json()["suggestions"]
@@ -853,11 +931,15 @@ async def test_cross_dimension_partial_mode_score(
 ) -> None:
     """Cross-dimension match counts toward matched_ingredients in partial mode."""
     cookies, _, _, r_pasta, _ = await _setup_cross_dim_data(
-        client, db_session, "xdimuser5",
+        client,
+        db_session,
+        "xdimuser5",
     )
 
     resp = await client.post(
-        "/api/match", json={"mode": "partial"}, cookies=cookies,
+        "/api/match",
+        json={"mode": "partial"},
+        cookies=cookies,
     )
     assert resp.status_code == 200
     suggestions = resp.json()["suggestions"]

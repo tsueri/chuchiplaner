@@ -11,7 +11,7 @@ interface AuthContextType {
   user: User | null
   loading: boolean
   login: (username: string, password: string) => Promise<void>
-  register: (username: string, password: string, inviteCode?: string) => Promise<void>
+  register: (username: string, password: string, inviteCode?: string, adminSignupCode?: string) => Promise<void>
   logout: () => Promise<void>
 }
 
@@ -50,9 +50,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(u)
   }
 
-  const register = async (username: string, password: string, inviteCode?: string) => {
+  const register = async (username: string, password: string, inviteCode?: string, adminSignupCode?: string) => {
     const body: Record<string, string> = { username, password }
     if (inviteCode) body.invite_code = inviteCode
+    if (adminSignupCode) body.admin_signup_code = adminSignupCode
     const u = await api("/auth/register", {
       method: "POST",
       body: JSON.stringify(body),
