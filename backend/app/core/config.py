@@ -25,7 +25,7 @@ class Settings(BaseSettings):
         "default-src 'self'; "
         "img-src 'self' https:; "
         "style-src 'self' 'unsafe-inline'; "
-        "script-src 'self'; "
+        "script-src 'self' 'sha256-VH1OnQOgBQ3EbKOSckBIAquRRMcgooysHqbNPCrDcC4='; "
         "connect-src 'self'; "
         "frame-ancestors 'none'; "
         "base-uri 'self'; "
