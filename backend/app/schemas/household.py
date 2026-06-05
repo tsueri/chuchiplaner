@@ -23,9 +23,20 @@ class HouseholdResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+SLUG_PATTERN = r"^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$"
+
+
 class HouseholdUpdateRequest(BaseModel):
     name: str | None = None
-    slug: str | None = None
+    slug: str | None = Field(
+        default=None,
+        pattern=SLUG_PATTERN,
+        max_length=64,
+        description=(
+            "URL-friendly identifier with lowercase letters, digits, and "
+            "hyphens. Must start and end with a letter or digit."
+        ),
+    )
     default_size: int | None = Field(default=None, ge=1)
     default_public: bool | None = None
 

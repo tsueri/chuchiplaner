@@ -5,7 +5,9 @@ import secrets
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from fastapi import HTTPException, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.household import Household as HouseholdModel
@@ -178,3 +180,41 @@ async def update_meal_template(
 
     await db.flush()
     return sorted(updated, key=lambda s: (s.day_of_week, s.meal_type))
+
+
+SLUG_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$")
+
+
+async def update_household(
+    db: AsyncSession,
+    household: HouseholdModel,
+    body: Any,
+) -> HouseholdModel:
+    if body.name is not None:
+        household.name = body.name
+        if body.slug is None:
+            household.slug = generate_slug(body.name)
+    if body.slug is not None:
+        if not SLUG_RE.match(body.slug):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "Ungültiges Slug-Format. Nur Kleinbuchstaben, Ziffern "
+                    "und Bindestriche erlaubt (max. 64 Zeichen)."
+                ),
+            )
+        household.slug = body.slug
+    if getattr(body, "default_size", None) is not None:
+        household.default_size = body.default_size
+    if getattr(body, "default_public", None) is not None:
+        household.default_public = body.default_public
+
+    try:
+        await db.flush()
+    except IntegrityError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Slug bereits vergeben",
+        )
+
+    return household

@@ -35,6 +35,7 @@ from app.services.household import (
     get_user_by_id,
     regenerate_invite_code,
     remove_member,
+    update_household,
     update_meal_template,
 )
 from app.services.recipe_jsonld_exporter import RecipeJSONLDExporter
@@ -71,7 +72,7 @@ async def get_household(
 
 
 @router.put("", response_model=HouseholdResponse)
-async def update_household(
+async def update_household_settings(
     body: HouseholdUpdateRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -88,21 +89,7 @@ async def update_household(
     if household is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
 
-    if body.name is not None:
-        household.name = body.name
-        if body.slug is None:
-            from app.services.household import generate_slug
-            household.slug = generate_slug(body.name)
-    if body.slug is not None:
-        household.slug = body.slug
-
-    if body.default_size is not None:
-        household.default_size = body.default_size
-
-    if body.default_public is not None:
-        household.default_public = body.default_public
-
-    await db.flush()
+    await update_household(db, household, body)
 
     hwm = await get_household_with_members(db, household.id)
     assert hwm is not None

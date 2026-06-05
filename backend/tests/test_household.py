@@ -713,3 +713,86 @@ async def test_export_jsonld_full_recipe(client: AsyncClient) -> None:
     ]
     assert recipe_node["identifier"] == recipe_id
     assert "season" not in recipe_node
+
+
+@pytest.mark.asyncio
+async def test_update_household_slug_bad_pattern(client: AsyncClient) -> None:
+    admin_resp = await _register(client, "patternadmin")
+    cookies = admin_resp.cookies
+
+    resp = await client.put(
+        "/api/household",
+        json={"slug": "Bad Slug!"},
+        cookies=cookies,
+    )
+    assert resp.status_code == 422
+    data = resp.json()
+    assert "detail" in data
+
+
+@pytest.mark.asyncio
+async def test_update_household_slug_too_long(client: AsyncClient) -> None:
+    admin_resp = await _register(client, "longadmin")
+    cookies = admin_resp.cookies
+
+    resp = await client.put(
+        "/api/household",
+        json={"slug": "x" * 65},
+        cookies=cookies,
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_update_household_slug_collision(client: AsyncClient) -> None:
+    admin1_resp = await _register(client, "collision1")
+    admin1_cookies = admin1_resp.cookies
+
+    admin2_resp = await _register(client, "collision2")
+    admin2_cookies = admin2_resp.cookies
+
+    household1 = (
+        await client.get("/api/household", cookies=admin1_cookies)
+    ).json()
+    hh1_slug = household1["slug"]
+
+    resp = await client.put(
+        "/api/household",
+        json={"slug": hh1_slug},
+        cookies=admin2_cookies,
+    )
+    assert resp.status_code == 400
+    data = resp.json()
+    assert "detail" in data
+    assert "vergeben" in str(data["detail"]).lower()
+
+
+@pytest.mark.asyncio
+async def test_update_household_slug_valid(client: AsyncClient) -> None:
+    admin_resp = await _register(client, "validadmin")
+    cookies = admin_resp.cookies
+
+    resp = await client.put(
+        "/api/household",
+        json={"slug": "valid-slug"},
+        cookies=cookies,
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["slug"] == "valid-slug"
+
+
+@pytest.mark.asyncio
+async def test_update_household_name_only_auto_slug(client: AsyncClient) -> None:
+    admin_resp = await _register(client, "auto-admin")
+    cookies = admin_resp.cookies
+
+    resp = await client.put(
+        "/api/household",
+        json={"name": "New Auto Name"},
+        cookies=cookies,
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["name"] == "New Auto Name"
+    assert data["slug"] == "new-auto-name"
