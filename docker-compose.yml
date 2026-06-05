@@ -1,24 +1,17 @@
 services:
   app:
     build: .
+    restart: unless-stopped
     ports:
       - "8000:8000"
     volumes:
       - ./data:/app/data
-    environment:
-      - CHUCHI_DATABASE_URL=sqlite+aiosqlite:///./data/chuchiplaner.db
-      # Proxy / HTTPS (uncomment for production behind reverse proxy)
-      # - CHUCHI_TRUST_PROXY_HEADERS=true
-      # - CHUCHI_COOKIE_SECURE=true
-      # - FORWARDED_ALLOW_IPS=172.16.0.0/12  # Docker bridge network; use * if proxy is on same host
+    env_file: .env
 
   backup:
     build: ./backup
+    restart: unless-stopped
     volumes:
       - ./data:/data:ro
       - ./backups:/backups
-    environment:
-      - CHUCHI_DB_PATH=/data/chuchiplaner.db
-      - CHUCHI_BACKUP_DIR=/backups
-      - CHUCHI_BACKUP_RETENTION=7
-      - CHUCHI_BACKUP_INTERVAL=86400
+    env_file: .env
