@@ -126,6 +126,9 @@ async def client(
 
     app.dependency_overrides[get_db] = override_get_db
 
+    from app.core import config
+    config.settings.signup_enabled = True
+
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac

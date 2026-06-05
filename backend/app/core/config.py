@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     app_version: str = "0.1.0"
     database_url: str = "sqlite+aiosqlite:///./chuchiplaner.db"
     cors_origins: list[str] = []
-    signup_enabled: bool = True
+    signup_enabled: bool = False
     admin_signup_code: str = ""
     csp: str = (
         "default-src 'self'; "

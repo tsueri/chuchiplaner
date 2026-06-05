@@ -91,7 +91,7 @@ async def register(
     if not settings.signup_enabled:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Signup is disabled",
+            detail="Sign-ups are closed on this instance",
         )
     if body.invite_code:
         household = await get_household_by_invite_code(db, body.invite_code)

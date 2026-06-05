@@ -1,5 +1,7 @@
 import logging
 import os
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -24,6 +26,13 @@ from app.core.security_headers import SecurityHeadersMiddleware
 logger = logging.getLogger("chuchiplaner")
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    state = "open" if settings.signup_enabled else "closed"
+    logger.info("Startup: sign-ups are %s", state)
+    yield
+
+
 def create_app() -> FastAPI:
     if not settings.cors_origins and settings.signup_enabled:
         logger.warning(
@@ -32,7 +41,11 @@ def create_app() -> FastAPI:
             "origins, or set CHUCHI_SIGNUP_ENABLED=false."
         )
 
-    app = FastAPI(title=settings.app_name, version=settings.app_version)
+    app = FastAPI(
+        title=settings.app_name,
+        version=settings.app_version,
+        lifespan=lifespan,
+    )
 
     app.add_middleware(
         CORSMiddleware,
