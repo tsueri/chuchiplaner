@@ -74,6 +74,13 @@ All settings use the `CHUCHI_` prefix. Copy `.env.example` to `.env` and adjust 
 | `CHUCHI_APP_VERSION` | `0.1.0` | Application version |
 | `CHUCHI_DATABASE_URL` | `sqlite+aiosqlite:///./chuchiplaner.db` | SQLite database path (SQLAlchemy URL) |
 | `CHUCHI_CORS_ORIGINS` | `["http://localhost:5173"]` | Allowed CORS origins (JSON list) |
+| `CHUCHI_SIGNUP_ENABLED` | `true` | Whether new users can register |
+| `CHUCHI_ADMIN_SIGNUP_CODE` | `""` | If non-empty, registration requires a valid household invite code |
+
+### Frontend
+| Variable | Default | Description |
+|---|---|---|
+| `VITE_BACKEND_URL` | `http://localhost:8000` | Backend URL for the Vite dev server proxy (only needed in Docker Compose dev) |
 
 ### Backup sidecar (Docker Compose only)
 
