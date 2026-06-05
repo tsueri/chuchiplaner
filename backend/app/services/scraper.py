@@ -331,7 +331,7 @@ class RecipeScraper:
                 try:
                     response = client.get(current_url)
                 finally:
-                    socket.getaddrinfo = original_getaddrinfo  # type: ignore[assignment]
+                    socket.getaddrinfo = original_getaddrinfo
 
                 if response.status_code in (301, 302, 303, 307, 308):
                     location = response.headers.get("Location")
