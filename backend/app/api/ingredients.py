@@ -2,11 +2,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.auth import get_current_user
+from app.api.deps import require_admin
 from app.db.session import get_db
 from app.models.grocery_list import GroceryListItem
 from app.models.ingredient import Ingredient, IngredientAlias
 from app.models.inventory import InventoryItem
 from app.models.recipe import RecipeIngredient
+from app.models.user import User
 from app.schemas.ingredient import (
     IngredientCreate,
     IngredientResponse,
@@ -20,6 +23,7 @@ router = APIRouter(prefix="/ingredients", tags=["ingredients"])
 async def create_ingredient(
     body: IngredientCreate,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin),
 ) -> Ingredient:
     existing = await db.execute(
         select(Ingredient).where(Ingredient.name == body.name)
@@ -39,6 +43,7 @@ async def create_ingredient(
 async def list_ingredients(
     q: str = Query(default="", max_length=255),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> list[Ingredient]:
     if q:
         result = await db.execute(
@@ -53,6 +58,7 @@ async def list_ingredients(
 async def get_ingredient(
     ingredient_id: int,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> Ingredient:
     result = await db.execute(
         select(Ingredient).where(Ingredient.id == ingredient_id)
@@ -71,6 +77,7 @@ async def update_ingredient(
     ingredient_id: int,
     body: IngredientUpdate,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin),
 ) -> Ingredient:
     result = await db.execute(
         select(Ingredient).where(Ingredient.id == ingredient_id)
@@ -106,6 +113,7 @@ async def update_ingredient(
 async def delete_ingredient(
     ingredient_id: int,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin),
 ) -> None:
     result = await db.execute(
         select(Ingredient).where(Ingredient.id == ingredient_id)
