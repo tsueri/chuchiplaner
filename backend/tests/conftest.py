@@ -7,6 +7,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.config import settings
+from app.core.rate_limiter import _limiter
 from app.db.base import Base
 from app.main import create_app
 
@@ -17,6 +18,12 @@ def _set_admin_signup_code() -> None:
     settings.admin_signup_code = "test-secret"
     yield
     settings.admin_signup_code = original
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limiter() -> None:
+    """Reset the global rate-limiter singleton before every test."""
+    _limiter.reset()
 
 
 @pytest.fixture(scope="session")

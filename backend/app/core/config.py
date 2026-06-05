@@ -32,6 +32,12 @@ class Settings(BaseSettings):
         "form-action 'self'"
     )
     cookie: CookieConfig = Field(default_factory=CookieConfig)
+    trust_proxy_headers: bool = False
+
+    rate_limit_enabled: bool = True
+    rate_limit_login_per_minute: int = 5
+    rate_limit_register_per_hour: int = 3
+    rate_limit_password_per_hour: int = 3
 
     model_config = {"env_prefix": "CHUCHI_"}
 

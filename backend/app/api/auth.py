@@ -5,6 +5,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.rate_limiter import (
+    LOGIN_LIMIT,
+    LOGIN_WINDOW,
+    _check_rate_limit,
+    rate_limit_login,
+    rate_limit_password,
+    rate_limit_register,
+)
 from app.db.session import get_db
 from app.models.recipe import Recipe, RecipeFavorite, RecipeNote
 from app.models.user import User
@@ -78,6 +86,7 @@ async def register(
     body: RegisterRequest,
     response: Response,
     db: AsyncSession = Depends(get_db),
+    _rl: None = Depends(rate_limit_register),
 ) -> User:
     if not settings.signup_enabled:
         raise HTTPException(
@@ -120,7 +129,11 @@ async def login(
     body: LoginRequest,
     response: Response,
     db: AsyncSession = Depends(get_db),
+    _rl_ip: None = Depends(rate_limit_login),
 ) -> User:
+    await _check_rate_limit(
+        f"login:user:{body.username}", limit=LOGIN_LIMIT, window_seconds=LOGIN_WINDOW
+    )
     user = await get_user_by_username(db, body.username)
     if user is not None:
         password_valid = verify_password(body.password, user.password_hash)
@@ -159,6 +172,7 @@ async def me(user: User = Depends(get_current_user)) -> User:
 async def change_password(
     body: PasswordChangeRequest,
     db: AsyncSession = Depends(get_db),
+    _rl: None = Depends(rate_limit_password),
     current_user: User = Depends(get_current_user),
 ) -> dict[str, str]:
     if not verify_password(body.current_password, current_user.password_hash):
