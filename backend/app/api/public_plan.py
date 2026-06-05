@@ -11,6 +11,7 @@ from app.models.recipe import Recipe
 from app.models.week_plan import MealSlot, WeekPlan
 from app.schemas.public_plan import (
     PublicMealSlotResponse,
+    PublicPlannedRecipeResponse,
     PublicRecipeResponse,
     PublicWeekPlanResponse,
 )
@@ -74,11 +75,27 @@ async def get_public_plan(
     for s in plan.slots:
         recipe_data = None
         cooked = False
+        planned_recipes: list[PublicPlannedRecipeResponse] = []
+        for pr in s.planned_recipes:
+            pr_recipe = None
+            if pr.recipe_id in recipes_map:
+                pr_recipe = PublicRecipeResponse(**recipes_map[pr.recipe_id])
+            else:
+                pr_recipe = None
+            planned_recipes.append(
+                PublicPlannedRecipeResponse(
+                    recipe=pr_recipe,
+                    portions=pr.portions,
+                    cooked=pr.cooked,
+                )
+            )
+
         if s.planned_recipes:
             pr = s.planned_recipes[0]
             if pr.recipe_id in recipes_map:
                 recipe_data = PublicRecipeResponse(**recipes_map[pr.recipe_id])
             cooked = pr.cooked
+
         slots.append(
             PublicMealSlotResponse(
                 id=s.id,
@@ -88,6 +105,7 @@ async def get_public_plan(
                 recipe=recipe_data,
                 portions=s.portions,
                 cooked=cooked,
+                planned_recipes=planned_recipes,
             )
         )
 

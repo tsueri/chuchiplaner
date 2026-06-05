@@ -14,6 +14,12 @@ interface PublicRecipe {
   servings: number
 }
 
+interface PublicPlannedRecipe {
+  recipe: PublicRecipe | null
+  portions: number
+  cooked: boolean
+}
+
 interface PublicSlot {
   id: number
   meal_type: string
@@ -22,6 +28,7 @@ interface PublicSlot {
   recipe: PublicRecipe | null
   portions: number
   cooked: boolean
+  planned_recipes: PublicPlannedRecipe[]
 }
 
 interface PublicPlan {
@@ -141,16 +148,26 @@ export default function PublicPlanPage() {
     if (!data || pdfGenerating) return
     setPdfGenerating(true)
     try {
+      const pdfSlots: { dayOfWeek: number; mealType: string; recipeTitle: string; portions: number }[] = []
+      for (const s of data.slots) {
+        const titles = s.planned_recipes
+          .filter((pr) => pr.recipe?.title)
+          .map((pr) => pr.recipe!.title)
+        if (titles.length === 0) continue
+        const avgPortions = Math.round(
+          s.planned_recipes.reduce((sum, pr) => sum + pr.portions, 0) /
+          s.planned_recipes.length
+        )
+        pdfSlots.push({
+          dayOfWeek: s.day_of_week,
+          mealType: s.meal_type,
+          recipeTitle: titles.join(" / "),
+          portions: avgPortions || s.portions,
+        })
+      }
       await generateWeekPlanPdf({
         weekLabel: formatWeekLabel(data.year, data.iso_week),
-        slots: data.slots
-          .filter((s) => s.recipe !== null)
-          .map((s) => ({
-            dayOfWeek: s.day_of_week,
-            mealType: s.meal_type,
-            recipeTitle: s.recipe!.title,
-            portions: s.portions,
-          })),
+        slots: pdfSlots,
         publicUrl: `${window.location.origin}/plan/${data.household_slug}/${data.year}/kw${data.iso_week}`,
         fileName: `wochenplan-kw${data.iso_week}-${data.year}.pdf`,
       })
@@ -200,7 +217,6 @@ export default function PublicPlanPage() {
           DAY_LABELS.map((_, dayIdx) => {
             const slot = getSlot(dayIdx, meal)
             const isActive = slot?.active !== false
-            const recipe = slot?.recipe || null
 
             return (
               <div key={`${meal}-${dayIdx}`} className="contents">
@@ -212,42 +228,49 @@ export default function PublicPlanPage() {
                 <div
                   className={
                     `rounded border p-1 min-h-[90px] text-xs ${
-                      isActive && recipe
+                      isActive && slot && slot.planned_recipes.length > 0
                         ? "bg-background border-border"
                         : "bg-muted/30 text-muted-foreground/50 border-border/50"
                     }`
                   }
                 >
-                  {recipe ? (
-                    <div className="flex flex-col items-center gap-1 h-full justify-center">
-                      {slot?.cooked && (
-                        <span className="text-green-600 text-xs font-bold">
-                          Gekocht
-                        </span>
-                      )}
-                      <span className="font-medium truncate w-full text-center">
-                        {recipe.title}
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        {slot?.portions} Port.
-                      </span>
-                      {recipe.source_domain && (
-                        <span
-                          className={`inline-block px-1.5 py-0.5 rounded text-xs font-medium ${getDomainColor(recipe.source_domain)}`}
-                        >
-                          {recipe.source_domain}
-                        </span>
-                      )}
-                      {recipe.source_url && (
-                        <a
-                          href={recipe.source_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-xs text-primary hover:underline mt-0.5"
-                        >
-                          Originalrezept &rarr;
-                        </a>
-                      )}
+                  {slot && slot.planned_recipes.length > 0 ? (
+                    <div className="flex flex-col items-center gap-1">
+                      {slot.planned_recipes.map((pr, idx) => {
+                        const recipe = pr.recipe
+                        return (
+                          <div key={idx} className="flex flex-col items-center w-full border-b border-border pb-1 last:border-b-0 last:pb-0">
+                            {pr.cooked && (
+                              <span className="text-green-600 text-xs font-bold">
+                                Gekocht
+                              </span>
+                            )}
+                            <span className="font-medium truncate w-full text-center">
+                              {recipe?.title || "?"}
+                            </span>
+                            <span className="text-xs text-muted-foreground">
+                              {pr.portions} Port.
+                            </span>
+                            {recipe?.source_domain && (
+                              <span
+                                className={`inline-block px-1.5 py-0.5 rounded text-xs font-medium ${getDomainColor(recipe.source_domain)}`}
+                              >
+                                {recipe.source_domain}
+                              </span>
+                            )}
+                            {recipe?.source_url && (
+                              <a
+                                href={recipe.source_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs text-primary hover:underline mt-0.5"
+                              >
+                                Originalrezept &rarr;
+                              </a>
+                            )}
+                          </div>
+                        )
+                      })}
                     </div>
                   ) : isActive ? (
                     <div className="flex items-center justify-center h-full text-muted-foreground">

@@ -537,3 +537,60 @@ async def test_new_weeks_not_public_when_default_public_false(
     )
     assert resp.status_code == 200
     assert resp.json()["is_public"] is False
+
+
+# ----- Multi-recipe public plan (Slice 2) -----
+
+
+@pytest.mark.asyncio
+async def test_public_plan_shows_all_planned_recipes_per_slot(
+    client: AsyncClient,
+) -> None:
+    reg = await _register(client, "pubmulti1")
+    cookies = reg["cookies"]
+    year, week = await _get_current_iso()
+
+    recipe1 = await _create_recipe(client, cookies, "Suppe")
+    recipe2 = await _create_recipe(client, cookies, "Salat")
+
+    await client.post(
+        "/api/weeks",
+        json={"year": year, "iso_week": week},
+        cookies=cookies,
+    )
+    await client.put(
+        f"/api/weeks/{year}/{week}/slots",
+        json={
+            "slots": [
+                {
+                    "day_of_week": 0,
+                    "meal_type": "lunch",
+                    "planned_recipes": [
+                        {"recipe_id": recipe1["id"], "portions": 3},
+                        {"recipe_id": recipe2["id"], "portions": 2},
+                    ],
+                }
+            ]
+        },
+        cookies=cookies,
+    )
+    await client.put(
+        f"/api/weeks/{year}/{week}/visibility",
+        json={"is_public": True},
+        cookies=cookies,
+    )
+
+    household = (await client.get("/api/household", cookies=cookies)).json()
+
+    resp = await client.get(f"/api/public/plan/{household['slug']}/{year}/{week}")
+    assert resp.status_code == 200
+    data = resp.json()
+
+    monday_lunch = next(
+        s for s in data["slots"] if s["day_of_week"] == 0 and s["meal_type"] == "lunch"
+    )
+    assert len(monday_lunch["planned_recipes"]) == 2
+    assert monday_lunch["planned_recipes"][0]["recipe"]["title"] == "Suppe"
+    assert monday_lunch["planned_recipes"][0]["portions"] == 3
+    assert monday_lunch["planned_recipes"][1]["recipe"]["title"] == "Salat"
+    assert monday_lunch["planned_recipes"][1]["portions"] == 2

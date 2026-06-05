@@ -63,6 +63,7 @@ function renderPage({
               portions: 4,
               dietary_filter_tag_id: null,
               cooked: false,
+              planned_recipes: [],
             },
           ],
         })

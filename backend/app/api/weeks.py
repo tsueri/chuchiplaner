@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
@@ -205,6 +205,7 @@ async def unplan_recipe(
     year: int,
     iso_week: int,
     slot_id: int,
+    planned_recipe_id: int | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> dict[str, str]:
@@ -227,9 +228,20 @@ async def unplan_recipe(
             status_code=status.HTTP_404_NOT_FOUND, detail=_SLOT_NOT_FOUND
         )
 
-    for pr in list(slot.planned_recipes):
-        await db.delete(pr)
-    slot.dietary_filter_tag_id = None
+    if planned_recipe_id is not None:
+        target = next(
+            (pr for pr in slot.planned_recipes if pr.id == planned_recipe_id), None
+        )
+        if target is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Planned recipe not found in this slot",
+            )
+        await db.delete(target)
+    else:
+        for pr in list(slot.planned_recipes):
+            await db.delete(pr)
+        slot.dietary_filter_tag_id = None
     await db.flush()
     db.expire(slot, ["planned_recipes"])
     return {"status": "ok"}

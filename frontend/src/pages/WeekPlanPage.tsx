@@ -32,6 +32,14 @@ interface LeftoverItem {
   source_week_plan_id: number | null
 }
 
+interface PlannedRecipe {
+  id: number
+  recipe_id: number
+  recipe_title: string | null
+  portions: number
+  cooked: boolean
+}
+
 interface MealSlot {
   id: number
   week_plan_id: number
@@ -43,6 +51,7 @@ interface MealSlot {
   portions: number
   dietary_filter_tag_id: number | null
   cooked: boolean
+  planned_recipes: PlannedRecipe[]
 }
 
 interface WeekData {
@@ -208,10 +217,20 @@ export default function WeekPlanPage() {
     if (!editable) return
     setSaving(true)
     try {
+      const slot = getSlot(day, meal)
+      const existingRecipes = (slot?.planned_recipes || []).map((pr) => ({
+        recipe_id: pr.recipe_id,
+        portions: pr.portions,
+      }))
+      existingRecipes.push({ recipe_id: recipeId, portions: slot?.portions || 1 })
       await api(`/weeks/${year}/${isoWeek}/slots`, {
         method: "PUT",
         body: JSON.stringify({
-          slots: [{ day_of_week: day, meal_type: meal, recipe_id: recipeId }],
+          slots: [{
+            day_of_week: day,
+            meal_type: meal,
+            planned_recipes: existingRecipes,
+          }],
         }),
       })
       refreshAll()
@@ -222,13 +241,20 @@ export default function WeekPlanPage() {
     }
   }
 
-  const unplanRecipe = async (slotId: number) => {
+  const unplanRecipe = async (slotId: number, plannedRecipeId?: number) => {
     if (!editable) return
     setSaving(true)
     try {
-      await api(`/weeks/${year}/${isoWeek}/slots/${slotId}/recipe`, {
-        method: "DELETE",
-      })
+      if (plannedRecipeId !== undefined) {
+        await api(
+          `/weeks/${year}/${isoWeek}/slots/${slotId}/recipe?planned_recipe_id=${plannedRecipeId}`,
+          { method: "DELETE" },
+        )
+      } else {
+        await api(`/weeks/${year}/${isoWeek}/slots/${slotId}/recipe`, {
+          method: "DELETE",
+        })
+      }
       refreshAll()
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to unplan recipe")
@@ -237,16 +263,24 @@ export default function WeekPlanPage() {
     }
   }
 
-  const updatePortions = async (
-    day: number, meal: string, portions: number
+  const updatePlannedRecipePortions = async (
+    day: number,
+    meal: string,
+    plannedRecipeId: number,
+    portions: number,
   ) => {
     if (!editable) return
     setSaving(true)
     try {
+      const slot = getSlot(day, meal)
+      const plannedRecipes = (slot?.planned_recipes || []).map((pr) => ({
+        recipe_id: pr.recipe_id,
+        portions: pr.id === plannedRecipeId ? portions : pr.portions,
+      }))
       await api(`/weeks/${year}/${isoWeek}/slots`, {
         method: "PUT",
         body: JSON.stringify({
-          slots: [{ day_of_week: day, meal_type: meal, portions }],
+          slots: [{ day_of_week: day, meal_type: meal, planned_recipes: plannedRecipes }],
         }),
       })
       refreshAll()
@@ -263,20 +297,38 @@ export default function WeekPlanPage() {
     sourceSlotId: number,
     targetDay: number,
     targetMeal: string,
-    recipeId: number
+    recipeId: number,
+    plannedRecipeId?: number
   ) => {
     if (!editable) return
     setSaving(true)
     try {
+      const targetSlot = getSlot(targetDay, targetMeal)
+      const existingRecipes = (targetSlot?.planned_recipes || []).map((pr) => ({
+        recipe_id: pr.recipe_id,
+        portions: pr.portions,
+      }))
+      existingRecipes.push({ recipe_id: recipeId, portions: targetSlot?.portions || 1 })
       await api(`/weeks/${year}/${isoWeek}/slots`, {
         method: "PUT",
         body: JSON.stringify({
-          slots: [{ day_of_week: targetDay, meal_type: targetMeal, recipe_id: recipeId }],
+          slots: [{
+            day_of_week: targetDay,
+            meal_type: targetMeal,
+            planned_recipes: existingRecipes,
+          }],
         }),
       })
-      await api(`/weeks/${year}/${isoWeek}/slots/${sourceSlotId}/recipe`, {
-        method: "DELETE",
-      })
+      if (plannedRecipeId !== undefined) {
+        await api(
+          `/weeks/${year}/${isoWeek}/slots/${sourceSlotId}/recipe?planned_recipe_id=${plannedRecipeId}`,
+          { method: "DELETE" },
+        )
+      } else {
+        await api(`/weeks/${year}/${isoWeek}/slots/${sourceSlotId}/recipe`, {
+          method: "DELETE",
+        })
+      }
       refreshAll()
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to move recipe")
@@ -316,16 +368,26 @@ export default function WeekPlanPage() {
     if (!weekData || pdfGenerating) return
     setPdfGenerating(true)
     try {
+      const pdfSlots: { dayOfWeek: number; mealType: string; recipeTitle: string; portions: number }[] = []
+      for (const s of weekData.slots) {
+        const titles = s.planned_recipes
+          .filter((pr) => pr.recipe_title)
+          .map((pr) => pr.recipe_title)
+        if (titles.length === 0) continue
+        const avgPortions = Math.round(
+          s.planned_recipes.reduce((sum, pr) => sum + pr.portions, 0) /
+          s.planned_recipes.length
+        )
+        pdfSlots.push({
+          dayOfWeek: s.day_of_week,
+          mealType: s.meal_type,
+          recipeTitle: titles.join(" / "),
+          portions: avgPortions || s.portions,
+        })
+      }
       await generateWeekPlanPdf({
         weekLabel: formatWeekLabel(year, isoWeek),
-        slots: weekData.slots
-          .filter((s) => s.recipe_id !== null && s.recipe_title)
-          .map((s) => ({
-            dayOfWeek: s.day_of_week,
-            mealType: s.meal_type,
-            recipeTitle: s.recipe_title!,
-            portions: s.portions,
-          })),
+        slots: pdfSlots,
         publicUrl: weekData.is_public && householdSlug
           ? `${window.location.origin}/plan/${householdSlug}/${year}/kw${isoWeek}`
           : null,
@@ -366,7 +428,7 @@ export default function WeekPlanPage() {
       })
       setLeftoverSlot({
         id: slotId,
-        title: getSlotSlotTitle(slotId) || "",
+        title: getSlotRecipeTitle(slotId) || "",
       })
       refreshAll()
     } catch (err) {
@@ -404,10 +466,10 @@ export default function WeekPlanPage() {
     setLeftoverPortions(2)
   }
 
-  const getSlotSlotTitle = (slotId: number): string | null => {
+  const getSlotRecipeTitle = (slotId: number): string | null => {
     if (!weekData) return null
     const slot = weekData.slots.find((s) => s.id === slotId)
-    return slot?.recipe_title || null
+    return slot?.planned_recipes?.[0]?.recipe_title || null
   }
 
   const getSlot = (day: number, meal: string): MealSlot | undefined => {
@@ -431,8 +493,15 @@ export default function WeekPlanPage() {
       const recipeId = parseInt(e.dataTransfer.getData("recipe_id") || "0")
       if (recipeId <= 0) return
       const sourceSlotId = parseInt(e.dataTransfer.getData("source_slot_id") || "0")
+      const plannedRecipeId = parseInt(e.dataTransfer.getData("planned_recipe_id") || "0")
       if (sourceSlotId > 0) {
-        moveRecipe(sourceSlotId, day, meal, recipeId)
+        moveRecipe(
+          sourceSlotId,
+          day,
+          meal,
+          recipeId,
+          plannedRecipeId > 0 ? plannedRecipeId : undefined,
+        )
       } else {
         planRecipe(day, meal, recipeId)
       }
@@ -442,12 +511,10 @@ export default function WeekPlanPage() {
     (
       day: number,
       meal: string,
-      slot: MealSlot | undefined
     ) =>
     (e: React.DragEvent) => {
       e.preventDefault()
       if (!editable) return
-      if (slot && slot.recipe_id !== null) return
       setDragOverDay(day)
       setDragOverMeal(meal)
     }
@@ -457,10 +524,11 @@ export default function WeekPlanPage() {
     setDragOverMeal(null)
   }
 
-  const handleSlotDragStart = (slot: MealSlot) => (e: React.DragEvent) => {
-    e.dataTransfer.setData("recipe_id", String(slot.recipe_id))
-    e.dataTransfer.setData("recipe_title", slot.recipe_title || "")
+  const handleSlotDragStart = (slot: MealSlot, pr: PlannedRecipe) => (e: React.DragEvent) => {
+    e.dataTransfer.setData("recipe_id", String(pr.recipe_id))
+    e.dataTransfer.setData("recipe_title", pr.recipe_title || "")
     e.dataTransfer.setData("source_slot_id", String(slot.id))
+    e.dataTransfer.setData("planned_recipe_id", String(pr.id))
     e.dataTransfer.effectAllowed = "move"
   }
 
@@ -594,10 +662,10 @@ export default function WeekPlanPage() {
                         </div>
                       )}
                       <div
-                        draggable={!!(slot?.recipe_id && editable && !slot.cooked)}
+                        draggable={!!(slot && slot.planned_recipes.length > 0 && editable && !slot.planned_recipes[0].cooked)}
                         onDragStart={
-                          slot?.recipe_id && editable && !slot.cooked
-                            ? handleSlotDragStart(slot)
+                          slot && slot.planned_recipes.length > 0 && editable && !slot.planned_recipes[0].cooked
+                            ? handleSlotDragStart(slot, slot.planned_recipes[0])
                             : undefined
                         }
                         className={[
@@ -623,64 +691,72 @@ export default function WeekPlanPage() {
                         }
                         onDragOver={
                           isActive
-                            ? handleSlotDragOver(dayIdx, meal, slot)
+                            ? handleSlotDragOver(dayIdx, meal)
                             : undefined
                         }
                         onDragLeave={handleSlotDragLeave}
                       >
-                        {slot?.recipe_id ? (
+                        {slot && slot.planned_recipes.length > 0 ? (
                           <div className="flex flex-col items-center gap-1">
-                            {slot.cooked && (
-                              <span className="text-green-600 text-xs font-bold">
-                                ✓ Gekocht
-                              </span>
-                            )}
-                            <span className="font-medium truncate w-full text-center">
-                              {slot.recipe_title || `#${slot.recipe_id}`}
-                            </span>
-                            <div className="flex items-center gap-1">
-                              <input
-                                type="number"
-                                min={1}
-                                className="w-10 rounded border px-1 text-center text-xs"
-                                value={slot.portions}
-                                onChange={(e) => {
-                                  const v = Math.max(
-                                    1,
-                                    parseInt(e.target.value) || 1
-                                  )
-                                  updatePortions(dayIdx, meal, v)
-                                }}
-                                disabled={!editable || saving || slot.cooked}
-                              />
-                              <span className="text-muted-foreground">Port.</span>
-                            </div>
-                            {editable && !slot.cooked && (
-                              <div className="flex flex-col gap-1.5 mt-1">
-                                <button
-                                  className="text-primary hover:underline text-xs text-left"
-                                  onClick={() =>
-                                    navigate(
-                                      `/recipes/${slot.recipe_id}/cook?portions=${slot.portions}&slotId=${slot.id}&year=${year}&isoWeek=${isoWeek}`,
-                                    )
-                                  }
-                                >
-                                  Kochmodus
-                                </button>
-                                <button
-                                  className="text-green-600 hover:underline text-xs text-left"
-                                  onClick={() => setCookConfirm(slot.id)}
-                                >
-                                  Gekocht
-                                </button>
-                                <button
-                                  className="text-destructive hover:underline text-xs text-left"
-                                  onClick={() => unplanRecipe(slot.id)}
-                                >
-                                  ✕
-                                </button>
+                            {slot.planned_recipes.map((pr) => (
+                              <div key={pr.id} className="flex flex-col items-center w-full border-b border-border pb-1 last:border-b-0 last:pb-0">
+                                {pr.cooked && (
+                                  <span className="text-green-600 text-xs font-bold">
+                                    ✓ Gekocht
+                                  </span>
+                                )}
+                                <span className="font-medium truncate w-full text-center">
+                                  {pr.recipe_title || `#${pr.recipe_id}`}
+                                </span>
+                                <div className="flex items-center gap-1">
+                                  <input
+                                    type="number"
+                                    min={1}
+                                    className="w-10 rounded border px-1 text-center text-xs"
+                                    value={pr.portions}
+                                    onChange={(e) => {
+                                      const v = Math.max(
+                                        1,
+                                        parseInt(e.target.value) || 1
+                                      )
+                                      updatePlannedRecipePortions(dayIdx, meal, pr.id, v)
+                                    }}
+                                    disabled={!editable || saving || pr.cooked}
+                                  />
+                                  <span className="text-muted-foreground">Port.</span>
+                                </div>
+                                {editable && !pr.cooked && (
+                                  <div className="flex gap-1.5 mt-0.5">
+                                    <button
+                                      className="text-primary hover:underline text-xs"
+                                      onClick={() =>
+                                        navigate(
+                                          `/recipes/${pr.recipe_id}/cook?portions=${pr.portions}&slotId=${slot.id}&year=${year}&isoWeek=${isoWeek}`,
+                                        )
+                                      }
+                                    >
+                                      Kochmodus
+                                    </button>
+                                    <button
+                                      className="text-green-600 hover:underline text-xs"
+                                      onClick={() => setCookConfirm(slot.id)}
+                                    >
+                                      Gekocht
+                                    </button>
+                                    <button
+                                      className="text-destructive hover:underline text-xs"
+                                      onClick={() =>
+                                        slot.planned_recipes.length > 1
+                                          ? unplanRecipe(slot.id, pr.id)
+                                          : unplanRecipe(slot.id)
+                                      }
+                                    >
+                                      ✕
+                                    </button>
+                                  </div>
+                                )}
                               </div>
-                            )}
+                            ))}
                           </div>
                         ) : isActive && editable ? (
                           <div className="flex items-center justify-center h-full text-muted-foreground">

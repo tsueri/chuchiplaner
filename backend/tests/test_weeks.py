@@ -1580,3 +1580,193 @@ async def test_compute_reservations_with_spoon_conversions(
     assert pytest.approx(reservations[ingredient.id]["grams"]) == 20.0
     assert reservations[ingredient.id]["milliliters"] == 0.0
     assert reservations[ingredient.id]["pieces"] == 0.0
+
+
+# ----- Multi-recipe slot CRUD (Slice 2) -----
+
+
+@pytest.mark.asyncio
+async def test_plan_multiple_recipes_on_slot(
+    client: AsyncClient,
+) -> None:
+    reg = await _register(client, "multiuser1")
+    cookies = reg["cookies"]
+    year, week = await _get_current_iso()
+
+    recipe1 = await _create_recipe(client, cookies, "Suppe")
+    recipe2 = await _create_recipe(client, cookies, "Salat")
+
+    await client.post(
+        "/api/weeks",
+        json={"year": year, "iso_week": week},
+        cookies=cookies,
+    )
+
+    resp = await client.put(
+        f"/api/weeks/{year}/{week}/slots",
+        json={
+            "slots": [
+                {
+                    "day_of_week": 0,
+                    "meal_type": "lunch",
+                    "planned_recipes": [
+                        {"recipe_id": recipe1["id"], "portions": 3},
+                        {"recipe_id": recipe2["id"], "portions": 2},
+                    ],
+                }
+            ]
+        },
+        cookies=cookies,
+    )
+    assert resp.status_code == 200
+
+    get_resp = await client.get(f"/api/weeks/{year}/{week}", cookies=cookies)
+    slot = next(
+        s
+        for s in get_resp.json()["slots"]
+        if s["day_of_week"] == 0 and s["meal_type"] == "lunch"
+    )
+    assert len(slot["planned_recipes"]) == 2
+    pr0 = slot["planned_recipes"][0]
+    pr1 = slot["planned_recipes"][1]
+    assert pr0["recipe_id"] == recipe1["id"]
+    assert pr0["recipe_title"] == "Suppe"
+    assert pr0["portions"] == 3
+    assert pr1["recipe_id"] == recipe2["id"]
+    assert pr1["recipe_title"] == "Salat"
+    assert pr1["portions"] == 2
+
+
+@pytest.mark.asyncio
+async def test_remove_one_planned_recipe_from_multi_slot(
+    client: AsyncClient,
+) -> None:
+    reg = await _register(client, "multiuser2")
+    cookies = reg["cookies"]
+    year, week = await _get_current_iso()
+
+    recipe1 = await _create_recipe(client, cookies, "Pasta")
+    recipe2 = await _create_recipe(client, cookies, "Dessert")
+
+    await client.post(
+        "/api/weeks",
+        json={"year": year, "iso_week": week},
+        cookies=cookies,
+    )
+
+    await client.put(
+        f"/api/weeks/{year}/{week}/slots",
+        json={
+            "slots": [
+                {
+                    "day_of_week": 0,
+                    "meal_type": "dinner",
+                    "planned_recipes": [
+                        {"recipe_id": recipe1["id"], "portions": 4},
+                        {"recipe_id": recipe2["id"], "portions": 2},
+                    ],
+                }
+            ]
+        },
+        cookies=cookies,
+    )
+
+    get_resp = await client.get(f"/api/weeks/{year}/{week}", cookies=cookies)
+    slot = next(
+        s
+        for s in get_resp.json()["slots"]
+        if s["day_of_week"] == 0 and s["meal_type"] == "dinner"
+    )
+    pr0 = slot["planned_recipes"][0]
+
+    resp = await client.delete(
+        f"/api/weeks/{year}/{week}/slots/{slot['id']}/recipe"
+        f"?planned_recipe_id={pr0['id']}",
+        cookies=cookies,
+    )
+    assert resp.status_code == 200
+
+    get_resp2 = await client.get(f"/api/weeks/{year}/{week}", cookies=cookies)
+    slot2 = next(
+        s
+        for s in get_resp2.json()["slots"]
+        if s["day_of_week"] == 0 and s["meal_type"] == "dinner"
+    )
+    assert len(slot2["planned_recipes"]) == 1
+    assert slot2["planned_recipes"][0]["recipe_id"] == recipe2["id"]
+
+
+@pytest.mark.asyncio
+async def test_reservations_with_multi_recipe_slots(
+    client: AsyncClient,
+) -> None:
+    reg = await _register(client, "multiuser3")
+    cookies = reg["cookies"]
+    year, week = await _get_current_iso()
+
+    ing1 = await _create_ingredient(client, cookies, "Tomate")
+    ingredient_id1 = ing1["id"]
+
+    ing2 = await _create_ingredient(client, cookies, "Gurke")
+    ingredient_id2 = ing2["id"]
+
+    recipe1 = await client.post(
+        "/api/recipes",
+        json={
+            "title": "Tomatensalat",
+            "instructions": "Schneiden.",
+            "servings": 2,
+            "ingredients": [
+                {"ingredient_id": ingredient_id1, "quantity": 200, "unit": "g"},
+            ],
+        },
+        cookies=cookies,
+    )
+    recipe1_id = recipe1.json()["id"]
+
+    recipe2 = await client.post(
+        "/api/recipes",
+        json={
+            "title": "Gurkensalat",
+            "instructions": "Schneiden.",
+            "servings": 2,
+            "ingredients": [
+                {"ingredient_id": ingredient_id2, "quantity": 150, "unit": "g"},
+            ],
+        },
+        cookies=cookies,
+    )
+    recipe2_id = recipe2.json()["id"]
+
+    await client.post(
+        "/api/weeks",
+        json={"year": year, "iso_week": week},
+        cookies=cookies,
+    )
+
+    await client.put(
+        f"/api/weeks/{year}/{week}/slots",
+        json={
+            "slots": [
+                {
+                    "day_of_week": 0,
+                    "meal_type": "lunch",
+                    "planned_recipes": [
+                        {"recipe_id": recipe1_id, "portions": 4},
+                        {"recipe_id": recipe2_id, "portions": 2},
+                    ],
+                }
+            ]
+        },
+        cookies=cookies,
+    )
+
+    res_resp = await client.get(
+        f"/api/weeks/{year}/{week}/reservations", cookies=cookies
+    )
+    assert res_resp.status_code == 200
+    reservations = res_resp.json()
+    assert str(ingredient_id1) in reservations
+    assert str(ingredient_id2) in reservations
+    assert reservations[str(ingredient_id1)]["grams"] == 400.0  # (200/2) * 4
+    assert reservations[str(ingredient_id2)]["grams"] == 150.0  # (150/2) * 2

@@ -12,6 +12,12 @@ class PublicRecipeResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class PublicPlannedRecipeResponse(BaseModel):
+    recipe: PublicRecipeResponse | None = None
+    portions: int
+    cooked: bool = False
+
+
 class PublicMealSlotResponse(BaseModel):
     id: int
     meal_type: str
@@ -20,6 +26,7 @@ class PublicMealSlotResponse(BaseModel):
     recipe: PublicRecipeResponse | None = None
     portions: int
     cooked: bool
+    planned_recipes: list[PublicPlannedRecipeResponse] = []
 
     model_config = {"from_attributes": True}
 
