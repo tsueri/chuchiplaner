@@ -3,17 +3,30 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 
+class PlannedRecipeResponse(BaseModel):
+    id: int
+    recipe_id: int
+    recipe_title: str | None = None
+    portions: int
+    cooked: bool = False
+
+    model_config = {"from_attributes": True}
+
+
+class PlannedRecipeInput(BaseModel):
+    recipe_id: int
+    portions: int = Field(default=1, ge=1)
+
+
 class MealSlotResponse(BaseModel):
     id: int
     week_plan_id: int
     meal_type: str
     day_of_week: int
     active: bool
-    recipe_id: int | None = None
-    recipe_title: str | None = None
+    planned_recipes: list[PlannedRecipeResponse] = []
     portions: int
     dietary_filter_tag_id: int | None = None
-    cooked: bool = False
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -56,6 +69,7 @@ class SlotUpdate(BaseModel):
     meal_type: str
     recipe_id: int | None = None
     portions: int | None = Field(default=None, ge=1)
+    planned_recipes: list[PlannedRecipeInput] = []
     dietary_filter_tag_id: int | None = None
 
 

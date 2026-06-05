@@ -232,7 +232,9 @@ async def update_meal_slot_template(
     plans_result = await db.execute(
         select(WeekPlan)
         .where(WeekPlan.household_id == current_user.household_id)
-        .options(selectinload(WeekPlan.slots))
+        .options(
+            selectinload(WeekPlan.slots).selectinload(MealSlot.planned_recipes)
+        )
     )
     for plan in plans_result.unique().scalars().all():
         if is_editable(plan):
@@ -379,9 +381,13 @@ async def export_household_data(
             slots_by_plan.setdefault(slot.week_plan_id, []).append({
                 "id": slot.id, "meal_type": slot.meal_type,
                 "day_of_week": slot.day_of_week, "active": slot.active,
-                "recipe_id": slot.recipe_id, "portions": slot.portions,
+                "portions": slot.portions,
                 "dietary_filter_tag_id": slot.dietary_filter_tag_id,
-                "cooked": slot.cooked,
+                "planned_recipes": [
+                    {"recipe_id": pr.recipe_id, "portions": pr.portions,
+                     "cooked": pr.cooked, "order_index": pr.order_index}
+                    for pr in slot.planned_recipes
+                ],
             })
 
     inventory_result = await db.execute(

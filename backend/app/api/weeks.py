@@ -13,6 +13,7 @@ from app.models.week_plan import MealSlot
 from app.schemas.week_plan import (
     LeftoversRequest,
     MealSlotResponse,
+    PlannedRecipeResponse,
     SlotBulkUpdate,
     VisibilityUpdateRequest,
     WeekPlanCreateRequest,
@@ -36,35 +37,38 @@ _SLOT_NOT_FOUND = "Slot not found"
 
 async def _resolve_recipe_titles(
     db: AsyncSession,
-    slot_ids: dict[int, int | None],
-) -> dict[int, str | None]:
-    recipe_ids = {sid for sid in slot_ids.values() if sid is not None}
+    recipe_ids: set[int],
+) -> dict[int, str]:
     if not recipe_ids:
         return {}
     result = await db.execute(
         select(Recipe).where(Recipe.id.in_(recipe_ids))
     )
-    recipes = {r.id: r.title for r in result.scalars().all()}
-    return {
-        slot_id: recipes.get(rid) if rid is not None else None
-        for slot_id, rid in slot_ids.items()
-    }
+    return {r.id: r.title for r in result.scalars().all()}
 
 
 def _slot_to_response(
-    slot: MealSlot, recipe_title: str | None = None
+    slot: MealSlot, recipe_titles: dict[int, str]
 ) -> MealSlotResponse:
+    planned_recipes = [
+        PlannedRecipeResponse(
+            id=pr.id,
+            recipe_id=pr.recipe_id,
+            recipe_title=recipe_titles.get(pr.recipe_id),
+            portions=pr.portions,
+            cooked=pr.cooked,
+        )
+        for pr in slot.planned_recipes
+    ]
     return MealSlotResponse(
         id=slot.id,
         week_plan_id=slot.week_plan_id,
         meal_type=slot.meal_type,
         day_of_week=slot.day_of_week,
         active=slot.active,
-        recipe_id=slot.recipe_id,
-        recipe_title=recipe_title,
+        planned_recipes=planned_recipes,
         portions=slot.portions,
         dietary_filter_tag_id=slot.dietary_filter_tag_id,
-        cooked=slot.cooked,
         created_at=slot.created_at,
         updated_at=slot.updated_at,
     )
@@ -99,9 +103,11 @@ async def create_week(
         body.copy_from_previous,
     )
 
-    recipe_titles = await _resolve_recipe_titles(
-        db, {s.id: s.recipe_id for s in plan.slots}
-    )
+    all_recipe_ids: set[int] = set()
+    for s in plan.slots:
+        for pr in s.planned_recipes:
+            all_recipe_ids.add(pr.recipe_id)
+    recipe_titles = await _resolve_recipe_titles(db, all_recipe_ids)
 
     return WeekPlanResponse(
         id=plan.id,
@@ -111,7 +117,7 @@ async def create_week(
         is_public=plan.is_public,
         created_at=plan.created_at,
         slots=[
-            _slot_to_response(s, recipe_titles.get(s.id)) for s in plan.slots
+            _slot_to_response(s, recipe_titles) for s in plan.slots
         ],
     )
 
@@ -130,9 +136,11 @@ async def get_week(
     if plan is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_NOT_FOUND)
 
-    recipe_titles = await _resolve_recipe_titles(
-        db, {s.id: s.recipe_id for s in plan.slots}
-    )
+    all_recipe_ids: set[int] = set()
+    for s in plan.slots:
+        for pr in s.planned_recipes:
+            all_recipe_ids.add(pr.recipe_id)
+    recipe_titles = await _resolve_recipe_titles(db, all_recipe_ids)
 
     return WeekPlanResponse(
         id=plan.id,
@@ -142,7 +150,7 @@ async def get_week(
         is_public=plan.is_public,
         created_at=plan.created_at,
         slots=[
-            _slot_to_response(s, recipe_titles.get(s.id)) for s in plan.slots
+            _slot_to_response(s, recipe_titles) for s in plan.slots
         ],
     )
 
@@ -168,14 +176,21 @@ async def update_week_slots(
             detail="This week is not editable (past or too far in the future)",
         )
 
-    updates_data: list[dict[str, int | str]] = []
+    updates_data: list[dict[str, int | str | list[dict[str, int]]]] = []
     for s in body.slots:
-        upd: dict[str, int | str] = {
+        upd: dict[str, int | str | list[dict[str, int]]] = {
             "day_of_week": s.day_of_week,
             "meal_type": s.meal_type,
         }
-        if s.recipe_id is not None:
-            upd["recipe_id"] = s.recipe_id
+        if s.planned_recipes:
+            upd["planned_recipes"] = [
+                {"recipe_id": pr.recipe_id, "portions": pr.portions}
+                for pr in s.planned_recipes
+            ]
+        elif s.recipe_id is not None:
+            upd["planned_recipes"] = [
+                {"recipe_id": s.recipe_id, "portions": s.portions or 1}
+            ]
         if s.portions is not None:
             upd["portions"] = s.portions
         if s.dietary_filter_tag_id is not None:
@@ -212,9 +227,11 @@ async def unplan_recipe(
             status_code=status.HTTP_404_NOT_FOUND, detail=_SLOT_NOT_FOUND
         )
 
-    slot.recipe_id = None
+    for pr in list(slot.planned_recipes):
+        await db.delete(pr)
     slot.dietary_filter_tag_id = None
     await db.flush()
+    db.expire(slot, ["planned_recipes"])
     return {"status": "ok"}
 
 
@@ -281,13 +298,15 @@ async def cook_slot(
             status_code=status.HTTP_404_NOT_FOUND, detail=_SLOT_NOT_FOUND
         )
 
-    if slot.recipe_id is None:
+    if not slot.planned_recipes:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Slot has no recipe planned",
         )
 
-    if slot.cooked:
+    planned_recipe = slot.planned_recipes[0]
+
+    if planned_recipe.cooked:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Slot already cooked",
@@ -295,14 +314,14 @@ async def cook_slot(
 
     recipe_result = await db.execute(
         select(Recipe)
-        .where(Recipe.id == slot.recipe_id)
+        .where(Recipe.id == planned_recipe.recipe_id)
         .options(
             selectinload(Recipe.ingredients).joinedload(RecipeIngredient.ingredient)
         )
     )
     recipe = recipe_result.scalar_one()
 
-    scale = slot.portions / recipe.servings if recipe.servings > 0 else 1
+    scale = planned_recipe.portions / recipe.servings if recipe.servings > 0 else 1
 
     from app.services.unit_converter import UnitConverter
 
@@ -366,7 +385,7 @@ async def cook_slot(
                 "unit": dim,
             })
 
-    slot.cooked = True
+    planned_recipe.cooked = True
     await db.flush()
 
     return {"cooked": True, "deductions": deductions}
@@ -394,14 +413,16 @@ async def create_leftovers(
             status_code=status.HTTP_404_NOT_FOUND, detail=_SLOT_NOT_FOUND
         )
 
-    if slot.recipe_id is None:
+    if not slot.planned_recipes:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Slot has no recipe planned",
         )
 
+    planned_recipe = slot.planned_recipes[0]
+
     recipe_result = await db.execute(
-        select(Recipe).where(Recipe.id == slot.recipe_id)
+        select(Recipe).where(Recipe.id == planned_recipe.recipe_id)
     )
     recipe = recipe_result.scalar_one()
 

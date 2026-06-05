@@ -179,7 +179,7 @@ async def test_cook_recipe_with_slot_context_marks_slot_cooked(
     get_resp = await client.get(f"/api/weeks/{year}/{week}", cookies=cookies)
     week_slots = get_resp.json()["slots"]
     updated = next(s for s in week_slots if s["id"] == slot["id"])
-    assert updated["cooked"] is True
+    assert updated["planned_recipes"][0]["cooked"] is True
 
 
 @pytest.mark.asyncio

@@ -45,7 +45,7 @@ async def get_or_generate_list(
         if plan is None:
             return existing
         if existing.generated_at is None:
-            planned = [s for s in plan.slots if s.active and s.recipe_id is not None]
+            planned = [s for s in plan.slots if s.active and s.planned_recipes]
             if planned:
                 return await regenerate_list(db, household_id, existing)
         return existing
@@ -63,46 +63,47 @@ async def _compute_needs(
     recipe_refs: dict[int, list[dict[str, Any]]] = {}
 
     for slot in planned_slots:
-        recipe_result = await db.execute(
-            select(Recipe)
-            .where(Recipe.id == slot.recipe_id)
-            .options(
-                selectinload(Recipe.ingredients).selectinload(
-                    RecipeIngredient.ingredient
+        for pr in slot.planned_recipes:
+            recipe_result = await db.execute(
+                select(Recipe)
+                .where(Recipe.id == pr.recipe_id)
+                .options(
+                    selectinload(Recipe.ingredients).selectinload(
+                        RecipeIngredient.ingredient
+                    )
                 )
             )
-        )
-        recipe = recipe_result.scalar_one_or_none()
-        if recipe is None:
-            continue
-
-        scale = slot.portions / recipe.servings if recipe.servings > 0 else 1
-
-        for ri in recipe.ingredients:
-            grams, ml, pieces = UnitConverter.normalize(
-                ri.quantity, ri.unit, ingredient=ri.ingredient
-            )
-            needed = grams or ml or pieces or 0
-            if needed == 0:
+            recipe = recipe_result.scalar_one_or_none()
+            if recipe is None:
                 continue
-            needed *= scale
 
-            dim = "g" if grams else ("ml" if ml else "Stück")
+            scale = pr.portions / recipe.servings if recipe.servings > 0 else 1
 
-            if ri.ingredient_id not in ingredient_needs:
-                ingredient_needs[ri.ingredient_id] = {
-                    "total": 0.0,
+            for ri in recipe.ingredients:
+                grams, ml, pieces = UnitConverter.normalize(
+                    ri.quantity, ri.unit, ingredient=ri.ingredient
+                )
+                needed = grams or ml or pieces or 0
+                if needed == 0:
+                    continue
+                needed *= scale
+
+                dim = "g" if grams else ("ml" if ml else "Stück")
+
+                if ri.ingredient_id not in ingredient_needs:
+                    ingredient_needs[ri.ingredient_id] = {
+                        "total": 0.0,
+                        "unit": dim,
+                    }
+                    recipe_refs[ri.ingredient_id] = []
+
+                ingredient_needs[ri.ingredient_id]["total"] += needed
+                recipe_refs[ri.ingredient_id].append({
+                    "recipe_id": recipe.id,
+                    "recipe_title": recipe.title,
+                    "quantity": round(needed, 2),
                     "unit": dim,
-                }
-                recipe_refs[ri.ingredient_id] = []
-
-            ingredient_needs[ri.ingredient_id]["total"] += needed
-            recipe_refs[ri.ingredient_id].append({
-                "recipe_id": recipe.id,
-                "recipe_title": recipe.title,
-                "quantity": round(needed, 2),
-                "unit": dim,
-            })
+                })
 
     return ingredient_needs, recipe_refs
 
@@ -146,7 +147,7 @@ async def generate_list(
 ) -> GroceryList:
     planned_slots = [
         s for s in plan.slots
-        if s.active and s.recipe_id is not None
+        if s.active and s.planned_recipes
     ]
 
     ingredient_needs, recipe_refs = await _compute_needs(db, planned_slots)
@@ -178,7 +179,9 @@ async def _get_week_plan(
             WeekPlan.id == plan_id,
             WeekPlan.household_id == household_id,
         )
-        .options(selectinload(WeekPlan.slots))
+        .options(
+            selectinload(WeekPlan.slots).selectinload(MealSlot.planned_recipes)
+        )
     )
     return result.scalar_one_or_none()
 
@@ -245,7 +248,7 @@ async def regenerate_list(
         if plan is not None:
             planned_slots = [
                 s for s in plan.slots
-                if s.active and s.recipe_id is not None
+        if s.active and s.planned_recipes
             ]
             ingredient_needs, recipe_refs = await _compute_needs(
                 db, planned_slots

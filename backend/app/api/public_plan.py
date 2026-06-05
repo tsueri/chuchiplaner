@@ -8,7 +8,7 @@ from sqlalchemy.orm import selectinload
 from app.db.session import get_db
 from app.models.household import Household
 from app.models.recipe import Recipe
-from app.models.week_plan import WeekPlan
+from app.models.week_plan import MealSlot, WeekPlan
 from app.schemas.public_plan import (
     PublicMealSlotResponse,
     PublicRecipeResponse,
@@ -41,7 +41,9 @@ async def get_public_plan(
             WeekPlan.year == year,
             WeekPlan.iso_week == iso_week,
         )
-        .options(selectinload(WeekPlan.slots))
+        .options(
+            selectinload(WeekPlan.slots).selectinload(MealSlot.planned_recipes)
+        )
     )
     plan = plan_result.unique().scalar_one_or_none()
     if plan is None or not plan.is_public:
@@ -49,9 +51,10 @@ async def get_public_plan(
             status_code=status.HTTP_404_NOT_FOUND, detail="Not found"
         )
 
-    recipe_ids = {
-        s.recipe_id for s in plan.slots if s.recipe_id is not None
-    }
+    recipe_ids: set[int] = set()
+    for s in plan.slots:
+        for pr in s.planned_recipes:
+            recipe_ids.add(pr.recipe_id)
     recipes_map: dict[int, dict[str, Any]] = {}
     if recipe_ids:
         recipes_result = await db.execute(
@@ -70,8 +73,12 @@ async def get_public_plan(
     slots: list[PublicMealSlotResponse] = []
     for s in plan.slots:
         recipe_data = None
-        if s.recipe_id in recipes_map:
-            recipe_data = PublicRecipeResponse(**recipes_map[s.recipe_id])
+        cooked = False
+        if s.planned_recipes:
+            pr = s.planned_recipes[0]
+            if pr.recipe_id in recipes_map:
+                recipe_data = PublicRecipeResponse(**recipes_map[pr.recipe_id])
+            cooked = pr.cooked
         slots.append(
             PublicMealSlotResponse(
                 id=s.id,
@@ -80,7 +87,7 @@ async def get_public_plan(
                 active=s.active,
                 recipe=recipe_data,
                 portions=s.portions,
-                cooked=s.cooked,
+                cooked=cooked,
             )
         )
 

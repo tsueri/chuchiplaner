@@ -182,8 +182,9 @@ async def test_plan_recipe_on_slot(
         for s in get_data["slots"]
         if s["day_of_week"] == 0 and s["meal_type"] == "lunch"
     )
-    assert updated_slot["recipe_id"] == recipe["id"]
-    assert updated_slot["recipe_title"] == "Pasta"
+    assert updated_slot["planned_recipes"][0]["recipe_id"] == recipe["id"]
+    assert updated_slot["planned_recipes"][0]["recipe_title"] == "Pasta"
+    assert updated_slot["planned_recipes"][0]["portions"] == 4
     assert updated_slot["portions"] == 4
 
 
@@ -236,7 +237,7 @@ async def test_unplan_recipe_from_slot(
     get_resp = await client.get(f"/api/weeks/{year}/{week}", cookies=cookies)
     get_data = get_resp.json()
     updated_slot = next(s for s in get_data["slots"] if s["id"] == monday_dinner["id"])
-    assert updated_slot["recipe_id"] is None
+    assert len(updated_slot["planned_recipes"]) == 0
 
 
 # ----- Move recipe between slots -----
@@ -302,13 +303,13 @@ async def test_move_recipe_to_another_slot(
     slots = get_resp.json()["slots"]
 
     source = next(s for s in slots if s["id"] == monday_lunch["id"])
-    assert source["recipe_id"] is None
+    assert len(source["planned_recipes"]) == 0
 
     target = next(
         s for s in slots if s["day_of_week"] == 0 and s["meal_type"] == "dinner"
     )
-    assert target["recipe_id"] == recipe["id"]
-    assert target["recipe_title"] == "Risotto"
+    assert target["planned_recipes"][0]["recipe_id"] == recipe["id"]
+    assert target["planned_recipes"][0]["recipe_title"] == "Risotto"
 
 
 # ----- Copy from previous week -----
@@ -355,7 +356,7 @@ async def test_copy_from_previous_week(
     source_wed = next(
         s for s in source_slots if s["day_of_week"] == 2 and s["meal_type"] == "lunch"
     )
-    assert source_wed["recipe_id"] == recipe["id"]
+    assert source_wed["planned_recipes"][0]["recipe_id"] == recipe["id"]
 
     resp_new = await client.post(
         "/api/weeks",
@@ -371,7 +372,7 @@ async def test_copy_from_previous_week(
     wed_lunch = next(
         s for s in new_slots if s["day_of_week"] == 2 and s["meal_type"] == "lunch"
     )
-    assert wed_lunch["recipe_id"] == recipe["id"]
+    assert wed_lunch["planned_recipes"][0]["recipe_id"] == recipe["id"]
 
 
 # ----- List weeks -----
@@ -549,7 +550,7 @@ async def test_updating_portions_preserves_recipe(
         for s in get_resp.json()["slots"]
         if s["day_of_week"] == 0 and s["meal_type"] == "lunch"
     )
-    assert slot["recipe_id"] == recipe["id"]
+    assert slot["planned_recipes"][0]["recipe_id"] == recipe["id"]
     assert slot["portions"] == 8
 
 
@@ -601,8 +602,8 @@ async def test_bulk_update_slots(
     tue_bf = next(
         s for s in slots if s["day_of_week"] == 1 and s["meal_type"] == "breakfast"
     )
-    assert mon_bf["recipe_id"] == recipe1["id"]
-    assert tue_bf["recipe_id"] == recipe2["id"]
+    assert mon_bf["planned_recipes"][0]["recipe_id"] == recipe1["id"]
+    assert tue_bf["planned_recipes"][0]["recipe_id"] == recipe2["id"]
 
 
 # ----- Empty week creation -----
@@ -624,7 +625,7 @@ async def test_create_empty_week(
     assert resp.status_code == 200
     data = resp.json()
     for s in data["slots"]:
-        assert s["recipe_id"] is None
+        assert len(s["planned_recipes"]) == 0
 
 
 # ----- Dietary filter per slot -----
@@ -1211,7 +1212,7 @@ async def test_meal_template_deactivate_preserves_planned_recipe(
         for s in get_resp.json()["slots"]
         if s["day_of_week"] == 5 and s["meal_type"] == "breakfast"
     )
-    assert sat_bf["recipe_id"] == recipe["id"], (
+    assert sat_bf["planned_recipes"][0]["recipe_id"] == recipe["id"], (
         "Slot with planned recipe should keep its recipe"
     )
 
@@ -1515,7 +1516,7 @@ async def test_compute_reservations_with_spoon_conversions(
     from app.models.household import Household
     from app.models.ingredient import Ingredient
     from app.models.recipe import Recipe, RecipeIngredient
-    from app.models.week_plan import MealSlot, WeekPlan
+    from app.models.week_plan import MealSlot, PlannedRecipe, WeekPlan
     from app.services.week_plan import compute_reservations
 
     household = Household(
@@ -1560,10 +1561,18 @@ async def test_compute_reservations_with_spoon_conversions(
         week_plan_id=plan.id,
         day_of_week=0,
         meal_type="dinner",
-        recipe_id=recipe.id,
         portions=4,
     )
     db_session.add(slot)
+    await db_session.flush()
+
+    planned = PlannedRecipe(
+        meal_slot_id=slot.id,
+        recipe_id=recipe.id,
+        portions=4,
+        order_index=0,
+    )
+    db_session.add(planned)
     await db_session.flush()
 
     reservations = await compute_reservations(db_session, plan.id)

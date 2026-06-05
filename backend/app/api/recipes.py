@@ -1263,7 +1263,7 @@ async def cook_recipe(
             })
 
     if body.slot_id is not None and body.year is not None and body.iso_week is not None:
-        from app.models.week_plan import WeekPlan
+        from app.models.week_plan import MealSlot, WeekPlan
         plan_result = await db.execute(
             select(WeekPlan)
             .where(
@@ -1271,13 +1271,17 @@ async def cook_recipe(
                 WeekPlan.year == body.year,
                 WeekPlan.iso_week == body.iso_week,
             )
-            .options(selectinload(WeekPlan.slots))
+            .options(
+                selectinload(WeekPlan.slots).selectinload(MealSlot.planned_recipes)
+            )
         )
         plan = plan_result.unique().scalar_one_or_none()
         if plan is not None:
             slot = next((s for s in plan.slots if s.id == body.slot_id), None)
-            if slot is not None and slot.recipe_id == recipe_id and not slot.cooked:
-                slot.cooked = True
+            if slot is not None and slot.planned_recipes:
+                pr = slot.planned_recipes[0]
+                if pr.recipe_id == recipe_id and not pr.cooked:
+                    pr.cooked = True
 
     await db.flush()
 

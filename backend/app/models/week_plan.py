@@ -48,23 +48,51 @@ class MealSlot(Base):
     meal_type: Mapped[str] = mapped_column(String(20), nullable=False)
     day_of_week: Mapped[int] = mapped_column(Integer, nullable=False)
     active: Mapped[bool] = mapped_column(default=True)
-    recipe_id: Mapped[int | None] = mapped_column(
-        ForeignKey("recipes.id"), nullable=True
-    )
     portions: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     dietary_filter_tag_id: Mapped[int | None] = mapped_column(
         ForeignKey("tags.id"), nullable=True
     )
-    cooked: Mapped[bool] = mapped_column(default=False)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         server_default=func.now(), onupdate=func.now()
     )
 
     week_plan: Mapped["WeekPlan"] = relationship(back_populates="slots")
+    planned_recipes: Mapped[list["PlannedRecipe"]] = relationship(
+        back_populates="meal_slot", cascade="all, delete-orphan"
+    )
 
     __table_args__ = (
         UniqueConstraint(
             "week_plan_id", "day_of_week", "meal_type", name="uq_meal_slot"
+        ),
+    )
+
+
+class PlannedRecipe(Base):
+    __tablename__ = "planned_recipes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    meal_slot_id: Mapped[int] = mapped_column(
+        ForeignKey("meal_slots.id"), nullable=False
+    )
+    recipe_id: Mapped[int] = mapped_column(
+        ForeignKey("recipes.id"), nullable=False
+    )
+    portions: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    cooked: Mapped[bool] = mapped_column(default=False)
+    order_index: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        server_default=func.now(), onupdate=func.now()
+    )
+
+    meal_slot: Mapped["MealSlot"] = relationship(
+        back_populates="planned_recipes"
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "meal_slot_id", "recipe_id", name="uq_planned_recipe"
         ),
     )
