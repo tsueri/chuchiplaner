@@ -45,18 +45,18 @@ logger.debug("Dummy hash computed for constant-time login verification")
 
 def _set_session_cookie(response: Response, token: str) -> None:
     response.set_cookie(
-        key=SESSION_COOKIE,
+        key=settings.cookie.name,
         value=token,
-        httponly=True,
-        samesite="strict",
-        secure=False,
-        max_age=60 * 60 * 24 * 7,
+        httponly=settings.cookie.httponly,
+        samesite=settings.cookie.samesite,
+        secure=settings.cookie.secure,
+        max_age=settings.cookie.max_age_seconds,
         path="/",
     )
 
 
 def _clear_session_cookie(response: Response) -> None:
-    response.delete_cookie(key=SESSION_COOKIE, path="/")
+    response.delete_cookie(key=settings.cookie.name, path="/")
 
 
 async def get_current_user(
@@ -142,7 +142,7 @@ async def logout(
     response: Response,
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, str]:
-    token = request.cookies.get(SESSION_COOKIE)
+    token = request.cookies.get(settings.cookie.name)
     if token:
         await delete_session(db, token)
     _clear_session_cookie(response)

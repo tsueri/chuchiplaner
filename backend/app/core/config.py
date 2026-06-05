@@ -1,7 +1,17 @@
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
+
+
+class CookieConfig(BaseSettings):
+    secure: bool = False
+    samesite: Literal["strict", "lax", "none"] = "strict"
+    max_age_seconds: int = 604800
+    httponly: bool = True
+    name: str = "session_token"
+
+    model_config = {"env_prefix": "CHUCHI_COOKIE_"}
 
 
 class Settings(BaseSettings):
@@ -21,6 +31,7 @@ class Settings(BaseSettings):
         "base-uri 'self'; "
         "form-action 'self'"
     )
+    cookie: CookieConfig = Field(default_factory=CookieConfig)
 
     model_config = {"env_prefix": "CHUCHI_"}
 

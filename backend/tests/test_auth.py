@@ -1,3 +1,4 @@
+import logging
 from unittest.mock import patch
 
 import pytest
@@ -21,6 +22,40 @@ async def test_register_success(client: AsyncClient) -> None:
     set_cookie_lower = set_cookie.lower()
     assert "httponly" in set_cookie_lower
     assert "samesite=strict" in set_cookie_lower or "samesite=lax" in set_cookie_lower
+    assert "secure" not in set_cookie_lower
+
+
+@pytest.mark.asyncio
+async def test_register_cookie_no_secure_by_default(client: AsyncClient) -> None:
+    response = await client.post(
+        "/api/auth/register",
+        json={"username": "nosecure", "password": "secret123"},
+    )
+    assert response.status_code == 200
+    set_cookie = response.headers.get("set-cookie")
+    assert set_cookie is not None
+    set_cookie_lower = set_cookie.lower()
+    assert "secure" not in set_cookie_lower
+
+
+@pytest.mark.asyncio
+async def test_login_cookie_default_attributes(client: AsyncClient) -> None:
+    await client.post(
+        "/api/auth/register",
+        json={"username": "cookiedef", "password": "secret123"},
+    )
+    response = await client.post(
+        "/api/auth/login",
+        json={"username": "cookiedef", "password": "secret123"},
+    )
+    assert response.status_code == 200
+    set_cookie = response.headers.get("set-cookie")
+    assert set_cookie is not None
+    set_cookie_lower = set_cookie.lower()
+    assert "httponly" in set_cookie_lower
+    assert "samesite=strict" in set_cookie_lower
+    assert "secure" not in set_cookie_lower
+    assert "max-age=604800" in set_cookie_lower
 
 
 @pytest.mark.asyncio
@@ -359,3 +394,28 @@ async def test_register_invite_code_too_long_returns_422(
         },
     )
     assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_session_middleware_does_not_log_cookies(
+    client: AsyncClient, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.DEBUG, logger="session")
+
+    await client.post(
+        "/api/auth/register",
+        json={"username": "logtest", "password": "secret123"},
+    )
+    await client.post(
+        "/api/auth/login",
+        json={"username": "logtest", "password": "secret123"},
+    )
+
+    for record in caplog.records:
+        msg = record.getMessage()
+        assert "session_token" not in msg, (
+            f"Log record at {record.levelname} contains session_token: {msg}"
+        )
+        assert "set-cookie" not in msg.lower(), (
+            f"Log record at {record.levelname} contains set-cookie: {msg}"
+        )

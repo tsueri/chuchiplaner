@@ -1,10 +1,12 @@
 import logging
+import time
 
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import Response
 
-SESSION_COOKIE = "session_token"
+from app.core.config import settings
+
 logger = logging.getLogger("session")
 
 
@@ -12,23 +14,17 @@ class SessionMiddleware(BaseHTTPMiddleware):
     async def dispatch(
         self, request: Request, call_next: RequestResponseEndpoint
     ) -> Response:
-        cookies = dict(request.cookies)
-        token = cookies.get(SESSION_COOKIE)
+        start = time.perf_counter()
+        token = request.cookies.get(settings.cookie.name)
         if token:
             request.state.session_token = token
-        logger.info(
-            "REQ %s %s cookies=%s has_token=%s",
-            request.method,
-            request.url.path,
-            cookies,
-            bool(token),
-        )
         response = await call_next(request)
-        set_cookies = response.headers.getlist("set-cookie")
+        duration_ms = int((time.perf_counter() - start) * 1000)
         logger.info(
-            "RES %s %s set-cookie=%s",
+            "%s %s %s %dms",
             request.method,
             request.url.path,
-            set_cookies,
+            response.status_code,
+            duration_ms,
         )
         return response
