@@ -110,8 +110,8 @@ export default function WeekPlanPage() {
   const [isoWeek, setIsoWeek] = useState<number>(cw)
   const [editable, setEditable] = useState(true)
   const [copied, setCopied] = useState(false)
-  const [cookConfirm, setCookConfirm] = useState<number | null>(null)
-  const [leftoverSlot, setLeftoverSlot] = useState<{id: number; title: string} | null>(null)
+  const [cookConfirm, setCookConfirm] = useState<{slotId: number; plannedRecipeId: number} | null>(null)
+  const [leftoverSlot, setLeftoverSlot] = useState<{slotId: number; plannedRecipeId: number; title: string} | null>(null)
   const [leftoverPortions, setLeftoverPortions] = useState(2)
   const [householdSlug, setHouseholdSlug] = useState("")
   const [publicSaving, setPublicSaving] = useState(false)
@@ -241,20 +241,20 @@ export default function WeekPlanPage() {
     }
   }
 
-  const unplanRecipe = async (slotId: number, plannedRecipeId?: number) => {
+  const unplanRecipe = async (day: number, meal: string, recipeId: number) => {
     if (!editable) return
     setSaving(true)
     try {
-      if (plannedRecipeId !== undefined) {
-        await api(
-          `/weeks/${year}/${isoWeek}/slots/${slotId}/recipe?planned_recipe_id=${plannedRecipeId}`,
-          { method: "DELETE" },
-        )
-      } else {
-        await api(`/weeks/${year}/${isoWeek}/slots/${slotId}/recipe`, {
-          method: "DELETE",
-        })
-      }
+      const slot = getSlot(day, meal)
+      const remaining = (slot?.planned_recipes || [])
+        .filter((pr) => pr.recipe_id !== recipeId)
+        .map((pr) => ({ recipe_id: pr.recipe_id, portions: pr.portions }))
+      await api(`/weeks/${year}/${isoWeek}/slots`, {
+        method: "PUT",
+        body: JSON.stringify({
+          slots: [{ day_of_week: day, meal_type: meal, planned_recipes: remaining }],
+        }),
+      })
       refreshAll()
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to unplan recipe")
@@ -298,7 +298,6 @@ export default function WeekPlanPage() {
     targetDay: number,
     targetMeal: string,
     recipeId: number,
-    plannedRecipeId?: number
   ) => {
     if (!editable) return
     setSaving(true)
@@ -309,26 +308,29 @@ export default function WeekPlanPage() {
         portions: pr.portions,
       }))
       existingRecipes.push({ recipe_id: recipeId, portions: targetSlot?.portions || 1 })
+
+      const sourceSlot = weekData?.slots.find((s) => s.id === sourceSlotId)
+      const sourceRemaining = (sourceSlot?.planned_recipes || [])
+        .filter((pr) => pr.recipe_id !== recipeId)
+        .map((pr) => ({ recipe_id: pr.recipe_id, portions: pr.portions }))
+
       await api(`/weeks/${year}/${isoWeek}/slots`, {
         method: "PUT",
         body: JSON.stringify({
-          slots: [{
-            day_of_week: targetDay,
-            meal_type: targetMeal,
-            planned_recipes: existingRecipes,
-          }],
+          slots: [
+            {
+              day_of_week: targetDay,
+              meal_type: targetMeal,
+              planned_recipes: existingRecipes,
+            },
+            {
+              day_of_week: sourceSlot?.day_of_week,
+              meal_type: sourceSlot?.meal_type,
+              planned_recipes: sourceRemaining,
+            },
+          ].filter((s) => s.day_of_week !== undefined),
         }),
       })
-      if (plannedRecipeId !== undefined) {
-        await api(
-          `/weeks/${year}/${isoWeek}/slots/${sourceSlotId}/recipe?planned_recipe_id=${plannedRecipeId}`,
-          { method: "DELETE" },
-        )
-      } else {
-        await api(`/weeks/${year}/${isoWeek}/slots/${sourceSlotId}/recipe`, {
-          method: "DELETE",
-        })
-      }
       refreshAll()
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to move recipe")
@@ -419,16 +421,20 @@ export default function WeekPlanPage() {
     }
   }
 
-  const cookSlot = async (slotId: number) => {
+  const cookSlot = async (slotId: number, plannedRecipeId: number) => {
     setSaving(true)
     setCookConfirm(null)
     try {
       await api(`/weeks/${year}/${isoWeek}/slots/${slotId}/cook`, {
         method: "POST",
+        body: JSON.stringify({ planned_recipe_id: plannedRecipeId }),
       })
+      const slot = weekData?.slots.find((s) => s.id === slotId)
+      const pr = slot?.planned_recipes.find((p) => p.id === plannedRecipeId)
       setLeftoverSlot({
-        id: slotId,
-        title: getSlotRecipeTitle(slotId) || "",
+        slotId,
+        plannedRecipeId,
+        title: pr?.recipe_title || "",
       })
       refreshAll()
     } catch (err) {
@@ -443,10 +449,13 @@ export default function WeekPlanPage() {
     setSaving(true)
     try {
       await api(
-        `/weeks/${year}/${isoWeek}/slots/${leftoverSlot.id}/leftovers`,
+        `/weeks/${year}/${isoWeek}/slots/${leftoverSlot.slotId}/leftovers`,
         {
           method: "POST",
-          body: JSON.stringify({ portions_count: leftoverPortions }),
+          body: JSON.stringify({
+            planned_recipe_id: leftoverSlot.plannedRecipeId,
+            portions_count: leftoverPortions,
+          }),
         }
       )
       setLeftoverSlot(null)
@@ -500,7 +509,6 @@ export default function WeekPlanPage() {
           day,
           meal,
           recipeId,
-          plannedRecipeId > 0 ? plannedRecipeId : undefined,
         )
       } else {
         planRecipe(day, meal, recipeId)
@@ -739,16 +747,14 @@ export default function WeekPlanPage() {
                                     </button>
                                     <button
                                       className="text-green-600 hover:underline text-xs"
-                                      onClick={() => setCookConfirm(slot.id)}
+                                      onClick={() => setCookConfirm({slotId: slot.id, plannedRecipeId: pr.id})}
                                     >
                                       Gekocht
                                     </button>
                                     <button
                                       className="text-destructive hover:underline text-xs"
                                       onClick={() =>
-                                        slot.planned_recipes.length > 1
-                                          ? unplanRecipe(slot.id, pr.id)
-                                          : unplanRecipe(slot.id)
+                                        unplanRecipe(dayIdx, meal, pr.recipe_id)
                                       }
                                     >
                                       ✕
@@ -910,7 +916,7 @@ export default function WeekPlanPage() {
               </Button>
               <Button
                 size="sm"
-                onClick={() => cookSlot(cookConfirm)}
+                onClick={() => cookSlot(cookConfirm.slotId, cookConfirm.plannedRecipeId)}
                 disabled={saving}
               >
                 {saving ? "..." : "Bestätigen"}

@@ -228,8 +228,17 @@ async def test_unplan_recipe_from_slot(
         cookies=cookies,
     )
 
-    resp = await client.delete(
-        f"/api/weeks/{year}/{week}/slots/{monday_dinner['id']}/recipe",
+    resp = await client.put(
+        f"/api/weeks/{year}/{week}/slots",
+        json={
+            "slots": [
+                {
+                    "day_of_week": 0,
+                    "meal_type": "dinner",
+                    "planned_recipes": [],
+                }
+            ]
+        },
         cookies=cookies,
     )
     assert resp.status_code == 200
@@ -294,8 +303,17 @@ async def test_move_recipe_to_another_slot(
         cookies=cookies,
     )
 
-    await client.delete(
-        f"/api/weeks/{year}/{week}/slots/{monday_lunch['id']}/recipe",
+    await client.put(
+        f"/api/weeks/{year}/{week}/slots",
+        json={
+            "slots": [
+                {
+                    "day_of_week": 0,
+                    "meal_type": "lunch",
+                    "planned_recipes": [],
+                }
+            ]
+        },
         cookies=cookies,
     )
 
@@ -742,8 +760,13 @@ async def test_cook_slot_deducts_inventory(
         cookies=cookies,
     )
 
+    get_resp = await client.get(f"/api/weeks/{year}/{week}", cookies=cookies)
+    slot_data = next(s for s in get_resp.json()["slots"] if s["id"] == sunday_dinner["id"])
+    pr = slot_data["planned_recipes"][0]
+
     cook_resp = await client.post(
         f"/api/weeks/{year}/{week}/slots/{sunday_dinner['id']}/cook",
+        json={"planned_recipe_id": pr["id"]},
         cookies=cookies,
     )
     assert cook_resp.status_code == 200
@@ -828,8 +851,13 @@ async def test_cook_empty_inventory_quantity_removed(
         cookies=cookies,
     )
 
+    get_resp = await client.get(f"/api/weeks/{year}/{week}", cookies=cookies)
+    slot_data = next(s for s in get_resp.json()["slots"] if s["id"] == monday_bf["id"])
+    pr = slot_data["planned_recipes"][0]
+
     cook_resp = await client.post(
         f"/api/weeks/{year}/{week}/slots/{monday_bf['id']}/cook",
+        json={"planned_recipe_id": pr["id"]},
         cookies=cookies,
     )
     assert cook_resp.status_code == 200
@@ -864,10 +892,10 @@ async def test_cook_unplanned_slot_fails(
 
     cook_resp = await client.post(
         f"/api/weeks/{year}/{week}/slots/{empty_slot['id']}/cook",
+        json={"planned_recipe_id": 9999},
         cookies=cookies,
     )
-    assert cook_resp.status_code == 400
-    assert "recipe" in cook_resp.json()["detail"].lower()
+    assert cook_resp.status_code == 404
 
 
 @pytest.mark.asyncio
@@ -936,19 +964,25 @@ async def test_cook_already_cooked_slot_fails(
         cookies=cookies,
     )
 
+    get_resp = await client.get(f"/api/weeks/{year}/{week}", cookies=cookies)
+    slot_data = next(s for s in get_resp.json()["slots"] if s["id"] == slot["id"])
+    pr = slot_data["planned_recipes"][0]
+
     cook1 = await client.post(
         f"/api/weeks/{year}/{week}/slots/{slot['id']}/cook",
+        json={"planned_recipe_id": pr["id"]},
         cookies=cookies,
     )
     assert cook1.status_code == 200
 
     cook2 = await client.post(
         f"/api/weeks/{year}/{week}/slots/{slot['id']}/cook",
+        json={"planned_recipe_id": pr["id"]},
         cookies=cookies,
     )
     assert cook2.status_code == 400
     detail = cook2.json()["detail"].lower()
-    assert "bereits" in detail or "already" in detail
+    assert "already" in detail or "bereits" in detail
 
 
 # ----- Leftovers endpoint -----
@@ -999,9 +1033,13 @@ async def test_create_leftovers(
         cookies=cookies,
     )
 
+    get_resp = await client.get(f"/api/weeks/{year}/{week}", cookies=cookies)
+    slot_data = next(s for s in get_resp.json()["slots"] if s["id"] == slot["id"])
+    pr = slot_data["planned_recipes"][0]
+
     resp = await client.post(
         f"/api/weeks/{year}/{week}/slots/{slot['id']}/leftovers",
-        json={"portions_count": 3},
+        json={"planned_recipe_id": pr["id"], "portions_count": 3},
         cookies=cookies,
     )
     assert resp.status_code == 200
@@ -1042,10 +1080,10 @@ async def test_leftovers_on_unplanned_slot_fails(
 
     resp = await client.post(
         f"/api/weeks/{year}/{week}/slots/{empty_slot['id']}/leftovers",
-        json={"portions_count": 2},
+        json={"planned_recipe_id": 9999, "portions_count": 2},
         cookies=cookies,
     )
-    assert resp.status_code == 400
+    assert resp.status_code == 404
 
 
 @pytest.mark.asyncio
@@ -1093,9 +1131,13 @@ async def test_leftovers_shown_in_inventory(
         cookies=cookies,
     )
 
+    get_resp = await client.get(f"/api/weeks/{year}/{week}", cookies=cookies)
+    slot_data = next(s for s in get_resp.json()["slots"] if s["id"] == slot["id"])
+    pr = slot_data["planned_recipes"][0]
+
     await client.post(
         f"/api/weeks/{year}/{week}/slots/{slot['id']}/leftovers",
-        json={"portions_count": 2},
+        json={"planned_recipe_id": pr["id"], "portions_count": 2},
         cookies=cookies,
     )
 
@@ -1320,8 +1362,13 @@ async def test_cook_el_to_g_cross_dimension(
         cookies=cookies,
     )
 
+    get_resp = await client.get(f"/api/weeks/{year}/{week}", cookies=cookies)
+    slot_data = next(s for s in get_resp.json()["slots"] if s["id"] == slot["id"])
+    pr = slot_data["planned_recipes"][0]
+
     cook_resp = await client.post(
         f"/api/weeks/{year}/{week}/slots/{slot['id']}/cook",
+        json={"planned_recipe_id": pr["id"]},
         cookies=cookies,
     )
     assert cook_resp.status_code == 200
@@ -1412,8 +1459,13 @@ async def test_cook_tl_to_g_cross_dimension(
         cookies=cookies,
     )
 
+    get_resp = await client.get(f"/api/weeks/{year}/{week}", cookies=cookies)
+    slot_data = next(s for s in get_resp.json()["slots"] if s["id"] == slot["id"])
+    pr = slot_data["planned_recipes"][0]
+
     cook_resp = await client.post(
         f"/api/weeks/{year}/{week}/slots/{slot['id']}/cook",
+        json={"planned_recipe_id": pr["id"]},
         cookies=cookies,
     )
     assert cook_resp.status_code == 200
@@ -1493,8 +1545,13 @@ async def test_cook_no_spoon_conversion_falls_back_to_ml(
         cookies=cookies,
     )
 
+    get_resp = await client.get(f"/api/weeks/{year}/{week}", cookies=cookies)
+    slot_data = next(s for s in get_resp.json()["slots"] if s["id"] == slot["id"])
+    pr = slot_data["planned_recipes"][0]
+
     cook_resp = await client.post(
         f"/api/weeks/{year}/{week}/slots/{slot['id']}/cook",
+        json={"planned_recipe_id": pr["id"]},
         cookies=cookies,
     )
     assert cook_resp.status_code == 200
@@ -1679,9 +1736,19 @@ async def test_remove_one_planned_recipe_from_multi_slot(
     )
     pr0 = slot["planned_recipes"][0]
 
-    resp = await client.delete(
-        f"/api/weeks/{year}/{week}/slots/{slot['id']}/recipe"
-        f"?planned_recipe_id={pr0['id']}",
+    resp = await client.put(
+        f"/api/weeks/{year}/{week}/slots",
+        json={
+            "slots": [
+                {
+                    "day_of_week": 0,
+                    "meal_type": "dinner",
+                    "planned_recipes": [
+                        {"recipe_id": recipe2["id"], "portions": 2},
+                    ],
+                }
+            ]
+        },
         cookies=cookies,
     )
     assert resp.status_code == 200
@@ -1770,3 +1837,625 @@ async def test_reservations_with_multi_recipe_slots(
     assert str(ingredient_id2) in reservations
     assert reservations[str(ingredient_id1)]["grams"] == 400.0  # (200/2) * 4
     assert reservations[str(ingredient_id2)]["grams"] == 150.0  # (150/2) * 2
+
+
+# ----- Per-recipe cooking (Slice 3) -----
+
+
+@pytest.mark.asyncio
+async def test_cook_planned_recipe_deducts_inventory(
+    client: AsyncClient,
+) -> None:
+    reg = await _register(client, "prcook1")
+    cookies = reg["cookies"]
+    year, week = await _get_current_iso()
+
+    ing = await _create_ingredient(client, cookies, "Poulet")
+    ingredient_id = ing["id"]
+
+    await client.post(
+        "/api/inventory",
+        json={
+            "ingredient_id": ingredient_id,
+            "quantity": 500,
+            "unit": "g",
+            "category": "raw",
+        },
+        cookies=cookies,
+    )
+
+    recipe_resp = await client.post(
+        "/api/recipes",
+        json={
+            "title": "Pouletgeschnetzeltes",
+            "instructions": "Braten.",
+            "servings": 4,
+            "ingredients": [
+                {"ingredient_id": ingredient_id, "quantity": 400, "unit": "g"}
+            ],
+        },
+        cookies=cookies,
+    )
+    recipe_id = recipe_resp.json()["id"]
+
+    create_resp = await client.post(
+        "/api/weeks",
+        json={"year": year, "iso_week": week},
+        cookies=cookies,
+    )
+    plan_data = create_resp.json()
+    slot = next(
+        s for s in plan_data["slots"]
+        if s["day_of_week"] == 6 and s["meal_type"] == "dinner"
+    )
+
+    await client.put(
+        f"/api/weeks/{year}/{week}/slots",
+        json={
+            "slots": [
+                {
+                    "day_of_week": 6,
+                    "meal_type": "dinner",
+                    "recipe_id": recipe_id,
+                    "portions": 2,
+                }
+            ]
+        },
+        cookies=cookies,
+    )
+
+    # Get slot with planned_recipe_id
+    get_resp = await client.get(f"/api/weeks/{year}/{week}", cookies=cookies)
+    slot_data = next(
+        s for s in get_resp.json()["slots"]
+        if s["id"] == slot["id"]
+    )
+    pr = slot_data["planned_recipes"][0]
+
+    cook_resp = await client.post(
+        f"/api/weeks/{year}/{week}/slots/{slot['id']}/cook",
+        json={"planned_recipe_id": pr["id"]},
+        cookies=cookies,
+    )
+    assert cook_resp.status_code == 200
+    cook_data = cook_resp.json()
+    assert cook_data["cooked"] is True
+    assert len(cook_data["deductions"]) == 1
+    ded = cook_data["deductions"][0]
+    assert ded["ingredient_name"] == "Poulet"
+    assert ded["deducted"] == 200.0
+    assert ded["unit"] == "g"
+
+    inv_get = await client.get("/api/inventory", cookies=cookies)
+    items = inv_get.json()
+    assert len(items) == 1
+    assert items[0]["quantity"] == 300.0
+
+
+@pytest.mark.asyncio
+async def test_cook_already_cooked_planned_recipe_fails(
+    client: AsyncClient,
+) -> None:
+    reg = await _register(client, "prcook2")
+    cookies = reg["cookies"]
+    year, week = await _get_current_iso()
+
+    ing = await _create_ingredient(client, cookies, "Rind")
+    ingredient_id = ing["id"]
+
+    await client.post(
+        "/api/inventory",
+        json={
+            "ingredient_id": ingredient_id,
+            "quantity": 1000,
+            "unit": "g",
+            "category": "raw",
+        },
+        cookies=cookies,
+    )
+
+    recipe_resp = await client.post(
+        "/api/recipes",
+        json={
+            "title": "Rindsgulasch",
+            "instructions": "Schmoren.",
+            "servings": 4,
+            "ingredients": [
+                {"ingredient_id": ingredient_id, "quantity": 500, "unit": "g"}
+            ],
+        },
+        cookies=cookies,
+    )
+    recipe_id = recipe_resp.json()["id"]
+
+    create_resp = await client.post(
+        "/api/weeks",
+        json={"year": year, "iso_week": week},
+        cookies=cookies,
+    )
+    plan_data = create_resp.json()
+    slot = next(
+        s for s in plan_data["slots"]
+        if s["day_of_week"] == 0 and s["meal_type"] == "dinner"
+    )
+
+    await client.put(
+        f"/api/weeks/{year}/{week}/slots",
+        json={
+            "slots": [
+                {
+                    "day_of_week": 0,
+                    "meal_type": "dinner",
+                    "recipe_id": recipe_id,
+                }
+            ]
+        },
+        cookies=cookies,
+    )
+
+    get_resp = await client.get(f"/api/weeks/{year}/{week}", cookies=cookies)
+    slot_data = next(
+        s for s in get_resp.json()["slots"]
+        if s["id"] == slot["id"]
+    )
+    pr = slot_data["planned_recipes"][0]
+
+    cook1 = await client.post(
+        f"/api/weeks/{year}/{week}/slots/{slot['id']}/cook",
+        json={"planned_recipe_id": pr["id"]},
+        cookies=cookies,
+    )
+    assert cook1.status_code == 200
+
+    cook2 = await client.post(
+        f"/api/weeks/{year}/{week}/slots/{slot['id']}/cook",
+        json={"planned_recipe_id": pr["id"]},
+        cookies=cookies,
+    )
+    assert cook2.status_code == 400
+    detail = cook2.json()["detail"].lower()
+    assert "already" in detail or "bereits" in detail
+
+
+@pytest.mark.asyncio
+async def test_cook_planned_recipe_wrong_slot_fails(
+    client: AsyncClient,
+) -> None:
+    reg = await _register(client, "prcook3")
+    cookies = reg["cookies"]
+    year, week = await _get_current_iso()
+
+    ing = await _create_ingredient(client, cookies, "Fisch")
+    ingredient_id = ing["id"]
+
+    await client.post(
+        "/api/inventory",
+        json={
+            "ingredient_id": ingredient_id,
+            "quantity": 500,
+            "unit": "g",
+            "category": "raw",
+        },
+        cookies=cookies,
+    )
+
+    recipe = await _create_recipe(client, cookies, "Fischfilet")
+    recipe_id = recipe["id"]
+
+    create_resp = await client.post(
+        "/api/weeks",
+        json={"year": year, "iso_week": week},
+        cookies=cookies,
+    )
+    plan_data = create_resp.json()
+    slot_a = next(
+        s for s in plan_data["slots"]
+        if s["day_of_week"] == 0 and s["meal_type"] == "lunch"
+    )
+    slot_b = next(
+        s for s in plan_data["slots"]
+        if s["day_of_week"] == 0 and s["meal_type"] == "dinner"
+    )
+
+    # Plan recipe to slot A
+    await client.put(
+        f"/api/weeks/{year}/{week}/slots",
+        json={
+            "slots": [
+                {
+                    "day_of_week": 0,
+                    "meal_type": "lunch",
+                    "recipe_id": recipe_id,
+                }
+            ]
+        },
+        cookies=cookies,
+    )
+
+    get_resp = await client.get(f"/api/weeks/{year}/{week}", cookies=cookies)
+    slot_a_data = next(
+        s for s in get_resp.json()["slots"]
+        if s["id"] == slot_a["id"]
+    )
+    pr = slot_a_data["planned_recipes"][0]
+
+    # Try to cook with PR ID but wrong slot ID
+    cook_resp = await client.post(
+        f"/api/weeks/{year}/{week}/slots/{slot_b['id']}/cook",
+        json={"planned_recipe_id": pr["id"]},
+        cookies=cookies,
+    )
+    assert cook_resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_cook_slot_with_no_planned_recipes_fails(
+    client: AsyncClient,
+) -> None:
+    reg = await _register(client, "prcook4")
+    cookies = reg["cookies"]
+    year, week = await _get_current_iso()
+
+    create_resp = await client.post(
+        "/api/weeks",
+        json={"year": year, "iso_week": week},
+        cookies=cookies,
+    )
+    plan_data = create_resp.json()
+    empty_slot = next(
+        s for s in plan_data["slots"]
+        if s["day_of_week"] == 0 and s["meal_type"] == "lunch"
+    )
+
+    cook_resp = await client.post(
+        f"/api/weeks/{year}/{week}/slots/{empty_slot['id']}/cook",
+        json={"planned_recipe_id": 9999},
+        cookies=cookies,
+    )
+    assert cook_resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_cook_multiple_recipes_in_slot_only_one_cooked(
+    client: AsyncClient,
+) -> None:
+    reg = await _register(client, "prcook5")
+    cookies = reg["cookies"]
+    year, week = await _get_current_iso()
+
+    ing1 = await _create_ingredient(client, cookies, "Mehl")
+    ing2 = await _create_ingredient(client, cookies, "Zucker")
+
+    await client.post(
+        "/api/inventory",
+        json={
+            "ingredient_id": ing1["id"],
+            "quantity": 500,
+            "unit": "g",
+            "category": "raw",
+        },
+        cookies=cookies,
+    )
+    await client.post(
+        "/api/inventory",
+        json={
+            "ingredient_id": ing2["id"],
+            "quantity": 500,
+            "unit": "g",
+            "category": "raw",
+        },
+        cookies=cookies,
+    )
+
+    recipe1_resp = await client.post(
+        "/api/recipes",
+        json={
+            "title": "Kuchen",
+            "instructions": "Backen.",
+            "servings": 2,
+            "ingredients": [
+                {"ingredient_id": ing1["id"], "quantity": 200, "unit": "g"}
+            ],
+        },
+        cookies=cookies,
+    )
+    recipe1_id = recipe1_resp.json()["id"]
+
+    recipe2_resp = await client.post(
+        "/api/recipes",
+        json={
+            "title": "Glasur",
+            "instructions": "Ruehren.",
+            "servings": 2,
+            "ingredients": [
+                {"ingredient_id": ing2["id"], "quantity": 100, "unit": "g"}
+            ],
+        },
+        cookies=cookies,
+    )
+    recipe2_id = recipe2_resp.json()["id"]
+
+    create_resp = await client.post(
+        "/api/weeks",
+        json={"year": year, "iso_week": week},
+        cookies=cookies,
+    )
+    plan_data = create_resp.json()
+    slot = next(
+        s for s in plan_data["slots"]
+        if s["day_of_week"] == 0 and s["meal_type"] == "dinner"
+    )
+
+    await client.put(
+        f"/api/weeks/{year}/{week}/slots",
+        json={
+            "slots": [
+                {
+                    "day_of_week": 0,
+                    "meal_type": "dinner",
+                    "planned_recipes": [
+                        {"recipe_id": recipe1_id, "portions": 4},
+                        {"recipe_id": recipe2_id, "portions": 2},
+                    ],
+                }
+            ]
+        },
+        cookies=cookies,
+    )
+
+    get_resp = await client.get(f"/api/weeks/{year}/{week}", cookies=cookies)
+    slot_data = next(
+        s for s in get_resp.json()["slots"]
+        if s["id"] == slot["id"]
+    )
+    pr1 = slot_data["planned_recipes"][0]
+    pr2 = slot_data["planned_recipes"][1]
+
+    # Cook only the second PlannedRecipe
+    cook_resp = await client.post(
+        f"/api/weeks/{year}/{week}/slots/{slot['id']}/cook",
+        json={"planned_recipe_id": pr2["id"]},
+        cookies=cookies,
+    )
+    assert cook_resp.status_code == 200
+    ded = cook_resp.json()["deductions"]
+    assert len(ded) == 1
+    assert ded[0]["ingredient_name"] == "Zucker"
+
+    # Verify only pr2 is cooked, pr1 is not
+    get_resp2 = await client.get(f"/api/weeks/{year}/{week}", cookies=cookies)
+    slot_data2 = next(
+        s for s in get_resp2.json()["slots"]
+        if s["id"] == slot["id"]
+    )
+    pr1_after = next(p for p in slot_data2["planned_recipes"] if p["recipe_id"] == recipe1_id)
+    pr2_after = next(p for p in slot_data2["planned_recipes"] if p["recipe_id"] == recipe2_id)
+    assert pr1_after["cooked"] is False
+    assert pr2_after["cooked"] is True
+
+    # Ingredient 2 inventory was deducted, ingredient 1 wasn't
+    inv_get = await client.get("/api/inventory", cookies=cookies)
+    items = inv_get.json()
+    mehl = next(i for i in items if i["ingredient_name"] == "Mehl")
+    zucker = next(i for i in items if i["ingredient_name"] == "Zucker")
+    assert mehl["quantity"] == 500.0  # unchanged
+    assert zucker["quantity"] == 400.0  # 500 - (100/2)*2 = 500 - 100 = 400
+
+
+@pytest.mark.asyncio
+async def test_leftovers_per_planned_recipe(
+    client: AsyncClient,
+) -> None:
+    reg = await _register(client, "prleftover1")
+    cookies = reg["cookies"]
+    year, week = await _get_current_iso()
+
+    recipe1 = await _create_recipe(client, cookies, "Pasta")
+    recipe2 = await _create_recipe(client, cookies, "Salat")
+
+    create_resp = await client.post(
+        "/api/weeks",
+        json={"year": year, "iso_week": week},
+        cookies=cookies,
+    )
+    plan_data = create_resp.json()
+    slot = next(
+        s for s in plan_data["slots"]
+        if s["day_of_week"] == 0 and s["meal_type"] == "dinner"
+    )
+
+    await client.put(
+        f"/api/weeks/{year}/{week}/slots",
+        json={
+            "slots": [
+                {
+                    "day_of_week": 0,
+                    "meal_type": "dinner",
+                    "planned_recipes": [
+                        {"recipe_id": recipe1["id"], "portions": 4},
+                        {"recipe_id": recipe2["id"], "portions": 2},
+                    ],
+                }
+            ]
+        },
+        cookies=cookies,
+    )
+
+    get_resp = await client.get(f"/api/weeks/{year}/{week}", cookies=cookies)
+    slot_data = next(
+        s for s in get_resp.json()["slots"]
+        if s["id"] == slot["id"]
+    )
+    pr2 = slot_data["planned_recipes"][1]
+
+    resp = await client.post(
+        f"/api/weeks/{year}/{week}/slots/{slot['id']}/leftovers",
+        json={"planned_recipe_id": pr2["id"], "portions_count": 3},
+        cookies=cookies,
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["ingredient_name"] == "Salat (Reste)"
+    assert data["quantity"] == 3.0
+    assert data["source_recipe_id"] == recipe2["id"]
+
+    inv_get = await client.get("/api/inventory", cookies=cookies)
+    items = inv_get.json()
+    assert len(items) == 1
+    assert items[0]["ingredient_name"] == "Salat (Reste)"
+    assert items[0]["source_recipe_id"] == recipe2["id"]
+
+
+@pytest.mark.asyncio
+async def test_compute_reservations_skips_cooked_planned_recipes(
+    client: AsyncClient,
+) -> None:
+    reg = await _register(client, "prres1")
+    cookies = reg["cookies"]
+    year, week = await _get_current_iso()
+
+    ing1 = await _create_ingredient(client, cookies, "Tomate")
+    ing2 = await _create_ingredient(client, cookies, "Gurke")
+
+    await client.post(
+        "/api/inventory",
+        json={
+            "ingredient_id": ing1["id"],
+            "quantity": 500,
+            "unit": "g",
+            "category": "raw",
+        },
+        cookies=cookies,
+    )
+    await client.post(
+        "/api/inventory",
+        json={
+            "ingredient_id": ing2["id"],
+            "quantity": 500,
+            "unit": "g",
+            "category": "raw",
+        },
+        cookies=cookies,
+    )
+
+    recipe1 = await client.post(
+        "/api/recipes",
+        json={
+            "title": "Tomatensalat2",
+            "instructions": "Schneiden.",
+            "servings": 2,
+            "ingredients": [
+                {"ingredient_id": ing1["id"], "quantity": 200, "unit": "g"},
+            ],
+        },
+        cookies=cookies,
+    )
+    recipe1_id = recipe1.json()["id"]
+
+    recipe2 = await client.post(
+        "/api/recipes",
+        json={
+            "title": "Gurkensalat2",
+            "instructions": "Schneiden.",
+            "servings": 2,
+            "ingredients": [
+                {"ingredient_id": ing2["id"], "quantity": 150, "unit": "g"},
+            ],
+        },
+        cookies=cookies,
+    )
+    recipe2_id = recipe2.json()["id"]
+
+    create_resp = await client.post(
+        "/api/weeks",
+        json={"year": year, "iso_week": week},
+        cookies=cookies,
+    )
+    plan_data = create_resp.json()
+    slot = next(
+        s for s in plan_data["slots"]
+        if s["day_of_week"] == 0 and s["meal_type"] == "lunch"
+    )
+
+    await client.put(
+        f"/api/weeks/{year}/{week}/slots",
+        json={
+            "slots": [
+                {
+                    "day_of_week": 0,
+                    "meal_type": "lunch",
+                    "planned_recipes": [
+                        {"recipe_id": recipe1_id, "portions": 4},
+                        {"recipe_id": recipe2_id, "portions": 2},
+                    ],
+                }
+            ]
+        },
+        cookies=cookies,
+    )
+
+    get_resp = await client.get(f"/api/weeks/{year}/{week}", cookies=cookies)
+    slot_data = next(
+        s for s in get_resp.json()["slots"]
+        if s["id"] == slot["id"]
+    )
+    pr1 = slot_data["planned_recipes"][0]
+
+    # Cook the first PR
+    await client.post(
+        f"/api/weeks/{year}/{week}/slots/{slot['id']}/cook",
+        json={"planned_recipe_id": pr1["id"]},
+        cookies=cookies,
+    )
+
+    res_resp = await client.get(
+        f"/api/weeks/{year}/{week}/reservations", cookies=cookies
+    )
+    assert res_resp.status_code == 200
+    reservations = res_resp.json()
+    # Tomate (cooked) should not be in reservations
+    assert str(ing1["id"]) not in reservations
+    # Gurke (uncooked) should still be in reservations
+    assert str(ing2["id"]) in reservations
+    assert reservations[str(ing2["id"])]["grams"] == 150.0
+
+
+@pytest.mark.asyncio
+async def test_delete_recipe_endpoint_removed(
+    client: AsyncClient,
+) -> None:
+    reg = await _register(client, "nodel1")
+    cookies = reg["cookies"]
+    year, week = await _get_current_iso()
+
+    recipe = await _create_recipe(client, cookies, "Pizza")
+
+    await client.post(
+        "/api/weeks",
+        json={"year": year, "iso_week": week},
+        cookies=cookies,
+    )
+
+    resp = await client.put(
+        f"/api/weeks/{year}/{week}/slots",
+        json={
+            "slots": [
+                {
+                    "day_of_week": 0,
+                    "meal_type": "lunch",
+                    "recipe_id": recipe["id"],
+                }
+            ]
+        },
+        cookies=cookies,
+    )
+    assert resp.status_code == 200
+
+    get_resp = await client.get(f"/api/weeks/{year}/{week}", cookies=cookies)
+    slot = get_resp.json()["slots"][0]
+
+    del_resp = await client.delete(
+        f"/api/weeks/{year}/{week}/slots/{slot['id']}/recipe",
+        cookies=cookies,
+    )
+    assert del_resp.status_code == 404

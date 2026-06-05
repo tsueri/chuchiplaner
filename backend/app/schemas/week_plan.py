@@ -77,8 +77,13 @@ class SlotBulkUpdate(BaseModel):
     slots: list[SlotUpdate]
 
 
+class CookSlotRequest(BaseModel):
+    planned_recipe_id: int
+
+
 class LeftoversRequest(BaseModel):
     portions_count: int = Field(ge=1)
+    planned_recipe_id: int
 
 
 class VisibilityUpdateRequest(BaseModel):

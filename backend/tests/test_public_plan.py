@@ -323,8 +323,13 @@ async def test_public_plan_cooked_slot_shows_cooked(
         },
         cookies=cookies,
     )
+    get_resp = await client.get(f"/api/weeks/{year}/{week}", cookies=cookies)
+    slot_data = next(s for s in get_resp.json()["slots"] if s["id"] == slot["id"])
+    pr = slot_data["planned_recipes"][0]
+
     await client.post(
         f"/api/weeks/{year}/{week}/slots/{slot['id']}/cook",
+        json={"planned_recipe_id": pr["id"]},
         cookies=cookies,
     )
     await client.put(

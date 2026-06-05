@@ -286,7 +286,7 @@ async def update_slots(
 
             for rec_id, existing_pr in existing_prs.items():
                 if rec_id not in incoming_ids:
-                    await db.delete(existing_pr)
+                    slot.planned_recipes.remove(existing_pr)
 
             for idx, pr_data in enumerate(incoming_prs):
                 rid = pr_data["recipe_id"]
@@ -362,6 +362,8 @@ async def compute_reservations(
     reservations: dict[int, dict[str, float]] = {}
     for slot in slots:
         for pr in slot.planned_recipes:
+            if pr.cooked:
+                continue
             if pr.recipe_id is None:
                 continue
             recipe_result = await db.execute(

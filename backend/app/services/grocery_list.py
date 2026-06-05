@@ -64,6 +64,8 @@ async def _compute_needs(
 
     for slot in planned_slots:
         for pr in slot.planned_recipes:
+            if pr.cooked:
+                continue
             recipe_result = await db.execute(
                 select(Recipe)
                 .where(Recipe.id == pr.recipe_id)

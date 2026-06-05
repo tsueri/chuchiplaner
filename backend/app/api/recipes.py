@@ -397,13 +397,13 @@ async def _persist_recipe_aliases(
         try:
             await db.flush()
         except IntegrityError:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=(
-                "Ein Alias mit diesem Namen existiert bereits "
-                "in diesem Haushalt."
-            ),
-        )
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "Ein Alias mit diesem Namen existiert bereits "
+                    "in diesem Haushalt."
+                ),
+            )
 
 
 async def _upsert_recipe(
