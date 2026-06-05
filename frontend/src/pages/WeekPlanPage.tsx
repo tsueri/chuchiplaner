@@ -475,12 +475,6 @@ export default function WeekPlanPage() {
     setLeftoverPortions(2)
   }
 
-  const getSlotRecipeTitle = (slotId: number): string | null => {
-    if (!weekData) return null
-    const slot = weekData.slots.find((s) => s.id === slotId)
-    return slot?.planned_recipes?.[0]?.recipe_title || null
-  }
-
   const getSlot = (day: number, meal: string): MealSlot | undefined => {
     if (!weekData) return undefined
     return weekData.slots.find(
@@ -502,7 +496,6 @@ export default function WeekPlanPage() {
       const recipeId = parseInt(e.dataTransfer.getData("recipe_id") || "0")
       if (recipeId <= 0) return
       const sourceSlotId = parseInt(e.dataTransfer.getData("source_slot_id") || "0")
-      const plannedRecipeId = parseInt(e.dataTransfer.getData("planned_recipe_id") || "0")
       if (sourceSlotId > 0) {
         moveRecipe(
           sourceSlotId,
