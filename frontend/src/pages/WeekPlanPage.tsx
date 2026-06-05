@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react"
+import { useNavigate } from "react-router-dom"
 import { FileDown } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { PageHeader } from "@/components/PageHeader"
@@ -108,6 +109,7 @@ export default function WeekPlanPage() {
   const [pdfGenerating, setPdfGenerating] = useState(false)
   const [recipeSearch, setRecipeSearch] = useState("")
   const [searchResults, setSearchResults] = useState<Recipe[]>([])
+  const navigate = useNavigate()
 
   const refreshAll = useCallback(() => {
     let cancelled = false
@@ -655,6 +657,16 @@ export default function WeekPlanPage() {
                             </div>
                             {editable && !slot.cooked && (
                               <div className="flex gap-1 mt-0.5">
+                                <button
+                                  className="text-primary hover:underline text-xs"
+                                  onClick={() =>
+                                    navigate(
+                                      `/recipes/${slot.recipe_id}/cook?portions=${slot.portions}&slotId=${slot.id}&year=${year}&isoWeek=${isoWeek}`,
+                                    )
+                                  }
+                                >
+                                  Kochmodus
+                                </button>
                                 <button
                                   className="text-green-600 hover:underline text-xs"
                                   onClick={() => setCookConfirm(slot.id)}

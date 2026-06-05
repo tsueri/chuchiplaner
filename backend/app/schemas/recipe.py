@@ -315,3 +315,17 @@ class RecipeUpdateRequest(BaseModel):
     tag_ids: list[int] | None = None
     ingredients: list["RecipeIngredientItem"] | None = None
     steps: list["RecipeStepItem"] | None = None
+
+
+class CookRequest(BaseModel):
+    portions: int = Field(ge=1)
+    slot_id: int | None = None
+    year: int | None = None
+    iso_week: int | None = None
+
+
+class LeftoversRequest(BaseModel):
+    portions_count: int = Field(ge=1)
+    slot_id: int | None = None
+    year: int | None = None
+    iso_week: int | None = None

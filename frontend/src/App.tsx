@@ -9,6 +9,7 @@ import InventoryPage from "@/pages/InventoryPage"
 import LoginPage from "@/pages/LoginPage"
 import PublicPlanPage from "@/pages/PublicPlanPage"
 import RecipeDetailPage from "@/pages/RecipeDetailPage"
+import CookModePage from "@/pages/CookModePage"
 import RecipeFormPage from "@/pages/RecipeFormPage"
 import RecipeListPage from "@/pages/RecipeListPage"
 import RegisterPage from "@/pages/RegisterPage"
@@ -44,6 +45,7 @@ function App() {
           <Route path="/grocery-list" element={<GroceryListPage />} />
           <Route path="/recipes" element={<RecipeListPage />} />
           <Route path="/recipes/new" element={<RecipeFormPage />} />
+          <Route path="/recipes/:id/cook" element={<CookModePage />} />
           <Route path="/recipes/:id" element={<RecipeDetailPage />} />
           <Route path="/ingredients" element={<IngredientsPage />} />
           <Route path="/inventory" element={<InventoryPage />} />

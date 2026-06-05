@@ -7,11 +7,12 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import joinedload, selectinload
 
 from app.api.auth import get_current_user
 from app.db.session import get_db
 from app.models.ingredient import Ingredient, IngredientAlias
+from app.models.inventory import InventoryItem
 from app.models.recipe import (
     Recipe,
     RecipeFavorite,
@@ -23,6 +24,8 @@ from app.models.recipe import (
 )
 from app.models.user import User
 from app.schemas.recipe import (
+    CookRequest,
+    LeftoversRequest,
     RecipeDetailResponse,
     RecipeFavoriteResponse,
     RecipeImportRequest,
@@ -1170,3 +1173,177 @@ async def create_tag(
     db.add(tag)
     await db.flush()
     return _build_tag_response(tag)
+
+
+@router.post("/{recipe_id}/cook")
+async def cook_recipe(
+    recipe_id: int,
+    body: CookRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> dict[str, object]:
+    if current_user.household_id is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
+
+    recipe_result = await db.execute(
+        select(Recipe)
+        .where(Recipe.id == recipe_id)
+        .options(
+            selectinload(Recipe.ingredients).joinedload(RecipeIngredient.ingredient)
+        )
+    )
+    recipe = recipe_result.scalar_one_or_none()
+    if recipe is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Recipe not found"
+        )
+
+    scale = body.portions / recipe.servings if recipe.servings > 0 else 1
+
+    from app.services.unit_converter import UnitConverter
+
+    deductions: list[dict[str, object]] = []
+    for ri in recipe.ingredients:
+        grams, ml, pieces = UnitConverter.normalize(
+            ri.quantity, ri.unit, ingredient=ri.ingredient
+        )
+        needed = grams or ml or pieces
+        if needed is None or needed == 0:
+            continue
+        needed *= scale
+        dim = "g" if grams else ("ml" if ml else "Stück")
+        actual_deducted = 0.0
+
+        inv_result = await db.execute(
+            select(InventoryItem)
+            .where(
+                InventoryItem.household_id == current_user.household_id,
+                InventoryItem.ingredient_id == ri.ingredient_id,
+                InventoryItem.category == "raw",
+            )
+            .options(joinedload(InventoryItem.ingredient))
+            .order_by(
+                InventoryItem.expiry_date.is_(None),
+                InventoryItem.expiry_date.asc(),
+            )
+        )
+        items = list(inv_result.unique().scalars().all())
+
+        remaining = needed
+        for item in items:
+            if remaining <= 0:
+                break
+            norm = UnitConverter.normalize(
+                item.quantity, item.unit, ingredient=item.ingredient
+            )
+            available = norm[0] or norm[1] or norm[2] or 0
+            deduct = min(available, remaining)
+            if deduct <= 0:
+                continue
+
+            new_qty = round(item.quantity - (deduct / (item.quantity / available)), 3)
+            if new_qty <= 0.001:
+                await db.delete(item)
+            else:
+                item.quantity = new_qty
+
+            remaining -= deduct
+            actual_deducted += deduct
+
+        if actual_deducted > 0:
+            ing_result = await db.execute(
+                select(Ingredient.name).where(Ingredient.id == ri.ingredient_id)
+            )
+            name = ing_result.scalar_one()
+            deductions.append({
+                "ingredient_id": ri.ingredient_id,
+                "ingredient_name": name,
+                "deducted": round(actual_deducted, 3),
+                "unit": dim,
+            })
+
+    if body.slot_id is not None and body.year is not None and body.iso_week is not None:
+        from app.models.week_plan import WeekPlan
+        plan_result = await db.execute(
+            select(WeekPlan)
+            .where(
+                WeekPlan.household_id == current_user.household_id,
+                WeekPlan.year == body.year,
+                WeekPlan.iso_week == body.iso_week,
+            )
+            .options(selectinload(WeekPlan.slots))
+        )
+        plan = plan_result.unique().scalar_one_or_none()
+        if plan is not None:
+            slot = next((s for s in plan.slots if s.id == body.slot_id), None)
+            if slot is not None and slot.recipe_id == recipe_id and not slot.cooked:
+                slot.cooked = True
+
+    await db.flush()
+
+    return {"cooked": True, "deductions": deductions}
+
+
+@router.post("/{recipe_id}/leftovers")
+async def save_leftovers(
+    recipe_id: int,
+    body: LeftoversRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> dict[str, object]:
+    if current_user.household_id is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
+
+    recipe_result = await db.execute(
+        select(Recipe).where(Recipe.id == recipe_id)
+    )
+    recipe = recipe_result.scalar_one_or_none()
+    if recipe is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Recipe not found"
+        )
+
+    title = f"{recipe.title} (Reste)"
+    existing_ing = await db.execute(
+        select(Ingredient).where(Ingredient.name == title)
+    )
+    leftover_ingredient = existing_ing.scalar_one_or_none()
+    if leftover_ingredient is None:
+        leftover_ingredient = Ingredient(name=title)
+        db.add(leftover_ingredient)
+        await db.flush()
+
+    source_week_plan_id: int | None = None
+    if body.slot_id is not None and body.year is not None and body.iso_week is not None:
+        from app.models.week_plan import WeekPlan
+        plan_result = await db.execute(
+            select(WeekPlan).where(
+                WeekPlan.household_id == current_user.household_id,
+                WeekPlan.year == body.year,
+                WeekPlan.iso_week == body.iso_week,
+            )
+        )
+        plan = plan_result.scalar_one_or_none()
+        if plan is not None:
+            source_week_plan_id = plan.id
+
+    item = InventoryItem(
+        household_id=current_user.household_id,
+        ingredient_id=leftover_ingredient.id,
+        quantity=float(body.portions_count),
+        unit="Stück",
+        category="cooked",
+        source_recipe_id=recipe.id,
+        source_week_plan_id=source_week_plan_id,
+    )
+    db.add(item)
+    await db.flush()
+
+    return {
+        "id": item.id,
+        "ingredient_name": title,
+        "quantity": float(body.portions_count),
+        "unit": "Stück",
+        "category": "cooked",
+        "source_recipe_id": recipe.id,
+    }

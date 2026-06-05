@@ -919,7 +919,14 @@ export default function RecipeDetailPage() {
         &larr; Zurück zur Liste
       </button>
 
-      <div className="mb-4 flex justify-end">
+      <div className="mb-4 flex justify-end gap-2">
+        <Button
+          onClick={() => navigate(`/recipes/${recipe.id}/cook?portions=${recipe.servings}`)}
+          variant="outline"
+          size="sm"
+        >
+          Kochmodus
+        </Button>
         <Button onClick={enterEditMode} variant="outline" size="sm">
           Bearbeiten
         </Button>
