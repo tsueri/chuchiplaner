@@ -18,6 +18,7 @@ from app.api.recipes import tag_router
 from app.api.weeks import router as weeks_router
 from app.core.config import settings
 from app.core.middleware import SessionMiddleware
+from app.core.security_headers import SecurityHeadersMiddleware
 
 
 def create_app() -> FastAPI:
@@ -59,6 +60,8 @@ def create_app() -> FastAPI:
             if os.path.isfile(file_path):
                 return FileResponse(file_path)
             return FileResponse(os.path.join(static_dir, "index.html"))
+
+    app.add_middleware(SecurityHeadersMiddleware)
 
     return app
 
