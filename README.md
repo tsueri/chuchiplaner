@@ -77,10 +77,30 @@ All settings use the `CHUCHI_` prefix. Copy `.env.example` to `.env` and adjust 
 | `CHUCHI_SIGNUP_ENABLED` | `true` | Whether new users can register |
 | `CHUCHI_ADMIN_SIGNUP_CODE` | `""` | If non-empty, registration requires a valid household invite code |
 
-### Frontend
+### Session cookie
+
 | Variable | Default | Description |
 |---|---|---|
-| `VITE_BACKEND_URL` | `http://localhost:8000` | Backend URL for the Vite dev server proxy (only needed in Docker Compose dev) |
+| `CHUCHI_COOKIE_SECURE` | `false` | Set to `true` behind HTTPS so cookies get the `Secure` flag |
+| `CHUCHI_COOKIE_SAMESITE` | `strict` | SameSite cookie attribute (`strict`, `lax`, or `none`) |
+| `CHUCHI_COOKIE_MAX_AGE_SECONDS` | `604800` | Session duration in seconds (default: 7 days) |
+| `CHUCHI_COOKIE_HTTPONLY` | `true` | HttpOnly flag (inaccessible to JavaScript) |
+| `CHUCHI_COOKIE_NAME` | `session_token` | Cookie name |
+
+### Reverse proxy / HTTPS
+
+| Variable | Default | Description |
+|---|---|---|
+| `CHUCHI_TRUST_PROXY_HEADERS` | `false` | Set to `true` to read the real client IP from `X-Forwarded-For` for rate limiting |
+| `FORWARDED_ALLOW_IPS` | `127.0.0.1` | (uvicorn) IPs trusted to set `X-Forwarded-*` headers. Use `172.16.0.0/12` for Docker networks, or `*` if the proxy is on the same host |
+
+When deploying behind a reverse proxy (nginx, Caddy, Traefik) with HTTPS, set these three variables as a minimum:
+
+```bash
+CHUCHI_COOKIE_SECURE=true
+CHUCHI_TRUST_PROXY_HEADERS=true
+FORWARDED_ALLOW_IPS=172.16.0.0/12   # or * for same-host proxy
+```
 
 ### Backup sidecar (Docker Compose only)
 

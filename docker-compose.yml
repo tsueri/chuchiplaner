@@ -7,6 +7,10 @@ services:
       - ./data:/app/data
     environment:
       - CHUCHI_DATABASE_URL=sqlite+aiosqlite:///./data/chuchiplaner.db
+      # Proxy / HTTPS (uncomment for production behind reverse proxy)
+      # - CHUCHI_TRUST_PROXY_HEADERS=true
+      # - CHUCHI_COOKIE_SECURE=true
+      # - FORWARDED_ALLOW_IPS=172.16.0.0/12  # Docker bridge network; use * if proxy is on same host
 
   backup:
     build: ./backup
