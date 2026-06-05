@@ -1,6 +1,8 @@
 import pytest
 from httpx import AsyncClient
 
+from app.services.household import generate_invite_code
+
 
 async def _register(client: AsyncClient, username: str, invite_code: str | None = None):
     body = {"username": username, "password": "secret123"}
@@ -796,3 +798,20 @@ async def test_update_household_name_only_auto_slug(client: AsyncClient) -> None
     data = resp.json()
     assert data["name"] == "New Auto Name"
     assert data["slug"] == "new-auto-name"
+
+
+def test_generate_invite_code_returns_32_char_hex() -> None:
+    code = generate_invite_code()
+    assert len(code) == 32
+    assert all(c in "0123456789abcdef" for c in code)
+
+
+def test_generate_invite_code_no_collisions() -> None:
+    codes = {generate_invite_code() for _ in range(10_000)}
+    assert len(codes) == 10_000
+
+
+def test_generate_invite_code_docstring_mentions_unguessable() -> None:
+    doc = generate_invite_code.__doc__
+    assert doc is not None
+    assert "unguessable" in doc.lower()

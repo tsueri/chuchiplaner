@@ -28,7 +28,12 @@ def generate_slug(name: str) -> str:
 
 
 def generate_invite_code() -> str:
-    return secrets.token_hex(8)
+    """Generate a cryptographically random invite code.
+
+    Must be unguessable from a public plan URL.
+    Returns 32 hex characters (128 bits of entropy).
+    """
+    return secrets.token_hex(16)
 
 
 async def create_household(

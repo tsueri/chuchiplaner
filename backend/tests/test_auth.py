@@ -239,6 +239,21 @@ async def test_register_password_too_short(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
+async def test_register_invite_code_bad_chars_returns_422(
+    client: AsyncClient,
+) -> None:
+    response = await client.post(
+        "/api/auth/register",
+        json={
+            "username": "badchars",
+            "password": "secret123",
+            "invite_code": "bad char!",
+        },
+    )
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
 async def test_change_password_new_too_short_7chars(client: AsyncClient) -> None:
     """7-character new_password should be rejected, same as register case."""
     register_resp = await client.post(
@@ -250,6 +265,21 @@ async def test_change_password_new_too_short_7chars(client: AsyncClient) -> None
         "/api/auth/password",
         json={"current_password": "secret123", "new_password": "1234567"},
         cookies=cookies,
+    )
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_register_invite_code_too_short_returns_422(
+    client: AsyncClient,
+) -> None:
+    response = await client.post(
+        "/api/auth/register",
+        json={
+            "username": "shortcode",
+            "password": "secret123",
+            "invite_code": "abc",
+        },
     )
     assert response.status_code == 422
 
@@ -314,3 +344,18 @@ async def test_login_constant_time_verify(
             json={"username": "ctuser", "password": "wrongpass"},
         )
         assert mock_verify.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_register_invite_code_too_long_returns_422(
+    client: AsyncClient,
+) -> None:
+    response = await client.post(
+        "/api/auth/register",
+        json={
+            "username": "longcode",
+            "password": "secret123",
+            "invite_code": "a" * 33,
+        },
+    )
+    assert response.status_code == 422
