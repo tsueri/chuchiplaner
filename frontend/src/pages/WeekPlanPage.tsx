@@ -308,29 +308,33 @@ export default function WeekPlanPage() {
         portions: pr.portions,
       }))
       existingRecipes.push({ recipe_id: recipeId, portions: targetSlot?.portions || 1 })
-
-      const sourceSlot = weekData?.slots.find((s) => s.id === sourceSlotId)
-      const sourceRemaining = (sourceSlot?.planned_recipes || [])
-        .filter((pr) => pr.recipe_id !== recipeId)
-        .map((pr) => ({ recipe_id: pr.recipe_id, portions: pr.portions }))
-
       await api(`/weeks/${year}/${isoWeek}/slots`, {
         method: "PUT",
         body: JSON.stringify({
-          slots: [
-            {
-              day_of_week: targetDay,
-              meal_type: targetMeal,
-              planned_recipes: existingRecipes,
-            },
-            {
-              day_of_week: sourceSlot?.day_of_week,
-              meal_type: sourceSlot?.meal_type,
-              planned_recipes: sourceRemaining,
-            },
-          ].filter((s) => s.day_of_week !== undefined),
+          slots: [{
+            day_of_week: targetDay,
+            meal_type: targetMeal,
+            planned_recipes: existingRecipes,
+          }],
         }),
       })
+
+      const sourceSlot = weekData?.slots.find((s) => s.id === sourceSlotId)
+      if (sourceSlot) {
+        const sourceRemaining = sourceSlot.planned_recipes
+          .filter((pr) => pr.recipe_id !== recipeId)
+          .map((pr) => ({ recipe_id: pr.recipe_id, portions: pr.portions }))
+        await api(`/weeks/${year}/${isoWeek}/slots`, {
+          method: "PUT",
+          body: JSON.stringify({
+            slots: [{
+              day_of_week: sourceSlot.day_of_week,
+              meal_type: sourceSlot.meal_type,
+              planned_recipes: sourceRemaining,
+            }],
+          }),
+        })
+      }
       refreshAll()
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to move recipe")
