@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 import pytest
 from httpx import AsyncClient
 
@@ -76,7 +78,7 @@ async def test_login_invalid_password(client: AsyncClient) -> None:
     )
     assert response.status_code == 401
     data = response.json()
-    assert "detail" in data
+    assert data["detail"] == "Invalid credentials"
 
 
 @pytest.mark.asyncio
@@ -86,6 +88,8 @@ async def test_login_nonexistent_user(client: AsyncClient) -> None:
         json={"username": "nouser", "password": "secret123"},
     )
     assert response.status_code == 401
+    data = response.json()
+    assert data["detail"] == "Invalid credentials"
 
 
 @pytest.mark.asyncio
@@ -222,3 +226,91 @@ async def test_change_password_requires_auth(client: AsyncClient) -> None:
         json={"current_password": "secret123", "new_password": "newsecret456"},
     )
     assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_register_password_too_short(client: AsyncClient) -> None:
+    """7-character password should be rejected (min_length=8)."""
+    response = await client.post(
+        "/api/auth/register",
+        json={"username": "shortpw", "password": "1234567"},
+    )
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_change_password_new_too_short_7chars(client: AsyncClient) -> None:
+    """7-character new_password should be rejected, same as register case."""
+    register_resp = await client.post(
+        "/api/auth/register",
+        json={"username": "pwuser5", "password": "secret123"},
+    )
+    cookies = register_resp.cookies
+    response = await client.put(
+        "/api/auth/password",
+        json={"current_password": "secret123", "new_password": "1234567"},
+        cookies=cookies,
+    )
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_login_nonexistent_identical_to_wrong_password(
+    client: AsyncClient,
+) -> None:
+    """Unknown-user 401 response equals wrong-password 401 response."""
+    await client.post(
+        "/api/auth/register",
+        json={"username": "identuser", "password": "secret123"},
+    )
+    wrong_pw_resp = await client.post(
+        "/api/auth/login",
+        json={"username": "identuser", "password": "wrongpass"},
+    )
+    nonexistent_resp = await client.post(
+        "/api/auth/login",
+        json={"username": "nouser", "password": "anypass"},
+    )
+    assert wrong_pw_resp.status_code == 401
+    assert nonexistent_resp.status_code == 401
+    assert wrong_pw_resp.json() == nonexistent_resp.json()
+
+
+@pytest.mark.asyncio
+async def test_login_constant_time_verify(
+    client: AsyncClient,
+) -> None:
+    """Both branches call verify_password once; dummy hash for unknown user."""
+    await client.post(
+        "/api/auth/register",
+        json={"username": "ctuser", "password": "secret123"},
+    )
+
+    from app.api import auth as auth_module
+
+    # Nonexistent user — verify_password must be called with DUMMY_HASH
+    with patch.object(
+        auth_module,
+        "verify_password",
+        wraps=auth_module.verify_password,
+    ) as mock_verify:
+        await client.post(
+            "/api/auth/login",
+            json={"username": "nouser", "password": "somepass"},
+        )
+        assert mock_verify.call_count == 1
+        passed_hash = mock_verify.call_args[0][1]
+        assert passed_hash == auth_module._DUMMY_HASH
+        assert len(passed_hash) > 0
+
+    # Wrong password — verify_password must be called exactly once
+    with patch.object(
+        auth_module,
+        "verify_password",
+        wraps=auth_module.verify_password,
+    ) as mock_verify:
+        await client.post(
+            "/api/auth/login",
+            json={"username": "ctuser", "password": "wrongpass"},
+        )
+        assert mock_verify.call_count == 1

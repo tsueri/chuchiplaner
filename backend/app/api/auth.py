@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,9 +29,18 @@ from app.services.auth import (
     verify_password,
 )
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 SESSION_COOKIE = "session_token"
+
+# Precomputed dummy bcrypt hash for constant-time login verification.
+# When no user is found, verify_password is still called against this hash
+# so a timing observer cannot distinguish the "unknown user" branch from
+# the "wrong password" branch.
+_DUMMY_HASH: str = hash_password("dummy_constanthash_for_timing_safety")
+logger.debug("Dummy hash computed for constant-time login verification")
 
 
 def _set_session_cookie(response: Response, token: str) -> None:
@@ -110,10 +121,15 @@ async def login(
     db: AsyncSession = Depends(get_db),
 ) -> User:
     user = await get_user_by_username(db, body.username)
-    if not user or not verify_password(body.password, user.password_hash):
+    if user is not None:
+        password_valid = verify_password(body.password, user.password_hash)
+    else:
+        verify_password(body.password, _DUMMY_HASH)  # constant-time, discard
+        password_valid = False
+    if not user or not password_valid:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid username or password",
+            detail="Invalid credentials",
         )
     session = await create_session(db, user)
     _set_session_cookie(response, session.token)
