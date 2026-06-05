@@ -656,9 +656,9 @@ export default function WeekPlanPage() {
                               <span className="text-muted-foreground">Port.</span>
                             </div>
                             {editable && !slot.cooked && (
-                              <div className="flex gap-1 mt-0.5">
+                              <div className="flex flex-col gap-1.5 mt-1">
                                 <button
-                                  className="text-primary hover:underline text-xs"
+                                  className="text-primary hover:underline text-xs text-left"
                                   onClick={() =>
                                     navigate(
                                       `/recipes/${slot.recipe_id}/cook?portions=${slot.portions}&slotId=${slot.id}&year=${year}&isoWeek=${isoWeek}`,
@@ -668,13 +668,13 @@ export default function WeekPlanPage() {
                                   Kochmodus
                                 </button>
                                 <button
-                                  className="text-green-600 hover:underline text-xs"
+                                  className="text-green-600 hover:underline text-xs text-left"
                                   onClick={() => setCookConfirm(slot.id)}
                                 >
                                   Gekocht
                                 </button>
                                 <button
-                                  className="text-destructive hover:underline"
+                                  className="text-destructive hover:underline text-xs text-left"
                                   onClick={() => unplanRecipe(slot.id)}
                                 >
                                   ✕
