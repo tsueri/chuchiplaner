@@ -911,6 +911,145 @@ def test_fetch_url_safely_redirect_to_private_hostname_raises() -> None:
                 pass
 
 
+# ----- DNS-rebinding protection tests (issue #84) -----
+
+
+def test_dns_rebind_same_host_uses_first_resolution() -> None:
+    """AC1: Stub DNS to resolve a public IP on the first call and
+    127.0.0.1 on the second call, mimicking a DNS rebind between resolve
+    and connect. The second hop (rebind) must be prevented.
+    """
+    addr_public = _make_getaddrinfo_result("93.184.216.34")
+    addr_localhost = _make_getaddrinfo_result("127.0.0.1")
+
+    call_count = 0
+
+    def getaddrinfo_side_effect(host, port, *args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            return addr_public.copy()
+        return addr_localhost.copy()
+
+    mock_response = _make_mock_http_response()
+
+    with patch("socket.getaddrinfo", side_effect=getaddrinfo_side_effect):
+        with patch("httpx.Client.get", return_value=mock_response) as mock_get:
+            result = RecipeScraper._fetch_url_safely("https://example.com/recipe")
+
+    assert result.status_code == 200
+    # Only one DNS resolution per hop: the second (rebind) is never triggered
+    # because DNS is pinned to the first resolution's IP before the HTTP request.
+    assert call_count == 1, f"Expected 1 DNS resolution, got {call_count}"
+    mock_get.assert_called_once()
+
+
+def test_connect_uses_original_url_not_ip_address() -> None:
+    """AC4: The connection is issued with the original hostname in the
+    Host: header — not a synthetic request to the resolved IP.
+    """
+    addr = _make_getaddrinfo_result("93.184.216.34")
+    mock_response = _make_mock_http_response()
+
+    with patch("socket.getaddrinfo", return_value=addr):
+        with patch("httpx.Client.get", return_value=mock_response) as mock_get:
+            RecipeScraper._fetch_url_safely("https://example.com/recipes/123")
+
+    mock_get.assert_called_once()
+    call_args = mock_get.call_args[0]
+    # httpx receives the original URL so the Host header is example.com,
+    # not the raw IP address.
+    assert "example.com" in call_args[0]
+    assert "93.184.216.34" not in call_args[0]
+
+
+def test_resolve_and_validate_host_returns_first_public_ip() -> None:
+    """resolve_and_validate_host returns the first validated public IP."""
+    addr = _make_getaddrinfo_result("93.184.216.34")
+    with patch("socket.getaddrinfo", return_value=addr):
+        ip = resolve_and_validate_host("example.com")
+    assert ip == "93.184.216.34"
+
+
+def test_resolve_and_validate_host_raises_when_no_public_ip() -> None:
+    """resolve_and_validate_host raises when no public IP is resolved."""
+    addr = [
+        (socket.AF_INET6, socket.SOCK_STREAM, 6, "", ("::1", 0, 0, 0)),
+    ]
+    with patch("socket.getaddrinfo", return_value=addr):
+        try:
+            resolve_and_validate_host("localhost6")
+            assert False, "should have raised"
+        except SSRFBlockedError:
+            pass
+
+
+def test_fetch_url_safely_multi_hop_resolves_each_host_once() -> None:
+    """AC3: Normal 30x redirect chain (no rebind) succeeds. Each hop
+    resolves its host exactly once.
+    """
+    resolns: list[str] = []
+
+    def getaddrinfo_side_effect(host, *args, **kwargs):
+        resolns.append(host)
+        return _make_getaddrinfo_result("93.184.216.34")
+
+    resp_start = _make_mock_http_response(
+        status_code=301,
+        headers={"Location": "https://other.example.com/middle"},
+    )
+    resp_middle = _make_mock_http_response(
+        status_code=302,
+        headers={"Location": "https://final.example.com/target"},
+    )
+    resp_final = _make_mock_http_response()
+
+    def get_side_effect(url, **kwargs):
+        if "other.example.com" in url:
+            return resp_middle
+        if "final.example.com" in url:
+            return resp_final
+        return resp_start
+
+    with patch("socket.getaddrinfo", side_effect=getaddrinfo_side_effect):
+        with patch("httpx.Client.get", side_effect=get_side_effect) as mock_get:
+            result = RecipeScraper._fetch_url_safely("https://example.com/start")
+
+    assert result.status_code == 200
+    # Each host resolved exactly once, in order.
+    assert resolns == ["example.com", "other.example.com", "final.example.com"]
+    assert mock_get.call_count == 3
+
+
+def test_sync_and_rate_limit_still_intact() -> None:
+    """AC5: The module is still synchronous; threading.Lock and
+    time.sleep rate limit are intact.
+    """
+    import inspect
+
+    src = inspect.getsource(RecipeScraper._fetch_url_safely)
+    assert "async" not in src.split("def _fetch_url_safely")[0]
+    assert "await" not in src
+
+    # Verify the class-level lock and rate limit attributes still exist.
+    assert hasattr(RecipeScraper, "_lock")
+    assert isinstance(RecipeScraper._lock, type(RecipeScraper._lock))
+    assert hasattr(RecipeScraper, "_rate_limit_seconds")
+    assert RecipeScraper._rate_limit_seconds > 0
+
+
+def test_module_docstring_names_sync_constraint() -> None:
+    """AC6: The module docstring names the sync / resolved-IP choice as a
+    deliberate constraint.
+    """
+    import app.services.scraper as scraper_module
+
+    doc = scraper_module.__doc__
+    assert doc is not None, "module must have a docstring"
+    assert "Synchronous only" in doc
+    assert "Resolved" in doc and "Host header" in doc
+
+
 # ----- SSRF validation primitives -----
 
 

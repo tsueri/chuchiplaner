@@ -1,3 +1,17 @@
+"""
+Recipe scraper with SSRF hardening.
+
+Deliberate constraints (do not relax):
+- **Synchronous only.**  The module uses blocking ``time.sleep`` and a
+  ``threading.Lock`` for rate-limiting.  An async HTTP client or custom
+  resolver would break those guards and is therefore rejected.
+- **Resolved‑IP + Host header.**  On every redirect hop we resolve the
+  hostname once with ``socket.getaddrinfo``, pin the returned public IP
+  before the actual HTTP request, and let ``httpx`` set the ``Host``
+  header from the original URL.  This closes the DNS‑rebinding window
+  between the security check and the outbound connection.
+"""
+
 import ipaddress
 import json
 import re
@@ -42,8 +56,9 @@ def validate_url_syntax(raw_url: str) -> str:
     return parsed.geturl()
 
 
-def resolve_and_validate_host(hostname: str) -> None:
+def resolve_and_validate_host(hostname: str) -> str:
     addrinfo = socket.getaddrinfo(hostname, None)
+    first_public_ip: str | None = None
 
     for family, _socktype, _proto, _canonname, sockaddr in addrinfo:
         ip_str = sockaddr[0]
@@ -53,6 +68,12 @@ def resolve_and_validate_host(hostname: str) -> None:
             continue
         if not _is_public_ip(ip):
             raise SSRFBlockedError(f"Non-public IP: {ip_str}")
+        if first_public_ip is None:
+            first_public_ip = ip_str  # type: ignore[assignment]  # sockaddr[0] is str at runtime
+
+    if first_public_ip is None:
+        raise SSRFBlockedError("No public IP resolved for hostname")
+    return first_public_ip
 
 
 def _is_public_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
@@ -279,9 +300,38 @@ class RecipeScraper:
                 hostname = parsed.hostname
                 if not hostname:
                     raise SSRFBlockedError(f"Invalid hostname in URL: {current_url}")
-                resolve_and_validate_host(hostname)
 
-                response = client.get(current_url)
+                resolved_ip = resolve_and_validate_host(hostname)
+
+                original_getaddrinfo = socket.getaddrinfo
+
+                def _pinned_getaddrinfo(
+                    host: str,
+                    port: int | None,
+                    family: int = 0,
+                    typ: int = 0,
+                    proto: int = 0,
+                    flags: int = 0,
+                ) -> list[tuple[Any, ...]]:
+                    if host == hostname:
+                        return [
+                            (
+                                socket.AF_INET,
+                                socket.SOCK_STREAM,
+                                6,
+                                "",
+                                (resolved_ip, port or 0),
+                            )
+                        ]
+                    return original_getaddrinfo(
+                        host, port, family, typ, proto, flags
+                    )
+
+                socket.getaddrinfo = _pinned_getaddrinfo  # type: ignore[assignment]
+                try:
+                    response = client.get(current_url)
+                finally:
+                    socket.getaddrinfo = original_getaddrinfo  # type: ignore[assignment]
 
                 if response.status_code in (301, 302, 303, 307, 308):
                     location = response.headers.get("Location")
