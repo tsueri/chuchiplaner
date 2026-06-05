@@ -731,7 +731,7 @@ export default function WeekPlanPage() {
                                   <span className="text-muted-foreground">Port.</span>
                                 </div>
                                 {editable && !pr.cooked && (
-                                  <div className="flex gap-1.5 mt-0.5">
+                                  <div className="flex flex-col gap-0.5 mt-0.5">
                                     <button
                                       className="text-primary hover:underline text-xs"
                                       onClick={() =>
