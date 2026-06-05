@@ -18,9 +18,11 @@ class DurationSerializer:
         return f"PT{hours}H{mins}M"
 
     @staticmethod
-    def from_iso_duration(iso: str | None) -> int | None:
+    def from_iso_duration(iso: str | int | None) -> int | None:
         if iso is None:
             return None
+        if isinstance(iso, int):
+            return iso
         match = re.fullmatch(
             r"PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?",
             iso.strip(),
