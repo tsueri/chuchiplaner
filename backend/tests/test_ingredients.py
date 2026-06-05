@@ -5,18 +5,28 @@ from httpx import AsyncClient
 async def _register_admin(client: AsyncClient, username: str = "adminuser") -> dict:
     resp = await client.post(
         "/api/auth/register",
-        json={"username": username, "password": "secret123"},
+        json={
+            "username": username,
+            "password": "secret123",
+            "admin_signup_code": "test-secret",
+        },
     )
     assert resp.status_code == 200
     return {"cookies": resp.cookies, "data": resp.json()}
 
 
-async def _register_member(client: AsyncClient, admin_cookies, username: str = "memberuser") -> dict:
+async def _register_member(
+    client: AsyncClient, admin_cookies, username: str = "memberuser"
+) -> dict:
     hh_resp = await client.get("/api/household", cookies=admin_cookies)
     invite_code = hh_resp.json()["invite_code"]
     resp = await client.post(
         "/api/auth/register",
-        json={"username": username, "password": "secret123", "invite_code": invite_code},
+        json={
+            "username": username,
+            "password": "secret123",
+            "invite_code": invite_code,
+        },
     )
     assert resp.status_code == 200
     assert resp.json()["role"] == "member"
@@ -129,8 +139,12 @@ async def test_create_ingredient(client: AsyncClient) -> None:
 @pytest.mark.asyncio
 async def test_list_ingredients(client: AsyncClient) -> None:
     admin = await _register_admin(client)
-    await client.post("/api/ingredients", json={"name": "Tomate"}, cookies=admin["cookies"])
-    await client.post("/api/ingredients", json={"name": "Zwiebel"}, cookies=admin["cookies"])
+    await client.post(
+        "/api/ingredients", json={"name": "Tomate"}, cookies=admin["cookies"]
+    )
+    await client.post(
+        "/api/ingredients", json={"name": "Zwiebel"}, cookies=admin["cookies"]
+    )
 
     response = await client.get("/api/ingredients", cookies=admin["cookies"])
     assert response.status_code == 200
@@ -143,11 +157,19 @@ async def test_list_ingredients(client: AsyncClient) -> None:
 @pytest.mark.asyncio
 async def test_search_ingredients(client: AsyncClient) -> None:
     admin = await _register_admin(client)
-    await client.post("/api/ingredients", json={"name": "Pouletbrust"}, cookies=admin["cookies"])
-    await client.post("/api/ingredients", json={"name": "Pouletschenkel"}, cookies=admin["cookies"])
-    await client.post("/api/ingredients", json={"name": "Tomate"}, cookies=admin["cookies"])
+    await client.post(
+        "/api/ingredients", json={"name": "Pouletbrust"}, cookies=admin["cookies"]
+    )
+    await client.post(
+        "/api/ingredients", json={"name": "Pouletschenkel"}, cookies=admin["cookies"]
+    )
+    await client.post(
+        "/api/ingredients", json={"name": "Tomate"}, cookies=admin["cookies"]
+    )
 
-    response = await client.get("/api/ingredients", params={"q": "poulet"}, cookies=admin["cookies"])
+    response = await client.get(
+        "/api/ingredients", params={"q": "poulet"}, cookies=admin["cookies"]
+    )
     assert response.status_code == 200
     data = response.json()
     assert len(data) == 2
@@ -159,25 +181,35 @@ async def test_search_ingredients(client: AsyncClient) -> None:
 @pytest.mark.asyncio
 async def test_create_duplicate_ingredient(client: AsyncClient) -> None:
     admin = await _register_admin(client)
-    await client.post("/api/ingredients", json={"name": "Tomate"}, cookies=admin["cookies"])
-    response = await client.post("/api/ingredients", json={"name": "Tomate"}, cookies=admin["cookies"])
+    await client.post(
+        "/api/ingredients", json={"name": "Tomate"}, cookies=admin["cookies"]
+    )
+    response = await client.post(
+        "/api/ingredients", json={"name": "Tomate"}, cookies=admin["cookies"]
+    )
     assert response.status_code == 409
 
 
 @pytest.mark.asyncio
 async def test_create_ingredient_empty_name(client: AsyncClient) -> None:
     admin = await _register_admin(client)
-    response = await client.post("/api/ingredients", json={"name": ""}, cookies=admin["cookies"])
+    response = await client.post(
+        "/api/ingredients", json={"name": ""}, cookies=admin["cookies"]
+    )
     assert response.status_code == 422
 
 
 @pytest.mark.asyncio
 async def test_list_ingredients_returns_conversion_fields(client: AsyncClient) -> None:
     admin = await _register_admin(client)
-    response = await client.post("/api/ingredients", json={"name": "Mehl"}, cookies=admin["cookies"])
+    response = await client.post(
+        "/api/ingredients", json={"name": "Mehl"}, cookies=admin["cookies"]
+    )
     assert response.status_code == 201
 
-    response = await client.get("/api/ingredients", params={"q": "Mehl"}, cookies=admin["cookies"])
+    response = await client.get(
+        "/api/ingredients", params={"q": "Mehl"}, cookies=admin["cookies"]
+    )
     assert response.status_code == 200
     data = response.json()
     assert len(data) == 1
@@ -196,10 +228,14 @@ async def test_list_ingredients_returns_conversion_fields(client: AsyncClient) -
 @pytest.mark.asyncio
 async def test_get_ingredient_returns_conversion_fields(client: AsyncClient) -> None:
     admin = await _register_admin(client)
-    response = await client.post("/api/ingredients", json={"name": "Zucker"}, cookies=admin["cookies"])
+    response = await client.post(
+        "/api/ingredients", json={"name": "Zucker"}, cookies=admin["cookies"]
+    )
     ingredient_id = response.json()["id"]
 
-    response = await client.get(f"/api/ingredients/{ingredient_id}", cookies=admin["cookies"])
+    response = await client.get(
+        f"/api/ingredients/{ingredient_id}", cookies=admin["cookies"]
+    )
     assert response.status_code == 200
     data = response.json()
     assert data["id"] == ingredient_id
@@ -218,7 +254,9 @@ async def test_get_ingredient_not_found(client: AsyncClient) -> None:
 @pytest.mark.asyncio
 async def test_patch_ingredient_set_conversion(client: AsyncClient) -> None:
     admin = await _register_admin(client)
-    response = await client.post("/api/ingredients", json={"name": "Salz"}, cookies=admin["cookies"])
+    response = await client.post(
+        "/api/ingredients", json={"name": "Salz"}, cookies=admin["cookies"]
+    )
     ingredient_id = response.json()["id"]
 
     response = await client.patch(
@@ -235,7 +273,9 @@ async def test_patch_ingredient_set_conversion(client: AsyncClient) -> None:
 @pytest.mark.asyncio
 async def test_patch_ingredient_mutual_exclusivity(client: AsyncClient) -> None:
     admin = await _register_admin(client)
-    response = await client.post("/api/ingredients", json={"name": "Honig"}, cookies=admin["cookies"])
+    response = await client.post(
+        "/api/ingredients", json={"name": "Honig"}, cookies=admin["cookies"]
+    )
     ingredient_id = response.json()["id"]
 
     response = await client.patch(
@@ -249,7 +289,9 @@ async def test_patch_ingredient_mutual_exclusivity(client: AsyncClient) -> None:
 @pytest.mark.asyncio
 async def test_patch_ingredient_clear_value(client: AsyncClient) -> None:
     admin = await _register_admin(client)
-    response = await client.post("/api/ingredients", json={"name": "Butter"}, cookies=admin["cookies"])
+    response = await client.post(
+        "/api/ingredients", json={"name": "Butter"}, cookies=admin["cookies"]
+    )
     ingredient_id = response.json()["id"]
 
     await client.patch(
@@ -282,7 +324,9 @@ async def test_patch_ingredient_not_found(client: AsyncClient) -> None:
 @pytest.mark.asyncio
 async def test_patch_ingredient_mutual_exclusivity_tl(client: AsyncClient) -> None:
     admin = await _register_admin(client)
-    response = await client.post("/api/ingredients", json={"name": "Zimt"}, cookies=admin["cookies"])
+    response = await client.post(
+        "/api/ingredients", json={"name": "Zimt"}, cookies=admin["cookies"]
+    )
     ingredient_id = response.json()["id"]
 
     response = await client.patch(
@@ -296,7 +340,9 @@ async def test_patch_ingredient_mutual_exclusivity_tl(client: AsyncClient) -> No
 @pytest.mark.asyncio
 async def test_post_ingredient_unchanged(client: AsyncClient) -> None:
     admin = await _register_admin(client)
-    response = await client.post("/api/ingredients", json={"name": "Käse"}, cookies=admin["cookies"])
+    response = await client.post(
+        "/api/ingredients", json={"name": "Käse"}, cookies=admin["cookies"]
+    )
     assert response.status_code == 201
     data = response.json()
     assert data["name"] == "Käse"
@@ -306,7 +352,9 @@ async def test_post_ingredient_unchanged(client: AsyncClient) -> None:
 @pytest.mark.asyncio
 async def test_patch_ingredient_msp_conversion(client: AsyncClient) -> None:
     admin = await _register_admin(client)
-    response = await client.post("/api/ingredients", json={"name": "Muskat"}, cookies=admin["cookies"])
+    response = await client.post(
+        "/api/ingredients", json={"name": "Muskat"}, cookies=admin["cookies"]
+    )
     ingredient_id = response.json()["id"]
 
     response = await client.patch(
@@ -382,7 +430,9 @@ async def test_add_alias_unauthenticated(client: AsyncClient) -> None:
 @pytest.mark.asyncio
 async def test_patch_ingredient_rename(client: AsyncClient) -> None:
     admin = await _register_admin(client)
-    response = await client.post("/api/ingredients", json={"name": "Rüebli"}, cookies=admin["cookies"])
+    response = await client.post(
+        "/api/ingredients", json={"name": "Rüebli"}, cookies=admin["cookies"]
+    )
     ingredient_id = response.json()["id"]
 
     response = await client.patch(
@@ -398,8 +448,12 @@ async def test_patch_ingredient_rename(client: AsyncClient) -> None:
 @pytest.mark.asyncio
 async def test_patch_ingredient_rename_duplicate(client: AsyncClient) -> None:
     admin = await _register_admin(client)
-    await client.post("/api/ingredients", json={"name": "Apfel"}, cookies=admin["cookies"])
-    response = await client.post("/api/ingredients", json={"name": "Birne"}, cookies=admin["cookies"])
+    await client.post(
+        "/api/ingredients", json={"name": "Apfel"}, cookies=admin["cookies"]
+    )
+    response = await client.post(
+        "/api/ingredients", json={"name": "Birne"}, cookies=admin["cookies"]
+    )
     birne_id = response.json()["id"]
 
     response = await client.patch(
@@ -424,13 +478,19 @@ async def test_patch_ingredient_rename_not_found(client: AsyncClient) -> None:
 @pytest.mark.asyncio
 async def test_delete_ingredient(client: AsyncClient) -> None:
     admin = await _register_admin(client)
-    response = await client.post("/api/ingredients", json={"name": "Randen"}, cookies=admin["cookies"])
+    response = await client.post(
+        "/api/ingredients", json={"name": "Randen"}, cookies=admin["cookies"]
+    )
     ingredient_id = response.json()["id"]
 
-    response = await client.delete(f"/api/ingredients/{ingredient_id}", cookies=admin["cookies"])
+    response = await client.delete(
+        f"/api/ingredients/{ingredient_id}", cookies=admin["cookies"]
+    )
     assert response.status_code == 204
 
-    response = await client.get(f"/api/ingredients/{ingredient_id}", cookies=admin["cookies"])
+    response = await client.get(
+        f"/api/ingredients/{ingredient_id}", cookies=admin["cookies"]
+    )
     assert response.status_code == 404
 
 

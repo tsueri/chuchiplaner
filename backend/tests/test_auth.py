@@ -86,7 +86,11 @@ async def test_register_success(client: AsyncClient) -> None:
 async def test_register_cookie_no_secure_by_default(client: AsyncClient) -> None:
     response = await client.post(
         "/api/auth/register",
-        json={"username": "nosecure", "password": "secret123"},
+        json={
+            "username": "nosecure",
+            "password": "secret123",
+            "admin_signup_code": "test-secret",
+        },
     )
     assert response.status_code == 200
     set_cookie = response.headers.get("set-cookie")
@@ -99,7 +103,11 @@ async def test_register_cookie_no_secure_by_default(client: AsyncClient) -> None
 async def test_login_cookie_default_attributes(client: AsyncClient) -> None:
     await client.post(
         "/api/auth/register",
-        json={"username": "cookiedef", "password": "secret123"},
+        json={
+            "username": "cookiedef",
+            "password": "secret123",
+            "admin_signup_code": "test-secret",
+        },
     )
     response = await client.post(
         "/api/auth/login",
@@ -394,7 +402,11 @@ async def test_change_password_new_too_short_7chars(client: AsyncClient) -> None
     """7-character new_password should be rejected, same as register case."""
     register_resp = await client.post(
         "/api/auth/register",
-        json={"username": "pwuser5", "password": "secret123"},
+        json={
+            "username": "pwuser5",
+            "password": "secret123",
+            "admin_signup_code": "test-secret",
+        },
     )
     cookies = register_resp.cookies
     response = await client.put(
@@ -427,7 +439,11 @@ async def test_login_nonexistent_identical_to_wrong_password(
     """Unknown-user 401 response equals wrong-password 401 response."""
     await client.post(
         "/api/auth/register",
-        json={"username": "identuser", "password": "secret123"},
+        json={
+            "username": "identuser",
+            "password": "secret123",
+            "admin_signup_code": "test-secret",
+        },
     )
     wrong_pw_resp = await client.post(
         "/api/auth/login",
@@ -449,7 +465,11 @@ async def test_login_constant_time_verify(
     """Both branches call verify_password once; dummy hash for unknown user."""
     await client.post(
         "/api/auth/register",
-        json={"username": "ctuser", "password": "secret123"},
+        json={
+            "username": "ctuser",
+            "password": "secret123",
+            "admin_signup_code": "test-secret",
+        },
     )
 
     from app.api import auth as auth_module
@@ -505,7 +525,11 @@ async def test_session_middleware_does_not_log_cookies(
 
     await client.post(
         "/api/auth/register",
-        json={"username": "logtest", "password": "secret123"},
+        json={
+            "username": "logtest",
+            "password": "secret123",
+            "admin_signup_code": "test-secret",
+        },
     )
     await client.post(
         "/api/auth/login",

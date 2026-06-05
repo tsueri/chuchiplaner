@@ -3,12 +3,30 @@ import socket
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from app.services.scraper import (
     RecipeScraper,
     SSRFBlockedError,
     resolve_and_validate_host,
     validate_url_syntax,
 )
+
+
+@pytest.fixture(autouse=True)
+def _speedup_scraper_rate_limit(request: pytest.FixtureRequest) -> None:
+    """Reset the class-level rate-limit sleep to zero for test speed.
+
+    Skip ``test_sync_and_rate_limit_still_intact`` which asserts
+    ``_rate_limit_seconds > 0``.
+    """
+    skip = request.node.name == "test_sync_and_rate_limit_still_intact"
+    if not skip:
+        original = RecipeScraper._rate_limit_seconds
+        RecipeScraper._rate_limit_seconds = 0.0
+    yield
+    if not skip:
+        RecipeScraper._rate_limit_seconds = original
 
 
 def make_mock_scraper(**kwargs: Any) -> MagicMock:

@@ -172,7 +172,11 @@ async def test_login_rate_limited_by_ip(client: AsyncClient) -> None:
     # Register a user first so the requests are valid
     await client.post(
         "/api/auth/register",
-        json={"username": "rltest1", "password": "secret123"},
+        json={
+            "username": "rltest1",
+            "password": "secret123",
+            "admin_signup_code": "test-secret",
+        },
     )
 
     for i in range(5):
@@ -196,7 +200,11 @@ async def test_login_rate_limited_by_username(client: AsyncClient) -> None:
     """6 login attempts for the same username → 429 (username bucket exhausts)."""
     await client.post(
         "/api/auth/register",
-        json={"username": "rltest2", "password": "secret123"},
+        json={
+            "username": "rltest2",
+            "password": "secret123",
+            "admin_signup_code": "test-secret",
+        },
     )
 
     for i in range(5):
@@ -220,14 +228,22 @@ async def test_register_rate_limited_by_ip(client: AsyncClient) -> None:
     for i in range(3):
         resp = await client.post(
             "/api/auth/register",
-            json={"username": f"rlreg{i}", "password": "secret123"},
+            json={
+                "username": f"rlreg{i}",
+                "password": "secret123",
+                "admin_signup_code": "test-secret",
+            },
         )
         assert resp.status_code == 200, f"Registration {i} should succeed"
 
     # 4th should be rate-limited
     resp = await client.post(
         "/api/auth/register",
-        json={"username": "rlreg99", "password": "secret123"},
+        json={
+            "username": "rlreg99",
+            "password": "secret123",
+            "admin_signup_code": "test-secret",
+        },
     )
     assert resp.status_code == 429
 
@@ -238,7 +254,11 @@ async def test_password_change_rate_limited_by_ip(client: AsyncClient) -> None:
     # Register and get cookies
     reg_resp = await client.post(
         "/api/auth/register",
-        json={"username": "rlpwuser", "password": "secret123"},
+        json={
+            "username": "rlpwuser",
+            "password": "secret123",
+            "admin_signup_code": "test-secret",
+        },
     )
     cookies = reg_resp.cookies
 
@@ -267,7 +287,11 @@ async def test_x_forwarded_for_not_trusted_by_default(client: AsyncClient) -> No
     """When trust_proxy_headers is False (default), X-Forwarded-For is ignored."""
     await client.post(
         "/api/auth/register",
-        json={"username": "rlfwd1", "password": "secret123"},
+        json={
+            "username": "rlfwd1",
+            "password": "secret123",
+            "admin_signup_code": "test-secret",
+        },
     )
 
     # All requests come from test client IP; X-Forwarded-For is ignored
