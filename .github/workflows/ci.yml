@@ -2,6 +2,7 @@ name: CI
 
 permissions:
   contents: read
+  actions: write
 
 on:
   push:
@@ -40,3 +41,45 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
+
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: astral-sh/setup-uv@v8.2.0
+        with:
+          python-version: "3.12"
+
+      - name: pip-audit (backend)
+        working-directory: backend
+        run: |
+          uv sync --frozen
+          uv run pip-audit --format json > audit-backend.json
+
+      - name: Upload pip-audit results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: audit-backend
+          path: backend/audit-backend.json
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: npm audit (frontend)
+        working-directory: frontend
+        run: |
+          npm ci
+          npm audit --audit-level=high 2>&1 | tee audit-frontend.txt
+          exit ${PIPESTATUS[0]}
+
+      - name: Upload npm audit results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: audit-frontend
+          path: frontend/audit-frontend.txt

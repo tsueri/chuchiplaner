@@ -24,6 +24,7 @@ dev = [
     "ruff>=0.8.0",
     "mypy>=1.14.0",
     "types-passlib>=1.7.7.20260211",
+    "pip-audit>=2.8.0",
 ]
 
 [tool.pytest.ini_options]
