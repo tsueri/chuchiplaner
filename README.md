@@ -54,7 +54,7 @@ Runs backend and frontend as separate containers with live-reload and hot module
 docker compose up --build
 ```
 
-Builds a single Python container (multi-stage Dockerfile: builds the React frontend, copies the static bundle into the FastAPI app, runs migrations), then serves everything on `http://localhost:8000`. The SQLite database is persisted in `./data/` and daily backups are kept in `./backups/` (7-day retention).
+Builds a single Python container (multi-stage Dockerfile: builds the React frontend, copies the static bundle into the FastAPI app), then runs database migrations on startup and serves everything on `http://localhost:8000`. The SQLite database is persisted in `./data/` and daily backups are kept in `./backups/` (7-day retention).
 
 To run without the backup sidecar:
 
