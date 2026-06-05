@@ -375,27 +375,28 @@ async def _persist_recipe_aliases(
     body: RecipeSaveRequest,
     household_id: int | None,
 ) -> None:
-    for alias_item in body.learned_aliases:
-        ing_result = await db.execute(
-            select(Ingredient).where(Ingredient.id == alias_item.ingredient_id)
-        )
-        if ing_result.scalar_one_or_none() is None:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    f"Ungültiger ingredient_id: "
-                    f"Zutat mit ID {alias_item.ingredient_id} existiert nicht."
-                ),
+    with db.no_autoflush:
+        for alias_item in body.learned_aliases:
+            ing_result = await db.execute(
+                select(Ingredient).where(Ingredient.id == alias_item.ingredient_id)
             )
-        alias = IngredientAlias(
-            household_id=household_id,
-            alias_name=alias_item.alias_name,
-            ingredient_id=alias_item.ingredient_id,
-        )
-        db.add(alias)
-    try:
-        await db.flush()
-    except IntegrityError:
+            if ing_result.scalar_one_or_none() is None:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=(
+                        f"Ungültiger ingredient_id: "
+                        f"Zutat mit ID {alias_item.ingredient_id} existiert nicht."
+                    ),
+                )
+            alias = IngredientAlias(
+                household_id=household_id,
+                alias_name=alias_item.alias_name,
+                ingredient_id=alias_item.ingredient_id,
+            )
+            db.add(alias)
+        try:
+            await db.flush()
+        except IntegrityError:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
