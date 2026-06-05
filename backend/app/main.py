@@ -1,3 +1,4 @@
+import logging
 import os
 
 from fastapi import FastAPI
@@ -20,8 +21,17 @@ from app.core.config import settings
 from app.core.middleware import SessionMiddleware
 from app.core.security_headers import SecurityHeadersMiddleware
 
+logger = logging.getLogger("chuchiplaner")
+
 
 def create_app() -> FastAPI:
+    if not settings.cors_origins and settings.signup_enabled:
+        logger.warning(
+            "Security: cors_origins is empty and signup_enabled is True. "
+            "Set CHUCHI_CORS_ORIGINS to a comma-separated list of allowed "
+            "origins, or set CHUCHI_SIGNUP_ENABLED=false."
+        )
+
     app = FastAPI(title=settings.app_name, version=settings.app_version)
 
     app.add_middleware(

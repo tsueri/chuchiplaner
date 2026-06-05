@@ -73,7 +73,7 @@ All settings use the `CHUCHI_` prefix. Copy `.env.example` to `.env` and adjust 
 | `CHUCHI_APP_NAME` | `Chuchiplaner` | Application name |
 | `CHUCHI_APP_VERSION` | `0.1.0` | Application version |
 | `CHUCHI_DATABASE_URL` | `sqlite+aiosqlite:///./chuchiplaner.db` | SQLite database path (SQLAlchemy URL) |
-| `CHUCHI_CORS_ORIGINS` | `["http://localhost:5173"]` | Allowed CORS origins (JSON list) |
+| `CHUCHI_CORS_ORIGINS` | `""` (empty) | Allowed CORS origins (comma-separated). Set to your frontend origin(s) in production, e.g. `https://app.example.com`. For local dev: `http://localhost:5173`. |
 | `CHUCHI_SIGNUP_ENABLED` | `true` | Whether new users can register |
 | `CHUCHI_ADMIN_SIGNUP_CODE` | `""` | If non-empty, registration requires a valid household invite code |
 
