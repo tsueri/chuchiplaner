@@ -145,7 +145,7 @@ class IngredientLLMResolver:
         self,
         base_url: str = "http://ollama:11434",
         model: str | None = None,
-        timeout: float = 10.0,
+        timeout: float = 60.0,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._model = model or os.environ.get("OLLAMA_MODEL", "qwen3.5:2b")
