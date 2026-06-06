@@ -14,7 +14,9 @@ while true; do
     timestamp=$(date +%Y-%m-%d)
     backup_file="$BACKUP_DIR/chuchiplaner-${timestamp}.db"
 
-    if cp "$DB_PATH" "$backup_file" 2>/dev/null; then
+    if [ ! -f "$DB_PATH" ]; then
+        echo "$(date -Iseconds) backup skipped: $DB_PATH not found" >&2
+    elif cp "$DB_PATH" "$backup_file" 2>/dev/null; then
         echo "$(date -Iseconds) backup created: $backup_file"
     else
         echo "$(date -Iseconds) backup FAILED: could not copy $DB_PATH" >&2
