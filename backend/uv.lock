@@ -395,6 +395,8 @@ dependencies = [
     { name = "passlib" },
     { name = "recipe-scrapers" },
     { name = "sqlalchemy", extra = ["asyncio"] },
+    { name = "torch" },
+    { name = "transformers" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
@@ -408,10 +410,6 @@ dev = [
     { name = "pytest-xdist" },
     { name = "ruff" },
     { name = "types-passlib" },
-]
-inference = [
-    { name = "torch" },
-    { name = "transformers" },
 ]
 training = [
     { name = "datasets" },
@@ -428,6 +426,8 @@ requires-dist = [
     { name = "passlib", specifier = ">=1.7.4" },
     { name = "recipe-scrapers", specifier = ">=15.0.0" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.36" },
+    { name = "torch", specifier = ">=2.0" },
+    { name = "transformers", specifier = ">=4.40" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.34.0" },
 ]
 
@@ -441,10 +441,6 @@ dev = [
     { name = "pytest-xdist", specifier = ">=3.6" },
     { name = "ruff", specifier = ">=0.8.0" },
     { name = "types-passlib", specifier = ">=1.7.7.20260211" },
-]
-inference = [
-    { name = "torch", specifier = ">=2.0" },
-    { name = "transformers", specifier = ">=4.40" },
 ]
 training = [
     { name = "datasets", specifier = ">=2.14" },

@@ -13,6 +13,8 @@ dependencies = [
     "passlib>=1.7.4",
     "recipe-scrapers>=15.0.0",
     "httpx>=0.28.0",
+    "transformers>=4.40",
+    "torch>=2.0",
 ]
 
 [dependency-groups]
@@ -30,11 +32,6 @@ dev = [
 training = [
     "openai>=1.0",
     "datasets>=2.14",
-]
-
-inference = [
-    "transformers>=4.40",
-    "torch>=2.0",
 ]
 
 [tool.pytest.ini_options]
