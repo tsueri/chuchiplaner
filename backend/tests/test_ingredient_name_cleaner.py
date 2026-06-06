@@ -1,9 +1,13 @@
 from unittest.mock import MagicMock
 
+import pytest
+
 from app.services.ingredient_name_cleaner import (
     IngredientNameCleaner,
     model_available,
 )
+
+pytest.importorskip("torch")
 
 
 class _MockTokenizer:
