@@ -48,6 +48,8 @@ interface RecipeIngredientPayload {
   quantity: number
   unit: string
   order_index: number
+  suggested_ingredient_name: string | null
+  original_name: string | null
 }
 
 interface RecipeStepPayload {
@@ -75,6 +77,7 @@ interface ScrapedIngredientItem {
   unit: string | null
   ingredient_id: number | null
   confidence: number
+  suggested_ingredient_name: string | null
 }
 
 interface ScrapedStepItem {
@@ -336,17 +339,23 @@ export default function RecipeFormPage() {
           (item, idx) => {
             const isLocked =
               item.confidence >= 1.0 && item.ingredient_id !== null
+            const suggestedName = item.suggested_ingredient_name ?? null
             return {
               key: `import-${idx}`,
               ingredientId: isLocked ? (item.ingredient_id as number) : null,
               ingredientName: isLocked ? item.name : "",
-              query: isLocked ? "" : (item.raw || item.name),
+              query: isLocked
+                ? ""
+                : suggestedName
+                  ? suggestedName
+                  : (item.raw || item.name),
               quantity: item.quantity !== null ? String(item.quantity) : "",
               unit: item.unit || "g",
               suggestedIngredientId:
                 !isLocked && item.ingredient_id !== null
                   ? (item.ingredient_id as number)
                   : null,
+              suggestedIngredientName: suggestedName,
               confidence: item.confidence,
               raw: item.raw,
             }
@@ -423,12 +432,16 @@ export default function RecipeFormPage() {
     setError(null)
     try {
       const ingredients: RecipeIngredientPayload[] = rows
-        .filter((r) => r.ingredientId !== null)
+        .filter(
+          (r) => r.ingredientId !== null || r.suggestedIngredientName !== null
+        )
         .map((r, idx) => ({
-          ingredient_id: r.ingredientId as number,
+          ingredient_id: r.ingredientId !== null ? (r.ingredientId as number) : 0,
           quantity: parseQuantity(r.quantity),
           unit: r.unit,
           order_index: idx,
+          suggested_ingredient_name: r.suggestedIngredientName,
+          original_name: !r.ingredientId && r.suggestedIngredientName ? r.raw : null,
         }))
       const stepsPayload: RecipeStepPayload[] =
         mode === "extended"

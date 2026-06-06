@@ -28,6 +28,7 @@ from app.schemas.recipe import (
     RecipeDetailResponse,
     RecipeFavoriteResponse,
     RecipeImportRequest,
+    RecipeIngredientItem,
     RecipeIngredientResponse,
     RecipeListResponse,
     RecipeNoteCreateRequest,
@@ -423,6 +424,48 @@ async def _persist_recipe_aliases(
             await db.flush()
 
 
+async def _resolve_suggested_ingredients(
+    db: AsyncSession,
+    ingredients: list[RecipeIngredientItem],
+    household_id: int,
+) -> list[RecipeIngredientItem]:
+    resolved: list[RecipeIngredientItem] = []
+    for item in ingredients:
+        ingredient_id = item.ingredient_id
+        if item.suggested_ingredient_name:
+            existing_result = await db.execute(
+                select(Ingredient).where(
+                    Ingredient.name == item.suggested_ingredient_name
+                )
+            )
+            existing = existing_result.scalar_one_or_none()
+            if existing:
+                ingredient_id = existing.id
+            else:
+                new_ing = Ingredient(name=item.suggested_ingredient_name)
+                db.add(new_ing)
+                await db.flush()
+                ingredient_id = new_ing.id
+
+            if item.original_name:
+                alias = IngredientAlias(
+                    household_id=household_id,
+                    alias_name=item.original_name,
+                    ingredient_id=ingredient_id,
+                )
+                db.add(alias)
+
+        resolved.append(
+            RecipeIngredientItem(
+                ingredient_id=ingredient_id,
+                quantity=item.quantity,
+                unit=item.unit,
+                order_index=item.order_index,
+            )
+        )
+    return resolved
+
+
 async def _upsert_recipe(
     db: AsyncSession,
     body: RecipeSaveRequest,
@@ -432,7 +475,10 @@ async def _upsert_recipe(
     _assign_recipe_fields(existing, body)
 
     if body.ingredients is not None:
-        for item in body.ingredients:
+        resolved_ingredients = await _resolve_suggested_ingredients(
+            db, body.ingredients, current_user.household_id
+        )
+        for item in resolved_ingredients:
             ing_result = await db.execute(
                 select(Ingredient).where(Ingredient.id == item.ingredient_id)
             )
@@ -448,7 +494,7 @@ async def _upsert_recipe(
         for existing_ing in list(existing.ingredients):
             existing.ingredients.remove(existing_ing)
 
-        for idx, item in enumerate(body.ingredients):
+        for idx, item in enumerate(resolved_ingredients):
             new_ri = RecipeIngredient(
                 recipe_id=existing.id,
                 ingredient_id=item.ingredient_id,
@@ -577,7 +623,10 @@ async def create_recipe(
             )
         await db.flush()
 
-    for item in body.ingredients:
+    resolved_ingredients = await _resolve_suggested_ingredients(
+        db, body.ingredients, current_user.household_id
+    )
+    for item in resolved_ingredients:
         recipe_ingredient = RecipeIngredient(
             recipe_id=recipe.id,
             ingredient_id=item.ingredient_id,

@@ -563,8 +563,8 @@ describe("RecipeFormPage ingredient rows", () => {
     ) as [string, RequestInit]
     const body = JSON.parse(recipeCall[1].body as string)
     expect(body.ingredients).toEqual([
-      { ingredient_id: 1, quantity: 500, unit: "g", order_index: 0 },
-      { ingredient_id: 2, quantity: 1, unit: "Stück", order_index: 1 },
+      { ingredient_id: 1, quantity: 500, unit: "g", order_index: 0, suggested_ingredient_name: null, original_name: null },
+      { ingredient_id: 2, quantity: 1, unit: "Stück", order_index: 1, suggested_ingredient_name: null, original_name: null },
     ])
   })
 })

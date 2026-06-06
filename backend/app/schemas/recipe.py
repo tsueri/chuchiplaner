@@ -154,6 +154,8 @@ class RecipeIngredientItem(BaseModel):
     quantity: float
     unit: str = Field(min_length=1, max_length=50)
     order_index: int = 0
+    suggested_ingredient_name: str | None = None
+    original_name: str | None = None
 
 
 class TagResponse(BaseModel):

@@ -2030,6 +2030,175 @@ async def test_create_recipe_persists_learned_aliases(client: AsyncClient) -> No
     assert aliases[0]["ingredient_id"] == ingredient_id
 
 
+# ----- Suggested ingredient creation (#94) -----
+
+
+@pytest.mark.asyncio
+async def test_create_recipe_with_suggested_ingredient_creates_ingredient_and_alias(
+    client: AsyncClient,
+) -> None:
+    auth = await _register(client, "suggestuser")
+    cookies = auth["cookies"]
+
+    resp = await client.post(
+        "/api/recipes",
+        json={
+            "title": "Suggestion Recipe",
+            "instructions": "Cook.",
+            "servings": 2,
+            "ingredients": [
+                {
+                    "ingredient_id": 0,
+                    "quantity": 500,
+                    "unit": "g",
+                    "order_index": 0,
+                    "suggested_ingredient_name": "Zucchetti",
+                    "original_name": "Zucchetti",
+                },
+            ],
+        },
+        cookies=cookies,
+    )
+    assert resp.status_code == 201
+    data = resp.json()
+    assert len(data["ingredients"]) == 1
+    assert data["ingredients"][0]["ingredient_name"] == "Zucchetti"
+    new_ingredient_id = data["ingredients"][0]["ingredient_id"]
+
+    ing_resp = await client.get(
+        f"/api/ingredients/{new_ingredient_id}", cookies=cookies
+    )
+    assert ing_resp.status_code == 200
+    assert ing_resp.json()["name"] == "Zucchetti"
+
+    alias_resp = await client.get("/api/household/aliases", cookies=cookies)
+    assert alias_resp.status_code == 200
+    aliases = alias_resp.json()
+    assert len(aliases) == 1
+    assert aliases[0]["alias_name"] == "Zucchetti"
+    assert aliases[0]["ingredient_id"] == new_ingredient_id
+
+
+@pytest.mark.asyncio
+async def test_create_recipe_suggested_ingredient_without_original_name(
+    client: AsyncClient,
+) -> None:
+    auth = await _register(client, "suggestnoorig")
+    cookies = auth["cookies"]
+
+    resp = await client.post(
+        "/api/recipes",
+        json={
+            "title": "No Original",
+            "instructions": "Cook.",
+            "servings": 2,
+            "ingredients": [
+                {
+                    "ingredient_id": 0,
+                    "quantity": 200,
+                    "unit": "ml",
+                    "order_index": 0,
+                    "suggested_ingredient_name": "Rahm",
+                },
+            ],
+        },
+        cookies=cookies,
+    )
+    assert resp.status_code == 201
+    data = resp.json()
+    assert len(data["ingredients"]) == 1
+    assert data["ingredients"][0]["ingredient_name"] == "Rahm"
+
+    alias_resp = await client.get("/api/household/aliases", cookies=cookies)
+    assert alias_resp.status_code == 200
+    assert alias_resp.json() == []
+
+
+@pytest.mark.asyncio
+async def test_create_recipe_suggested_existing_ingredient_reuses(
+    client: AsyncClient,
+) -> None:
+    auth = await _register(client, "suggestexist")
+    cookies = auth["cookies"]
+
+    existing = await client.post(
+        "/api/ingredients", json={"name": "Tomaten"}, cookies=cookies
+    )
+    existing_id = existing.json()["id"]
+
+    resp = await client.post(
+        "/api/recipes",
+        json={
+            "title": "Reuse Existing",
+            "instructions": "Cook.",
+            "servings": 2,
+            "ingredients": [
+                {
+                    "ingredient_id": 0,
+                    "quantity": 300,
+                    "unit": "g",
+                    "order_index": 0,
+                    "suggested_ingredient_name": "Tomaten",
+                },
+            ],
+        },
+        cookies=cookies,
+    )
+    assert resp.status_code == 201
+    data = resp.json()
+    assert len(data["ingredients"]) == 1
+    assert data["ingredients"][0]["ingredient_id"] == existing_id
+    assert data["ingredients"][0]["ingredient_name"] == "Tomaten"
+
+
+@pytest.mark.asyncio
+async def test_upsert_recipe_with_suggested_ingredient(
+    client: AsyncClient,
+) -> None:
+    auth = await _register(client, "upsertsuggest")
+    cookies = auth["cookies"]
+
+    await client.post(
+        "/api/recipes",
+        json={
+            "title": "Original",
+            "instructions": "Cook.",
+            "source_url": "https://example.com/suggest-upsert",
+            "servings": 2,
+        },
+        cookies=cookies,
+    )
+
+    resp = await client.post(
+        "/api/recipes",
+        json={
+            "reimport": True,
+            "title": "Updated",
+            "source_url": "https://example.com/suggest-upsert",
+            "ingredients": [
+                {
+                    "ingredient_id": 0,
+                    "quantity": 250,
+                    "unit": "g",
+                    "order_index": 0,
+                    "suggested_ingredient_name": "Fenchel",
+                    "original_name": "Fenchel",
+                },
+            ],
+        },
+        cookies=cookies,
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data["ingredients"]) == 1
+    assert data["ingredients"][0]["ingredient_name"] == "Fenchel"
+    new_id = data["ingredients"][0]["ingredient_id"]
+
+    ing_resp = await client.get(f"/api/ingredients/{new_id}", cookies=cookies)
+    assert ing_resp.status_code == 200
+    assert ing_resp.json()["name"] == "Fenchel"
+
+
 # ----- Source URL duplicate checks -----
 
 

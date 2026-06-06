@@ -20,6 +20,7 @@ export interface EditableIngredientValue {
   quantity: string
   unit: string
   suggestedIngredientId: number | null
+  suggestedIngredientName: string | null
   confidence: number
   raw: string
 }
@@ -36,6 +37,7 @@ export function defaultEditableIngredientValue(): EditableIngredientValue {
     quantity: "",
     unit: "g",
     suggestedIngredientId: null,
+    suggestedIngredientName: null,
     confidence: 0,
     raw: "",
   }
