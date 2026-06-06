@@ -18,11 +18,11 @@ _ML_DEPS_MESSAGE = (
 
 
 def _import_ml_deps() -> tuple[Any, Any, Any, Any, Any]:
-    """Import optional ML packages; exits with error if unavailable."""
+    """Import optional ML packages. Returns (None, ...) on failure."""
     try:
         import torch  # noqa: F401 — required by transformers at runtime
-        from datasets import Dataset
-        from transformers import (
+        from datasets import Dataset  # noqa: F811
+        from transformers import (  # noqa: F811
             AutoModelForTokenClassification,
             AutoTokenizer,
             Trainer,
@@ -37,8 +37,8 @@ def _import_ml_deps() -> tuple[Any, Any, Any, Any, Any]:
             Dataset,
         )
     except ImportError:
-        print(f"Error: {_ML_DEPS_MESSAGE}", file=sys.stderr)
-        sys.exit(1)
+        print(f"Warning: {_ML_DEPS_MESSAGE}", file=sys.stderr)
+        return None, None, None, None, None
 
 
 (
