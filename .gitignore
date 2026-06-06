@@ -12,6 +12,7 @@ media/uploads/
 .mypy_cache/
 .ruff_cache/
 .pytest_cache/
-data/
+/data/
+models/
 backups/
 .codegraph/

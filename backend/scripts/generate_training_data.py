@@ -31,12 +31,14 @@ SITEMAP_NS = "http://www.sitemaps.org/schemas/sitemap/0.9"
 # ---------------------------------------------------------------------------
 
 SITEMAP_URLS = [
-    "https://www.swissmilk.ch/sitemap.xml",
+    "https://www.swissmilk.ch/de/sitemap.xml",
     "https://www.bettybossi.ch/sitemap.xml",
 ]
 FOOBY_RECIPE_URLS: list[str] = []
-DEFAULT_OUTPUT_PATH = "backend/data/training_pairs.jsonl"
-DEFAULT_REVIEW_PATH = "backend/data/training_pairs_review.jsonl"
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_OUTPUT_PATH = str(_REPO_ROOT / "backend/data/training_pairs.jsonl")
+DEFAULT_REVIEW_PATH = str(_REPO_ROOT / "backend/data/training_pairs_review.jsonl")
+DEFAULT_RECIPE_LIMIT = 100
 MAX_LINES_PER_BATCH = 8
 
 
@@ -222,7 +224,7 @@ def split_review_pairs(
     if not pairs:
         return [], []
 
-    rng = random.Random(42)
+    rng = random.Random()
     review_count = max(1, round(len(pairs) * review_fraction))
     review_count = min(review_count, len(pairs))
 
@@ -270,22 +272,27 @@ def generate_training_data(
     output_path: str,
     review_path: str,
     deepseek_api_key: str | None = None,
+    recipe_limit: int = DEFAULT_RECIPE_LIMIT,
 ) -> int:
     """Run the full training data generation pipeline.
 
     1. Checks idempotency — skips if *output_path* already exists.
     2. Collects recipe URLs from configured sitemaps and fooby list.
-    3. Scrapes each recipe and extracts ingredient lines.
-    4. Batches ingredient lines and calls the DeepSeek API to produce
+    3. Randomly samples up to *recipe_limit* URLs (with a fixed seed
+       for reproducibility).
+    4. Scrapes each recipe and extracts ingredient lines.
+    5. Batches ingredient lines and calls the DeepSeek API to produce
        dirty→clean labels.
-    5. Writes labeled pairs to *output_path* as JSONL.
-    6. Splits ~5% into *review_path* for manual inspection.
+    6. Writes labeled pairs to *output_path* as JSONL.
+    7. Splits ~5% into *review_path* for manual inspection.
 
     Args:
         output_path: Path for the main training JSONL file.
         review_path: Path for the human-review JSONL file.
         deepseek_api_key: DeepSeek API key. If ``None``, falls back to
             the ``DEEPSEEK_API_KEY`` environment variable.
+        recipe_limit: Maximum number of recipes to scrape (default 100).
+            URLs are randomly sampled from all collected URLs.
 
     Returns:
         Total number of labeled pairs generated.
@@ -317,6 +324,12 @@ def generate_training_data(
         return 0
 
     print(f"Collected {len(recipe_urls)} recipe URLs.")
+
+    # --- Randomly sample recipes --------------------------------------------
+    if recipe_limit > 0 and len(recipe_urls) > recipe_limit:
+        rng = random.Random()
+        recipe_urls = rng.sample(recipe_urls, recipe_limit)
+        print(f"Randomly sampled {len(recipe_urls)} recipes (limit={recipe_limit}).")
 
     # --- Scrape & label ---------------------------------------------------
     all_pairs: list[dict[str, str]] = []
@@ -452,11 +465,19 @@ def main() -> None:
         default=os.environ.get("DEEPSEEK_API_KEY"),
         help="DeepSeek API key (defaults to DEEPSEEK_API_KEY env var)",
     )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=DEFAULT_RECIPE_LIMIT,
+        metavar="N",
+        help=f"Max recipes to scrape (default: {DEFAULT_RECIPE_LIMIT})",
+    )
     args = parser.parse_args()
 
     try:
         count = generate_training_data(
-            args.output, args.review_output, args.api_key
+            args.output, args.review_output, args.api_key,
+            recipe_limit=args.limit,
         )
         print(f"Generated {count} training pairs.")
     except RuntimeError as e:

@@ -10,10 +10,17 @@ from pathlib import Path
 from typing import Any, NoReturn
 
 
-# Optional ML imports — only needed for training
+_ML_DEPS_MESSAGE = (
+    "ML dependencies required. "
+    "Install with: pip install transformers torch datasets"
+)
+
+
 def _import_ml_deps() -> tuple[Any, Any, Any, Any, Any]:
-    """Import optional ML packages; returns (None, ...) if unavailable."""
+    """Import optional ML packages; exits with error if unavailable."""
     try:
+        import torch  # noqa: F401 — required by transformers at runtime
+
         from datasets import Dataset
         from transformers import (
             AutoModelForTokenClassification,
@@ -30,7 +37,8 @@ def _import_ml_deps() -> tuple[Any, Any, Any, Any, Any]:
             Dataset,
         )
     except ImportError:
-        return (None, None, None, None, None)
+        print(f"Error: {_ML_DEPS_MESSAGE}", file=sys.stderr)
+        sys.exit(1)
 
 
 (
@@ -204,21 +212,6 @@ def fine_tune(
     if output.exists() and (output / "config.json").exists():
         print(f"Model already exists at {output_dir}, skipping.")
         return 0
-
-    if any(
-        x is None
-        for x in (
-            AutoTokenizer,
-            AutoModelForTokenClassification,
-            Trainer,
-            TrainingArguments,
-            Dataset,
-        )
-    ):
-        raise RuntimeError(
-            "ML dependencies required. "
-            "Install with: pip install transformers torch datasets"
-        )
 
     pairs = load_training_data(data_path)
     if not pairs:
