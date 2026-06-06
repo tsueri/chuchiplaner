@@ -1,5 +1,6 @@
 from datetime import UTC
 from datetime import datetime as dt
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.encoders import jsonable_encoder
@@ -51,6 +52,8 @@ from app.services.ingredient_line_parser import IngredientLineParser
 from app.services.normalizer import IngredientNormalizer
 from app.services.nutrition_parser import NutritionParser
 from app.services.scraper import RecipeScraper, SSRFBlockedError, validate_url_syntax
+
+logger = logging.getLogger("chuchiplaner")
 
 router = APIRouter(prefix="/recipes", tags=["recipes"])
 tag_router = APIRouter(prefix="/tags", tags=["tags"])
@@ -238,7 +241,17 @@ async def import_recipe(
                     ingredient_id=resolved_id,
                     confidence=confidence,
                 )
-            )
+                )
+
+    # Remove equipment items (non-food kitchen tools) from the ingredient list
+    equipment_items = [i for i in parsed_items if i.is_equipment]
+    if equipment_items:
+        logger.debug(
+            "Filtered %d equipment items: %s",
+            len(equipment_items),
+            [i.name for i in equipment_items],
+        )
+        parsed_items = [i for i in parsed_items if not i.is_equipment]
 
     steps: list[ScrapedStepItem] = []
     if scraped.instructions:

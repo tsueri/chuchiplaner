@@ -118,17 +118,16 @@ class TestNeedsTier2:
 class TestBuildPrompt:
     def test_includes_ingredients(self) -> None:
         ingredients = {"Mehl": 1, "Zucker": 2}
-        prompt = _build_prompt(["500g Mehl"], ingredients)
+        prompt = _build_prompt("500g Mehl", ingredients)
         assert "Mehl → 1" in prompt
         assert "Zucker → 2" in prompt
 
     def test_includes_raw_lines(self) -> None:
-        prompt = _build_prompt(["500g Mehl", "200g Zucker"], {})
-        assert "[0] 500g Mehl" in prompt
-        assert "[1] 200g Zucker" in prompt
+        prompt = _build_prompt("500g Mehl", {})
+        assert "500g Mehl" in prompt
 
     def test_handles_empty_ingredients(self) -> None:
-        prompt = _build_prompt(["500g Mehl"], {})
+        prompt = _build_prompt("500g Mehl", {})
         assert "keine" in prompt.lower()
 
 
@@ -170,9 +169,9 @@ class TestParseLLMResponse:
         parsed = _parse_llm_response("not json", 2)
         assert parsed == [{}, {}]
 
-    def test_returns_empties_on_non_list(self) -> None:
+    def test_wraps_single_object_into_list(self) -> None:
         parsed = _parse_llm_response('{"foo": "bar"}', 2)
-        assert parsed == [{}, {}]
+        assert parsed == [{"foo": "bar"}, {}]
 
 
 class TestApplyTier2Result:
