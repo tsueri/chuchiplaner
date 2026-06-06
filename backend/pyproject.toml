@@ -29,9 +29,12 @@ dev = [
 
 training = [
     "openai>=1.0",
+    "datasets>=2.14",
+]
+
+inference = [
     "transformers>=4.40",
     "torch>=2.0",
-    "datasets>=2.14",
 ]
 
 [tool.pytest.ini_options]

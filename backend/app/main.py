@@ -46,9 +46,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             )
             logger.info("NER model loaded from %s", model_dir)
         except Exception as e:
-            raise RuntimeError(
-                f"Failed to load NER model from {model_dir}: {e}"
-            ) from e
+            logger.warning(
+                "Failed to load NER model from %s: %s — "
+                "ingredient name cleaning disabled",
+                model_dir,
+                e,
+            )
+            app.state.ingredient_name_cleaner = None
     else:
         logger.warning(
             "NER model not found at %s — ingredient name cleaning disabled",
