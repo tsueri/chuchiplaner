@@ -1,7 +1,7 @@
 from datetime import UTC
 from datetime import datetime as dt
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from sqlalchemy import select
@@ -45,6 +45,7 @@ from app.schemas.recipe import (
     TagResponse,
 )
 from app.services.fts_rebuilder import FTSRebuilder
+from app.services.ingredient_cleanup_pipeline import IngredientCleanupPipeline
 from app.services.ingredient_line_parser import IngredientLineParser
 from app.services.normalizer import IngredientNormalizer
 from app.services.nutrition_parser import NutritionParser
@@ -166,6 +167,7 @@ def _build_recipe_detail(recipe: Recipe, user_id: int) -> RecipeDetailResponse:
 @router.post("/import", response_model=ScrapedRecipeResponse)
 async def import_recipe(
     body: RecipeImportRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> ScrapedRecipeResponse:
@@ -209,26 +211,32 @@ async def import_recipe(
 
     normalizer = IngredientNormalizer(ingredient_map)
 
-    parsed_items: list[ScrapedIngredientItem] = []
-    for raw_line in scraped.ingredients:
-        parsed_line = IngredientLineParser.parse(raw_line)
-        if parsed_line.quantity is not None and parsed_line.name:
-            resolved_id, confidence = normalizer.resolve(
-                parsed_line.name, household_aliases
-            )
-        else:
-            resolved_id, confidence = None, 0.0
+    name_cleaner = getattr(request.app.state, "ingredient_name_cleaner", None)
+    parsed_items: list[ScrapedIngredientItem]
+    if name_cleaner is not None:
+        pipeline = IngredientCleanupPipeline(name_cleaner, normalizer)
+        parsed_items = pipeline.process(scraped.ingredients, household_aliases)
+    else:
+        parsed_items = []
+        for raw_line in scraped.ingredients:
+            parsed_line = IngredientLineParser.parse(raw_line)
+            if parsed_line.quantity is not None and parsed_line.name:
+                resolved_id, confidence = normalizer.resolve(
+                    parsed_line.name, household_aliases
+                )
+            else:
+                resolved_id, confidence = None, 0.0
 
-        parsed_items.append(
-            ScrapedIngredientItem(
-                raw=raw_line,
-                name=parsed_line.name,
-                quantity=parsed_line.quantity,
-                unit=parsed_line.unit,
-                ingredient_id=resolved_id,
-                confidence=confidence,
+            parsed_items.append(
+                ScrapedIngredientItem(
+                    raw=raw_line,
+                    name=parsed_line.name,
+                    quantity=parsed_line.quantity,
+                    unit=parsed_line.unit,
+                    ingredient_id=resolved_id,
+                    confidence=confidence,
+                )
             )
-        )
 
     steps: list[ScrapedStepItem] = []
     if scraped.instructions:

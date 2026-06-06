@@ -72,6 +72,7 @@ class ScrapedIngredientItem(BaseModel):
     unit: str | None = None
     ingredient_id: int | None = None
     confidence: float = 0.0
+    tier1_cleaned_name: str | None = None
 
 
 class ScrapedStepItem(BaseModel):

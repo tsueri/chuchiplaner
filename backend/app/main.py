@@ -30,6 +30,32 @@ logger = logging.getLogger("chuchiplaner")
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     state = "open" if settings.signup_enabled else "closed"
     logger.info("Startup: sign-ups are %s", state)
+
+    from app.services.ingredient_name_cleaner import (
+        IngredientNameCleaner,
+        model_available,
+    )
+
+    model_dir = os.path.join(
+        os.path.dirname(__file__), "..", "models", "ingredient_ner"
+    )
+    if model_available(model_dir):
+        try:
+            app.state.ingredient_name_cleaner = IngredientNameCleaner(
+                model_dir=model_dir
+            )
+            logger.info("NER model loaded from %s", model_dir)
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to load NER model from {model_dir}: {e}"
+            ) from e
+    else:
+        logger.warning(
+            "NER model not found at %s — ingredient name cleaning disabled",
+            model_dir,
+        )
+        app.state.ingredient_name_cleaner = None
+
     yield
 
 
