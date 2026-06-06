@@ -182,11 +182,31 @@ class IngredientLLMResolver:
                 response.raise_for_status()
                 data = response.json()
                 raw_text: str = data.get("response", "")
+                logger.debug(
+                    "LLM raw response (%d bytes): %s",
+                    len(raw_text),
+                    raw_text[:2000],
+                )
         except Exception:
             logger.exception("LLM resolver request failed")
             return [{} for _ in items]
 
         parsed = _parse_llm_response(raw_text, len(items))
+        valid_count = sum(1 for p in parsed if p)
+        logger.info(
+            "LLM parsed %d/%d items, raw text length=%d",
+            valid_count,
+            len(items),
+            len(raw_text),
+        )
+        if valid_count < len(items):
+            logger.warning(
+                "LLM returned incomplete JSON: expected %d items, got %d. "
+                "Raw: %s",
+                len(items),
+                valid_count,
+                raw_text[:500],
+            )
         return parsed
 
     @staticmethod

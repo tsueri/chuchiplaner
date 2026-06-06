@@ -24,6 +24,7 @@ from app.core.middleware import SessionMiddleware
 from app.core.security_headers import SecurityHeadersMiddleware
 
 logger = logging.getLogger("chuchiplaner")
+logger.setLevel(os.environ.get("CHUCHI_LOG_LEVEL", "INFO"))
 
 
 @asynccontextmanager
