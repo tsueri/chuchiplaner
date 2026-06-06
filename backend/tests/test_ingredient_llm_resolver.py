@@ -118,16 +118,17 @@ class TestNeedsTier2:
 class TestBuildPrompt:
     def test_includes_ingredients(self) -> None:
         ingredients = {"Mehl": 1, "Zucker": 2}
-        prompt = _build_prompt("500g Mehl", ingredients)
+        prompt = _build_prompt(["500g Mehl"], ingredients)
         assert "Mehl → 1" in prompt
         assert "Zucker → 2" in prompt
 
     def test_includes_raw_lines(self) -> None:
-        prompt = _build_prompt("500g Mehl", {})
-        assert "500g Mehl" in prompt
+        prompt = _build_prompt(["500g Mehl", "200g Zucker"], {})
+        assert "[0] 500g Mehl" in prompt
+        assert "[1] 200g Zucker" in prompt
 
     def test_handles_empty_ingredients(self) -> None:
-        prompt = _build_prompt("500g Mehl", {})
+        prompt = _build_prompt(["500g Mehl"], {})
         assert "keine" in prompt.lower()
 
 

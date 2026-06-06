@@ -52,16 +52,16 @@ _CRITICAL_PATTERNS: list[re.Pattern[str]] = [
 ]
 
 _LLM_PROMPT_TEMPLATE = """\
-Analysiere diese Kochzutat und gib EIN JSON-Objekt zurück.
+Analysiere jede Kochzutat und gib ein JSON-Array mit einem Objekt \
+pro Zeile zurück. Antworte NUR mit gültigem JSON (kein Markdown).
 
 Verfügbare Zutaten (Name → ID):
 {ingredients_list}
 
-Zutat:
-  {raw_line}
+Zutatenzeilen:
+{raw_lines}
 
-Antworte NUR mit einem gültigen JSON-Objekt (beginnt mit {{, endet mit }}), \
-kein Markdown, keine Erklärung:
+Jedes Objekt im Array hat dieses Format:
 {{
   "cleaned_name": "Zutat ohne Mengen/Einheiten/Zubereitung",
   "corrected_quantity": <Zahl oder null>,
@@ -72,13 +72,9 @@ kein Markdown, keine Erklärung:
   "suggested_ingredient_name": "Zutatenname falls keine ID gefunden oder null"
 }}
 
-Beispiel:
-{{"cleaned_name": "Spargeln", "corrected_quantity": null, "corrected_unit": null, "ingredient_id": 5, "confidence": 1.0, "is_equipment": false, "suggested_ingredient_name": null}}
-
 Regeln:
 - "oder" = Alternativen, wähle die wahrscheinlichste Zutat.
 - "à" / "a" nach Mengenangabe = "pro Stück", interpretiere Menge.
-- "ein", "zwei", etc. = meist "etwas" oder Teil der Beschreibung.
 - Küchenutensilien (Backpapier, Pfanne, ...) = is_equipment: true.
 """
 
@@ -92,7 +88,7 @@ def is_critical_line(raw: str) -> bool:
 
 
 def _build_prompt(
-    raw_line: str,
+    raw_lines: list[str],
     ingredients: dict[str, int],
 ) -> str:
     ingredients_list = "\n".join(
@@ -100,9 +96,10 @@ def _build_prompt(
     )
     if not ingredients_list:
         ingredients_list = "  (keine)"
+    raw_lines_text = "\n".join(f"  [{i}] {line}" for i, line in enumerate(raw_lines))
     return _LLM_PROMPT_TEMPLATE.format(
         ingredients_list=ingredients_list,
-        raw_line=raw_line,
+        raw_lines=raw_lines_text,
     )
 
 
@@ -166,7 +163,7 @@ class IngredientLLMResolver:
         items: list[ScrapedIngredientItem],
         ingredients: dict[str, int],
     ) -> list[dict[str, Any]]:
-        """Send each hard line individually to the Ollama LLM for resolution.
+        """Send a batch of hard lines to the Ollama LLM for resolution.
 
         Returns one dict per input item with keys matching the Tier 2
         schema fields.  On any error, returns dicts with ``confidence=0``
@@ -175,64 +172,44 @@ class IngredientLLMResolver:
         if not items:
             return []
 
-        results: list[dict[str, Any]] = []
-        for item in items:
-            prompt = _build_prompt(item.raw, ingredients)
+        raw_lines = [item.raw for item in items]
+        prompt = _build_prompt(raw_lines, ingredients)
 
-            try:
-                with httpx.Client(timeout=self._timeout) as client:
-                    response = client.post(
-                        f"{self._base_url}/api/generate",
-                        json={
-                            "model": self._model,
-                            "prompt": prompt,
-                            "stream": False,
-                            "format": "json",
-                        },
-                    )
-                    response.raise_for_status()
-                    data = response.json()
-                    raw_text: str = data.get("response", "")
-                    logger.debug(
-                        "LLM raw response (%d bytes): %s",
-                        len(raw_text),
-                        raw_text[:500],
-                    )
-            except Exception:
-                logger.exception("LLM resolver request failed for %r", item.raw)
-                results.append({})
-                continue
-
-            try:
-                parsed = json.loads(raw_text)
-            except json.JSONDecodeError:
-                logger.warning(
-                    "LLM JSON decode failed for %r. Raw: %s",
-                    item.raw,
-                    raw_text[:300],
+        try:
+            with httpx.Client(timeout=self._timeout) as client:
+                response = client.post(
+                    f"{self._base_url}/api/generate",
+                    json={
+                        "model": self._model,
+                        "prompt": prompt,
+                        "stream": False,
+                        "format": "json",
+                    },
                 )
-                results.append({})
-                continue
-
-            # Accept single-element list as a convenience
-            if isinstance(parsed, list) and len(parsed) == 1 and isinstance(parsed[0], dict):
-                parsed = parsed[0]
-
-            if not isinstance(parsed, dict):
-                logger.warning(
-                    "LLM returned non-dict for %r: %s",
-                    item.raw,
-                    raw_text[:200],
+                response.raise_for_status()
+                data = response.json()
+                raw_text: str = data.get("response", "")
+                logger.debug(
+                    "LLM raw response (%d bytes): %s",
+                    len(raw_text),
+                    raw_text[:2000],
                 )
-                results.append({})
-                continue
+        except Exception:
+            logger.exception("LLM resolver request failed")
+            return [{} for _ in items]
 
-            logger.debug("LLM resolved %r → %s", item.raw, parsed.get("cleaned_name"))
-            results.append(parsed)
-
-        valid_count = sum(1 for r in results if r)
-        logger.info("LLM resolved %d/%d items individually", valid_count, len(items))
-        return results
+        parsed = _parse_llm_response(raw_text, len(items))
+        valid_count = sum(1 for p in parsed if p)
+        logger.info("LLM resolved %d/%d items", valid_count, len(items))
+        if valid_count < len(items):
+            logger.warning(
+                "LLM returned incomplete JSON: expected %d items, got %d. "
+                "Raw: %s",
+                len(items),
+                valid_count,
+                raw_text[:500],
+            )
+        return parsed
 
     @staticmethod
     def needs_tier2(item: ScrapedIngredientItem) -> bool:
