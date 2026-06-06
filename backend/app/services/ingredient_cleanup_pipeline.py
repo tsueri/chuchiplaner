@@ -35,6 +35,8 @@ class IngredientCleanupPipeline:
             if parsed_line.name:
                 cleaned_name = self._cleaner.clean(parsed_line.name)
 
+            display_name: str = cleaned_name if cleaned_name else parsed_line.name
+
             if parsed_line.quantity is not None and parsed_line.name:
                 resolve_name: str = cleaned_name if cleaned_name else parsed_line.name
                 resolved_id, confidence = self._normalizer.resolve(
@@ -46,7 +48,7 @@ class IngredientCleanupPipeline:
             items.append(
                 ScrapedIngredientItem(
                     raw=raw_line,
-                    name=parsed_line.name,
+                    name=display_name,
                     quantity=parsed_line.quantity,
                     unit=parsed_line.unit,
                     ingredient_id=resolved_id,
@@ -72,5 +74,8 @@ class IngredientCleanupPipeline:
                     items[idx] = IngredientLLMResolver.apply_tier2_result(
                         item, result
                     )
+                    t2_name = items[idx].tier2_cleaned_name
+                    if t2_name:
+                        items[idx].name = t2_name
 
         return items

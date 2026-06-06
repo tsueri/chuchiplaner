@@ -48,7 +48,7 @@ class TestIngredientCleanupPipeline:
 
         assert len(result) == 1
         assert result[0].raw == "500g grüne Spargeln, in Stücken"
-        assert result[0].name == "grüne Spargeln, in Stücken"  # parser output
+        assert result[0].name == "Stücken"  # cleaned name, not parser output
         assert result[0].tier1_cleaned_name == "Stücken"
 
     def test_tier1_cleaned_name_set_on_every_item(self) -> None:
@@ -86,7 +86,7 @@ class TestIngredientCleanupPipeline:
         result = pipeline.process(raw_lines, {})
 
         assert len(result) == 1
-        assert result[0].name == "etwas Salz"
+        assert result[0].name == "Salz"  # cleaned name, not parser output
         assert result[0].tier1_cleaned_name == "Salz"
         assert result[0].ingredient_id is None
         assert result[0].confidence == 0.0

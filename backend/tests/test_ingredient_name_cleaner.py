@@ -199,7 +199,7 @@ class TestIngredientNameCleaner:
 
         cleaner = IngredientNameCleaner(model=model, tokenizer=tokenizer)
         result = cleaner.clean("Poulet Schenkel")
-        assert result == "PouletSchenkel"
+        assert result == "Poulet Schenkel"  # spaces preserved between kept spans
 
     def test_empty_input_returns_empty(self) -> None:
         tokenizer = _MockTokenizer()

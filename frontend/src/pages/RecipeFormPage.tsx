@@ -348,7 +348,7 @@ export default function RecipeFormPage() {
                 ? ""
                 : suggestedName
                   ? suggestedName
-                  : (item.raw || item.name),
+                  : (item.name || item.raw),
               quantity: item.quantity !== null ? String(item.quantity) : "",
               unit: item.unit || "g",
               suggestedIngredientId:
