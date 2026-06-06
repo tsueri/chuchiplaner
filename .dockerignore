@@ -1,9 +1,13 @@
 node_modules
-__pycache__
-*.pyc
-.venv
+**/__pycache__
+**/*.pyc
+**/.venv
+**/.uv-venv
+**/.mypy_cache
+**/.ruff_cache
+**/.pytest_cache
 .git
-*.sqlite
+**/*.sqlite
 dist
 data
 .env
