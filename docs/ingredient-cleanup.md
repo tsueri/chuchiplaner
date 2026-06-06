@@ -18,18 +18,23 @@ The Tier 1 pipeline code is implemented in `backend/app/services/ingredient_name
 
 ### Prerequisites
 
-Install the training dependency group:
+[Docker](https://docs.docker.com/engine/install/) and a [DeepSeek API key](https://platform.deepseek.com/).
 
-```bash
-cd backend
-uv sync --group training
-```
-
-Set the DeepSeek API key environment variable:
+Set the API key:
 
 ```bash
 export DEEPSEEK_API_KEY="sk-..."
 ```
+
+### Quick start (recommended)
+
+Run both steps in a throwaway Docker container — no need to install `transformers`, `torch`, or `datasets` on the host:
+
+```bash
+./scripts/build-training-assets.sh
+```
+
+Optional flags pass through: `--limit 50`, `--epochs 5`, `--batch-size 8`, etc.
 
 ### Step 1: Generate training data
 
@@ -52,7 +57,7 @@ Trains `distilbert-base-german-cased` on the labeled data using token classifica
 
 ```bash
 cd backend
-python -m scripts.fine_tune --data backend/data/training_pairs.jsonl
+python -m scripts.fine_tune
 ```
 
 Output: `backend/models/ingredient_ner/` containing:
@@ -64,6 +69,9 @@ Output: `backend/models/ingredient_ner/` containing:
 The script is idempotent — skips if `config.json` already exists.
 
 Optional flags: `--epochs 3`, `--batch-size 16`, `--learning-rate 2e-5`.
+
+> **Local alternative:** Run steps 1-2 directly on the host by installing the training
+> dependency group first: `cd backend && uv sync --group training`.
 
 ### Step 3: Rebuild Docker image
 

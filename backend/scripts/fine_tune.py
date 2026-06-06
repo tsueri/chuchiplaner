@@ -9,6 +9,8 @@ import sys
 from pathlib import Path
 from typing import Any, NoReturn
 
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+
 _ML_DEPS_MESSAGE = (
     "ML dependencies required. "
     "Install with: pip install transformers torch datasets"
@@ -273,12 +275,12 @@ def main() -> NoReturn:
     )
     parser.add_argument(
         "--data",
-        default="backend/data/training_pairs.jsonl",
+        default=str(_REPO_ROOT / "backend/data/training_pairs.jsonl"),
         help="Path to training JSONL file",
     )
     parser.add_argument(
         "--output-dir",
-        default="backend/models/ingredient_ner",
+        default=str(_REPO_ROOT / "backend/models/ingredient_ner"),
         help="Directory to save the fine-tuned model",
     )
     parser.add_argument(
