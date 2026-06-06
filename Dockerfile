@@ -16,4 +16,4 @@ COPY backend/ ./
 COPY --from=frontend-builder /app/frontend/dist ./static
 
 EXPOSE 8000
-CMD ["sh", "-c", "uv run alembic upgrade head && uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers"]
+CMD ["sh", "-c", "mkdir -p /app/data && uv run alembic upgrade head && uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers"]

@@ -5,7 +5,7 @@ services:
     ports:
       - "${APP_PORT:-8000}:8000"
     volumes:
-      - ./data:/app/data
+      - ./data:/app/data:z
     env_file: .env
     environment:
       - OLLAMA_BASE_URL=http://ollama:11434
@@ -25,8 +25,8 @@ services:
     build: ./backup
     restart: unless-stopped
     volumes:
-      - ./data:/data:ro
-      - ./backups:/backups
+      - ./data:/data:ro,z
+      - ./backups:/backups:z
     env_file: .env
 
 volumes:
