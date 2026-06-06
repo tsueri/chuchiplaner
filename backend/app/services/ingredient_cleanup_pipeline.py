@@ -1,7 +1,14 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from app.schemas.recipe import ScrapedIngredientItem
 from app.services.ingredient_line_parser import IngredientLineParser
 from app.services.ingredient_name_cleaner import IngredientNameCleaner
 from app.services.normalizer import IngredientNormalizer
+
+if TYPE_CHECKING:
+    from app.services.ingredient_llm_resolver import IngredientLLMResolver
 
 
 class IngredientCleanupPipeline:
@@ -9,9 +16,11 @@ class IngredientCleanupPipeline:
         self,
         name_cleaner: IngredientNameCleaner,
         normalizer: IngredientNormalizer,
+        llm_resolver: IngredientLLMResolver | None = None,
     ) -> None:
         self._cleaner = name_cleaner
         self._normalizer = normalizer
+        self._llm_resolver = llm_resolver
 
     def process(
         self,
@@ -45,5 +54,23 @@ class IngredientCleanupPipeline:
                     tier1_cleaned_name=cleaned_name,
                 )
             )
+
+        if self._llm_resolver is not None:
+            from app.services.ingredient_llm_resolver import IngredientLLMResolver
+
+            hard_items: list[tuple[int, ScrapedIngredientItem]] = []
+            for idx, item in enumerate(items):
+                if IngredientLLMResolver.needs_tier2(item):
+                    hard_items.append((idx, item))
+
+            if hard_items:
+                hard_only = [item for _, item in hard_items]
+                tier2_results = self._llm_resolver.resolve_batch(
+                    hard_only, self._normalizer._ingredients
+                )
+                for (idx, item), result in zip(hard_items, tier2_results):
+                    items[idx] = IngredientLLMResolver.apply_tier2_result(
+                        item, result
+                    )
 
         return items

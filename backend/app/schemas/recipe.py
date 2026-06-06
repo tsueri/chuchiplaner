@@ -73,6 +73,11 @@ class ScrapedIngredientItem(BaseModel):
     ingredient_id: int | None = None
     confidence: float = 0.0
     tier1_cleaned_name: str | None = None
+    tier2_cleaned_name: str | None = None
+    corrected_quantity: float | None = None
+    corrected_unit: str | None = None
+    suggested_ingredient_name: str | None = None
+    is_equipment: bool = False
 
 
 class ScrapedStepItem(BaseModel):

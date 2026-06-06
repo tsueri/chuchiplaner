@@ -56,6 +56,24 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         )
         app.state.ingredient_name_cleaner = None
 
+    ollama_url = os.environ.get("OLLAMA_BASE_URL", "http://ollama:11434")
+    try:
+        from app.services.ingredient_llm_resolver import IngredientLLMResolver
+
+        app.state.ingredient_llm_resolver = IngredientLLMResolver(
+            base_url=ollama_url,
+        )
+        logger.info(
+            "LLM resolver initialised (Ollama: %s, model: %s)",
+            ollama_url,
+            app.state.ingredient_llm_resolver._model,
+        )
+    except Exception:
+        logger.warning(
+            "Failed to initialise LLM resolver — Tier 2 resolution disabled"
+        )
+        app.state.ingredient_llm_resolver = None
+
     yield
 
 
