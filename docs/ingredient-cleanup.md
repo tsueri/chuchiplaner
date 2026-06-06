@@ -3,14 +3,13 @@
 Two-tier intelligent extraction that cleans ingredient names before normalization. The existing `IngredientLineParser` handles quantity/unit extraction; the pipeline cleans only the name field.
 
 ```
-Parser → Pattern Router → Tier 1 NER → (Tier 2 LLM dispatch) → IngredientNormalizer fallback
+Parser → Tier 1 NER → Regex post-processing → IngredientNormalizer
 ```
 
 | Tier | What | When |
 |---|---|---|
-| 1 | Fine-tuned German NER model (distilbert-base-german-cased) | Always, on every scraped line |
-| 2 | Local LLM via Ollama sidecar (qwen3.5:2b) | Lines matching critical patterns (oder, à, equipment, word-form numbers) OR Tier 1 confidence < 0.7 with normalizer failure |
-| Fallback | Current `IngredientNormalizer` fuzzy matching | Tier 2 unavailable (timeout, sidecar down) |
+| 1 | Fine-tuned German NER model (distilbert-base-german-cased) + regex post-processing | Always, on every scraped line |
+| Fallback | Current `IngredientNormalizer` fuzzy matching | NER model unavailable |
 
 ## Tier 1 — NER Model Setup
 
@@ -18,12 +17,14 @@ The Tier 1 pipeline code is implemented in `backend/app/services/ingredient_name
 
 ### Prerequisites
 
-[Docker](https://docs.docker.com/engine/install/) and a [DeepSeek API key](https://platform.deepseek.com/).
+An LLM API key (OpenAI-compatible). [DeepSeek](https://platform.deepseek.com/) is the default provider.
 
-Set the API key:
+Set the API configuration:
 
 ```bash
-export DEEPSEEK_API_KEY="sk-..."
+export CHUCHI_LLM_API_KEY="sk-..."
+export CHUCHI_LLM_API_URL="https://api.deepseek.com/v1"    # default
+export CHUCHI_LLM_MODEL="deepseek-chat"                     # default
 ```
 
 ### Quick start (recommended)
@@ -42,7 +43,7 @@ Scrapes ~200 recipe URLs from swissmilk.ch and bettybossi.ch, extracts ingredien
 
 ```bash
 cd backend
-python -m scripts.generate_training_data --api-key "$DEEPSEEK_API_KEY"
+python -m scripts.generate_training_data --api-key "$CHUCHI_LLM_API_KEY"
 ```
 
 Output:
@@ -94,61 +95,18 @@ Import a Swiss recipe (e.g. from swissmilk.ch) via the UI. Ingredient lines shou
 
 ---
 
-## Tier 2 — Ollama LLM Setup
+## Regex Post-Processing
 
-The Tier 2 code is implemented in `backend/app/services/ingredient_llm_resolver.py`. The Ollama sidecar is already defined in `docker-compose.yml`.
+After NER cleaning, regex rules handle remaining edge cases:
 
-### Prerequisites
-
-The Ollama sidecar is only in production compose (`docker-compose.yml`), **not** in `docker-compose.dev.yml`. For local dev testing, either:
-- Use `docker compose up` (production compose), or
-- Add the ollama service to `docker-compose.dev.yml` manually, or
-- Run Ollama standalone: `ollama serve` and point `OLLAMA_BASE_URL=http://localhost:11434`
-
-### Step 1: Pull the model
-
-```bash
-# If using docker compose sidecar:
-docker compose exec ollama ollama pull qwen3.5:2b
-
-# If running Ollama directly:
-ollama pull qwen3.5:2b
-```
-
-The model is ~0.5 GB (q4 quantized). Takes 1-3 minutes depending on network.
-
-### Step 2: Configure environment
-
-In `.env` (or directly in docker-compose environment):
-
-```bash
-OLLAMA_BASE_URL=http://ollama:11434   # already set in docker-compose.yml
-OLLAMA_MODEL=qwen3.5:2b            # defaults to qwen3.5:2b, override if needed
-```
-
-### Step 3: Start the stack
-
-```bash
-docker compose up -d
-```
-
-Verify Ollama is reachable:
-
-```bash
-curl http://ollama:11434/api/tags
-```
-
-### Verifying Tier 2
-
-Import a recipe with known hard patterns — lines containing "oder", "à", equipment terms, or word-form numbers. These should route through Tier 2 and show corrected names in the import form.
-
-### Fallback behavior
-
-When Ollama is unreachable or times out (10s timeout), Tier 2 returns empty results and the pipeline falls through to the current `IngredientNormalizer`. Imports never block on Tier 2. Check logs for:
-
-```
-LLM resolver batch request failed: ...  # connection error or timeout
-```
+| Rule | Pattern | Example → Result |
+|---|---|---|
+| Alternatives | `X oder Y` → `X` | "Weisswein oder Zitronensaft" → "Weisswein" |
+| Embedded weight | `à Ng` → stripped | "Camembert Suisse à 300 g" → "Camembert" |
+| Parentheticals | `(X)` → stripped | "Rahmjoghurt (griechische Art)" → "Rahmjoghurt" |
+| Slash alternatives | `X / Y` → `X` | "Gratinform / Kuchenblech" → "Gratinform" |
+| Prep notes | `, X` at end → stripped | "Brot, in Sticks geschnitten" → "Brot" |
+| Equipment detection | Denylist match → `is_equipment: true` | "Backpapier" → flagged |
 
 ---
 
@@ -156,9 +114,9 @@ LLM resolver batch request failed: ...  # connection error or timeout
 
 | Variable | Default | Used by |
 |---|---|---|
-| `DEEPSEEK_API_KEY` | *(required, no default)* | `generate_training_data.py` |
-| `OLLAMA_BASE_URL` | `http://ollama:11434` | `IngredientLLMResolver` |
-| `OLLAMA_MODEL` | `qwen3.5:2b` | `IngredientLLMResolver` |
+| `CHUCHI_LLM_API_URL` | `https://api.deepseek.com/v1` | `generate_training_data.py` |
+| `CHUCHI_LLM_API_KEY` | *(falls back to `DEEPSEEK_API_KEY`)* | `generate_training_data.py` |
+| `CHUCHI_LLM_MODEL` | `deepseek-chat` | `generate_training_data.py` |
 
 ---
 
@@ -168,20 +126,15 @@ LLM resolver batch request failed: ...  # connection error or timeout
 The `backend/models/ingredient_ner/` directory does not exist or `config.json` is missing. Run the fine-tuning script (Step 2 above) and rebuild the Docker image.
 
 ### "LLM resolver batch request failed"
-Ollama sidecar is not running or not reachable at `OLLAMA_BASE_URL`. Check `docker compose ps ollama` and verify the URL. Imports still work — Tier 2 degrades gracefully.
+This was the old Tier 2 (Ollama LLM) which has been removed. Regex post-processing now handles these cases. Tier 1 NER + regex replaces the LLM pipeline.
 
 ### Model loading crashes app at startup
 This is intentional (fail-fast). Check that all model files are present and not corrupted. Remove `backend/models/ingredient_ner/` and re-run fine-tuning.
 
 ### Training data generation fails
-Ensure `DEEPSEEK_API_KEY` is set and the key has credits. The script uses the `deepseek-chat` model at `https://api.deepseek.com/v1`.
+Ensure `CHUCHI_LLM_API_KEY` is set and the key has credits. The script uses the OpenAI-compatible API at the configured `CHUCHI_LLM_API_URL`.
 
-### Ollama model not found
-Run `docker compose exec ollama ollama list` to see pulled models. Pull the model if missing: `docker compose exec ollama ollama pull qwen3.5:2b`.
-
----
-
-## Test Files
+### Test Files
 
 | File | Scope |
 |---|---|

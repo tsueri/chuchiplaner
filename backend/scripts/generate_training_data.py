@@ -1,8 +1,14 @@
 """Generate labeled training data for ingredient name cleaning.
 
 Scrapes recipe sitemaps, extracts ingredient lines using the existing
-RecipeScraper and IngredientLineParser, calls the DeepSeek API to produce
-dirty→clean pairs, and saves them as JSONL. Flags ~5% for manual review.
+RecipeScraper and IngredientLineParser, calls an LLM API (OpenAI-compatible)
+to produce dirty→clean pairs, and saves them as JSONL. Flags ~5% for manual
+review.
+
+Configuration via environment variables:
+  CHUCHI_LLM_API_URL  — LLM API base URL (default: https://api.deepseek.com/v1)
+  CHUCHI_LLM_API_KEY  — LLM API key (falls back to DEEPSEEK_API_KEY)
+  CHUCHI_LLM_MODEL    — LLM model name (default: deepseek-chat)
 """
 
 import json
@@ -289,8 +295,8 @@ def generate_training_data(
     Args:
         output_path: Path for the main training JSONL file.
         review_path: Path for the human-review JSONL file.
-        deepseek_api_key: DeepSeek API key. If ``None``, falls back to
-            the ``DEEPSEEK_API_KEY`` environment variable.
+        deepseek_api_key: API key. If ``None``, falls back to
+            ``CHUCHI_LLM_API_KEY`` or ``DEEPSEEK_API_KEY`` env vars.
         recipe_limit: Maximum number of recipes to scrape (default 100).
             URLs are randomly sampled from all collected URLs.
 
@@ -310,12 +316,18 @@ def generate_training_data(
         return 0
 
     # --- Resolve API key --------------------------------------------------
-    api_key = deepseek_api_key or os.environ.get("DEEPSEEK_API_KEY")
+    api_key = deepseek_api_key or os.environ.get(
+        "CHUCHI_LLM_API_KEY"
+    ) or os.environ.get("DEEPSEEK_API_KEY")
     if not api_key:
         raise RuntimeError(
-            "DeepSeek API key is required. Set DEEPSEEK_API_KEY "
-            "environment variable or pass --api-key."
+            "LLM API key is required. Set CHUCHI_LLM_API_KEY "
+            "or DEEPSEEK_API_KEY environment variable, or pass --api-key."
         )
+    api_url = os.environ.get(
+        "CHUCHI_LLM_API_URL", "https://api.deepseek.com/v1"
+    )
+    model_name = os.environ.get("CHUCHI_LLM_MODEL", "deepseek-chat")
 
     # --- Collect URLs -----------------------------------------------------
     recipe_urls = _collect_recipe_urls()
@@ -355,7 +367,7 @@ def generate_training_data(
                     "Install with: pip install openai"
                 )
             client = OpenAI(
-                api_key=api_key, base_url="https://api.deepseek.com/v1"
+                api_key=api_key, base_url=api_url
             )
 
         domain = urlparse(url).netloc
@@ -367,7 +379,7 @@ def generate_training_data(
 
             try:
                 response = client.chat.completions.create(
-                    model="deepseek-chat",
+                    model=model_name,
                     messages=[{"role": "user", "content": prompt}],
                     temperature=0.3,
                 )
@@ -462,8 +474,8 @@ def main() -> None:
     )
     parser.add_argument(
         "--api-key",
-        default=os.environ.get("DEEPSEEK_API_KEY"),
-        help="DeepSeek API key (defaults to DEEPSEEK_API_KEY env var)",
+        default=os.environ.get("CHUCHI_LLM_API_KEY") or os.environ.get("DEEPSEEK_API_KEY"),
+        help="LLM API key (defaults to CHUCHI_LLM_API_KEY or DEEPSEEK_API_KEY env var)",
     )
     parser.add_argument(
         "--limit",

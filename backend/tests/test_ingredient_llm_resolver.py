@@ -372,85 +372,8 @@ class TestIngredientLLMResolver:
 import json  # noqa: E402
 
 
-class TestPipelineWithLLMResolver:
-    def test_pipeline_routes_hard_items_to_tier2(self) -> None:
-        from app.services.ingredient_cleanup_pipeline import IngredientCleanupPipeline
-        from app.services.normalizer import IngredientNormalizer
-
-        class _FakeCleaner:
-            def clean(self, name: str) -> str:
-                words = name.replace(",", "").split()
-                return words[-1] if words else name
-
-        class _FakeLLMResolver:
-            def __init__(self) -> None:
-                self.called_with: list = []
-
-            def resolve_batch(
-                self,
-                items: list[ScrapedIngredientItem],
-                ingredients: dict[str, int],
-            ) -> list[dict]:
-                self.called_with = [items, ingredients]
-                results: list[dict] = []
-                for item in items:
-                    if "oder" in item.raw.lower():
-                        results.append(
-                            {
-                                "cleaned_name": "Dinkelmehl",
-                                "corrected_quantity": 200,
-                                "corrected_unit": "g",
-                                "ingredient_id": 42,
-                                "confidence": 0.95,
-                                "is_equipment": False,
-                                "suggested_ingredient_name": None,
-                            }
-                        )
-                    else:
-                        results.append({})
-                return results
-
-            @staticmethod
-            def needs_tier2(item: ScrapedIngredientItem) -> bool:
-                return IngredientLLMResolver.needs_tier2(item)
-
-            @staticmethod
-            def apply_tier2_result(
-                item: ScrapedIngredientItem, result: dict
-            ) -> ScrapedIngredientItem:
-                return IngredientLLMResolver.apply_tier2_result(item, result)
-
-        cleaner = _FakeCleaner()
-        ingredients_map = {"Mehl": 1, "Dinkelmehl": 42}
-        normalizer = IngredientNormalizer(ingredients_map)
-        llm_resolver = _FakeLLMResolver()  # type: ignore[abstract]
-        pipeline = IngredientCleanupPipeline(cleaner, normalizer, llm_resolver)  # type: ignore[arg-type]
-
-        raw_lines = [
-            "500g Mehl",
-            "200g Mehl oder Dinkelmehl",
-        ]
-        result = pipeline.process(raw_lines, {})
-
-        assert len(result) == 2
-
-        # Clean line — Tier 1 only
-        assert result[0].raw == "500g Mehl"
-        assert result[0].confidence == 1.0
-        assert result[0].ingredient_id == 1
-
-        # Hard line — Tier 2 applied
-        assert result[1].raw == "200g Mehl oder Dinkelmehl"
-        assert result[1].tier2_cleaned_name == "Dinkelmehl"
-        assert result[1].ingredient_id == 42
-        assert result[1].confidence == 0.95
-        assert result[1].corrected_quantity == 200.0
-        assert result[1].corrected_unit == "g"
-
-        # Verify resolver was called with items and ingredients
-        assert llm_resolver.called_with
-
-    def test_pipeline_without_llm_resolver_falls_through(self) -> None:
+class TestPipelineRegexPostProcess:
+    def test_strips_oder_alternatives(self) -> None:
         from app.services.ingredient_cleanup_pipeline import IngredientCleanupPipeline
         from app.services.normalizer import IngredientNormalizer
 
@@ -459,57 +382,85 @@ class TestPipelineWithLLMResolver:
                 return name
 
         cleaner = _FakeCleaner()
-        ingredients_map = {"Mehl": 1}
-        normalizer = IngredientNormalizer(ingredients_map)
+        normalizer = IngredientNormalizer({"Mehl": 1})
         pipeline = IngredientCleanupPipeline(cleaner, normalizer)
 
-        raw_lines = ["200g Mehl oder Dinkelmehl"]
-        result = pipeline.process(raw_lines, {})
+        result = pipeline.process(["200g Mehl oder Dinkelmehl"], {})
+        assert result[0].name == "Mehl"
+        assert "oder" not in result[0].name
 
-        assert len(result) == 1
-        # Tier 2 fields remain unset
-        assert result[0].tier2_cleaned_name is None
-        assert result[0].is_equipment is False
-
-    def test_pipeline_equipment_routed_to_tier2(self) -> None:
+    def test_strips_a_weight_spec(self) -> None:
         from app.services.ingredient_cleanup_pipeline import IngredientCleanupPipeline
         from app.services.normalizer import IngredientNormalizer
 
         class _FakeCleaner:
             def clean(self, name: str) -> str:
                 return name
-
-        class _FakeLLMResolver:
-            def resolve_batch(
-                self,
-                items: list[ScrapedIngredientItem],
-                ingredients: dict[str, int],
-            ) -> list[dict]:
-                return [
-                    {
-                        "cleaned_name": item.raw,
-                        "is_equipment": True,
-                        "confidence": 0.0,
-                    }
-                    for item in items
-                ]
-
-            @staticmethod
-            def needs_tier2(item: ScrapedIngredientItem) -> bool:
-                return IngredientLLMResolver.needs_tier2(item)
-
-            @staticmethod
-            def apply_tier2_result(
-                item: ScrapedIngredientItem, result: dict
-            ) -> ScrapedIngredientItem:
-                return IngredientLLMResolver.apply_tier2_result(item, result)
 
         cleaner = _FakeCleaner()
         normalizer = IngredientNormalizer({})
-        llm_resolver = _FakeLLMResolver()  # type: ignore[abstract]
-        pipeline = IngredientCleanupPipeline(cleaner, normalizer, llm_resolver)  # type: ignore[arg-type]
+        pipeline = IngredientCleanupPipeline(cleaner, normalizer)
 
-        raw_lines = ["Backpapier"]
-        result = pipeline.process(raw_lines, {})
+        result = pipeline.process(["1 Camembert Suisse à 300 g"], {})
+        assert "300 g" not in result[0].name
 
+    def test_strips_parentheticals(self) -> None:
+        from app.services.ingredient_cleanup_pipeline import IngredientCleanupPipeline
+        from app.services.normalizer import IngredientNormalizer
+
+        class _FakeCleaner:
+            def clean(self, name: str) -> str:
+                return name
+
+        cleaner = _FakeCleaner()
+        normalizer = IngredientNormalizer({})
+        pipeline = IngredientCleanupPipeline(cleaner, normalizer)
+
+        result = pipeline.process(["200g Rahmjoghurt (griechische Art)"], {})
+        assert "(griechische Art)" not in result[0].name
+
+    def test_detects_equipment(self) -> None:
+        from app.services.ingredient_cleanup_pipeline import IngredientCleanupPipeline
+        from app.services.normalizer import IngredientNormalizer
+
+        class _FakeCleaner:
+            def clean(self, name: str) -> str:
+                return name
+
+        cleaner = _FakeCleaner()
+        normalizer = IngredientNormalizer({})
+        pipeline = IngredientCleanupPipeline(cleaner, normalizer)
+
+        result = pipeline.process(["Backpapier"], {})
         assert result[0].is_equipment is True
+
+    def test_strips_slash_alternatives(self) -> None:
+        from app.services.ingredient_cleanup_pipeline import IngredientCleanupPipeline
+        from app.services.normalizer import IngredientNormalizer
+
+        class _FakeCleaner:
+            def clean(self, name: str) -> str:
+                return name
+
+        cleaner = _FakeCleaner()
+        normalizer = IngredientNormalizer({})
+        pipeline = IngredientCleanupPipeline(cleaner, normalizer)
+
+        result = pipeline.process(["Runde Gratinform / Kuchenblech 30 cm"], {})
+        assert "/" not in result[0].name
+        assert result[0].is_equipment is True
+
+    def test_strips_trailing_prep_notes(self) -> None:
+        from app.services.ingredient_cleanup_pipeline import IngredientCleanupPipeline
+        from app.services.normalizer import IngredientNormalizer
+
+        class _FakeCleaner:
+            def clean(self, name: str) -> str:
+                return name
+
+        cleaner = _FakeCleaner()
+        normalizer = IngredientNormalizer({})
+        pipeline = IngredientCleanupPipeline(cleaner, normalizer)
+
+        result = pipeline.process(["3 Scheiben Brot, in Sticks geschnitten"], {})
+        assert "geschnitten" not in result[0].name

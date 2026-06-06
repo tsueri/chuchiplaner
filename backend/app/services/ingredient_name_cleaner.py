@@ -1,4 +1,5 @@
 import logging
+import re
 from pathlib import Path
 from typing import Any
 
@@ -96,7 +97,20 @@ class IngredientNameCleaner:
                     pieces.append(name[last_end:s])
                 pieces.append(name[s:e])
                 last_end = e
-            return "".join(pieces)
+            result = "".join(pieces)
+
+            # Recover missing prefix from compound words (e.g. "Spritzsack" → "sack")
+            # When the tokenizer splits a compound word and the model only
+            # tags the second half, the first kept range starts mid-word.
+            if kept_ranges and kept_ranges[0][0] > 0:
+                first_start = kept_ranges[0][0]
+                prefix = name[:first_start]
+                # Only prepend if there's no word boundary between prefix
+                # and result (no space, comma, slash, colon, semicolon)
+                if prefix and not re.search(r'[,;:\s/]', prefix):
+                    result = prefix + result
+
+            return result
 
         except Exception:
             logger.exception("NER inference failed for ingredient name %r", name)

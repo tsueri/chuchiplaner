@@ -216,10 +216,9 @@ async def import_recipe(
     normalizer = IngredientNormalizer(ingredient_map)
 
     name_cleaner = getattr(request.app.state, "ingredient_name_cleaner", None)
-    llm_resolver = getattr(request.app.state, "ingredient_llm_resolver", None)
     parsed_items: list[ScrapedIngredientItem]
     if name_cleaner is not None:
-        pipeline = IngredientCleanupPipeline(name_cleaner, normalizer, llm_resolver)
+        pipeline = IngredientCleanupPipeline(name_cleaner, normalizer)
         parsed_items = pipeline.process(scraped.ingredients, household_aliases)
     else:
         parsed_items = []
