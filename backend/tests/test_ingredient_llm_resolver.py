@@ -366,7 +366,7 @@ class TestIngredientLLMResolver:
     def test_default_model(self) -> None:
         with patch.dict("os.environ", {}, clear=True):
             resolver = IngredientLLMResolver()
-            assert resolver._model == "qwen2.5:3b"
+            assert resolver._model == "qwen3.5:2b"
 
 
 import json  # noqa: E402

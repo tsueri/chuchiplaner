@@ -148,7 +148,7 @@ class IngredientLLMResolver:
         timeout: float = 10.0,
     ) -> None:
         self._base_url = base_url.rstrip("/")
-        self._model = model or os.environ.get("OLLAMA_MODEL", "qwen2.5:3b")
+        self._model = model or os.environ.get("OLLAMA_MODEL", "qwen3.5:2b")
         self._timeout = timeout
 
     def resolve_batch(
