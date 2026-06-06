@@ -9,7 +9,6 @@ import sys
 from pathlib import Path
 from typing import Any, NoReturn
 
-
 _ML_DEPS_MESSAGE = (
     "ML dependencies required. "
     "Install with: pip install transformers torch datasets"
@@ -20,7 +19,6 @@ def _import_ml_deps() -> tuple[Any, Any, Any, Any, Any]:
     """Import optional ML packages; exits with error if unavailable."""
     try:
         import torch  # noqa: F401 — required by transformers at runtime
-
         from datasets import Dataset
         from transformers import (
             AutoModelForTokenClassification,
