@@ -141,6 +141,7 @@ function buildEditState(
       quantity: String(ing.quantity),
       unit: ing.unit,
       suggestedIngredientId: null,
+      suggestedIngredientName: null,
       confidence: 1.0,
       raw: "",
     })),

@@ -472,6 +472,9 @@ async def _upsert_recipe(
     existing: Recipe,
     current_user: User,
 ) -> RecipeDetailResponse:
+    if current_user.household_id is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
+
     _assign_recipe_fields(existing, body)
 
     if body.ingredients is not None:
@@ -553,6 +556,9 @@ async def create_recipe(
     - ``reimport=True`` with a new ``source_url`` (or null) creates a new
       recipe and returns 201 — same as the manual path.
     """
+    if current_user.household_id is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
+
     if body.source_url is not None:
         dup_result = await db.execute(
             select(Recipe)
