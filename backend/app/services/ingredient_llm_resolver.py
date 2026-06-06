@@ -61,7 +61,8 @@ Verfügbare Zutaten (Name → ID):
 Zutatenzeilen:
 {raw_lines}
 
-Gib NUR gültiges JSON zurück, kein Markdown. Format pro Zeile:
+Antworte NUR mit einem JSON-Array (beginnt mit [, endet mit ]), \
+kein Markdown, keine Erklärung. Jedes Element des Arrays hat dieses Format:
 {{
   "cleaned_name": "Zutat ohne Mengen/Einheiten/Zubereitung",
   "corrected_quantity": <Zahl oder null>,
@@ -71,6 +72,12 @@ Gib NUR gültiges JSON zurück, kein Markdown. Format pro Zeile:
   "is_equipment": <true/false>,
   "suggested_ingredient_name": "Zutatenname falls keine ID gefunden oder null"
 }}
+
+Beispiel für 2 Zeilen:
+[
+  {{"cleaned_name": "Spargeln", "corrected_quantity": null, "corrected_unit": null, "ingredient_id": 5, "confidence": 1.0, "is_equipment": false, "suggested_ingredient_name": null}},
+  {{"cleaned_name": "Gratinform", "corrected_quantity": null, "corrected_unit": null, "ingredient_id": null, "confidence": 1.0, "is_equipment": true, "suggested_ingredient_name": "Runde Gratinform"}}
+]
 
 Regeln:
 - "oder" = Alternativen, wähle die wahrscheinlichste Zutat.
@@ -136,6 +143,14 @@ def _parse_llm_response(raw_text: str, item_count: int) -> list[dict[str, Any]]:
         while len(result) < item_count:
             result.append({})
         return result[:item_count]
+
+    if isinstance(parsed, dict):
+        logger.warning(
+            "LLM returned single object instead of array — wrapping. "
+            "Keys: %s",
+            list(parsed.keys())[:10],
+        )
+        return [parsed] + [{}] * (item_count - 1)
 
     return empty
 
