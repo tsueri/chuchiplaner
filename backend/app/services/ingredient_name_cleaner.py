@@ -76,7 +76,7 @@ class IngredientNameCleaner:
 
             predictions = torch.argmax(outputs.logits, dim=2)[0]
 
-            parts: list[str] = []
+            kept_ranges: list[tuple[int, int]] = []
             for i, (start, end) in enumerate(offsets[0]):
                 s, e = start.item(), end.item()
                 if s == e:
@@ -84,12 +84,19 @@ class IngredientNameCleaner:
                 label_id = predictions[i].item()
                 label = self._model.config.id2label[label_id]
                 if label in ("B-ING", "I-ING"):
-                    parts.append(name[s:e])
+                    kept_ranges.append((s, e))
 
-            if not parts:
+            if not kept_ranges:
                 return name
 
-            return "".join(parts)
+            pieces: list[str] = []
+            last_end = -1
+            for s, e in kept_ranges:
+                if last_end >= 0 and s > last_end:
+                    pieces.append(name[last_end:s])
+                pieces.append(name[s:e])
+                last_end = e
+            return "".join(pieces)
 
         except Exception:
             logger.exception("NER inference failed for ingredient name %r", name)
