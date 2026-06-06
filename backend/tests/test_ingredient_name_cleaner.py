@@ -39,7 +39,6 @@ class _MockTokenizer:
 class TestIngredientNameCleaner:
     def test_clean_strips_non_ingredient_tokens(self) -> None:
         """AC: clean('grüne Spargeln, in Stücken') returns 'Spargeln'"""
-        model = _MockModel()
         tokenizer = _MockTokenizer()
 
         # Configure model to mark 'Spargeln' as ingredient (positions 7-13)
@@ -85,7 +84,6 @@ class TestIngredientNameCleaner:
 
     def test_clean_returns_ingredient_name_gehackter_peterli(self) -> None:
         """AC: clean('gehackter Peterli') returns 'Peterli'"""
-        model = _MockModel()
         tokenizer = _MockTokenizer()
 
         def predict(input_ids, attention_mask):  # type: ignore[no-untyped-def]
@@ -124,7 +122,6 @@ class TestIngredientNameCleaner:
         assert result == "Peterli"
 
     def test_clean_returns_original_when_no_ingredient_tokens(self) -> None:
-        model = _MockModel()
         tokenizer = _MockTokenizer()
 
         def predict(input_ids, attention_mask):  # type: ignore[no-untyped-def]
@@ -164,7 +161,6 @@ class TestIngredientNameCleaner:
 
     def test_clean_preserves_ingredient_name_across_spans(self) -> None:
         """Test that multiple ingredient spans are concatenated."""
-        model = _MockModel()
         tokenizer = _MockTokenizer()
 
         def predict(input_ids, attention_mask):  # type: ignore[no-untyped-def]
@@ -202,7 +198,6 @@ class TestIngredientNameCleaner:
         assert result == "PouletSchenkel"
 
     def test_empty_input_returns_empty(self) -> None:
-        model = _MockModel()
         tokenizer = _MockTokenizer()
         model = MagicMock()
         model.config.id2label = {0: "O", 1: "B-ING", 2: "I-ING"}
